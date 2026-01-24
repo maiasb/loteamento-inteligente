@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { GoogleMap, LoadScript, DrawingManager, Polygon } from '@react-google-maps/api';
+import { GoogleMap, useLoadScript, DrawingManager, Polygon } from '@react-google-maps/api';
 import { GeoCoordinate } from '@/types';
 
 interface MapBoundaryEditorProps {
@@ -37,7 +37,12 @@ export default function MapBoundaryEditor({
   const [mapLoaded, setMapLoaded] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
-  const [googleMapsLoaded, setGoogleMapsLoaded] = useState(false);
+  
+  // useLoadScript para evitar conflitos
+  const { isLoaded, loadError } = useLoadScript({
+    googleMapsApiKey: GOOGLE_MAPS_API_KEY,
+    libraries: libraries as any,
+  });
   
   // Cleanup ref para evitar memory leaks
   const cleanupRef = useRef<boolean>(false);
@@ -45,6 +50,19 @@ export default function MapBoundaryEditor({
   const mapRef = useRef<google.maps.Map | null>(null);
   const polygonRef = useRef<google.maps.Polygon | null>(null);
   const geocoderRef = useRef<google.maps.Geocoder | null>(null);
+
+  // Calcular centro baseado no boundary inicial
+  useEffect(() => {
+    if (initialBoundary && initialBoundary.length > 0) {
+      const latSum = initialBoundary.reduce((sum, coord) => sum + coord.lat, 0);
+      const lngSum = initialBoundary.reduce((sum, coord) => sum + coord.lng, 0);
+      const calculatedCenter = {
+        lat: latSum / initialBoundary.length,
+        lng: lngSum / initialBoundary.length,
+      };
+      setCenter(calculatedCenter);
+    }
+  }, [initialBoundary]);
 
   // Cleanup ao desmontar
   useEffect(() => {
@@ -68,7 +86,7 @@ export default function MapBoundaryEditor({
     }
 
     // Verificar se o Google Maps está carregado
-    if (!googleMapsLoaded) {
+    if (!isLoaded) {
       alert('Aguarde o carregamento do Google Maps...');
       return;
     }
@@ -112,7 +130,7 @@ export default function MapBoundaryEditor({
       alert('Erro ao buscar endereço. Tente novamente.');
       setIsSearching(false);
     }
-  }, [searchAddress, googleMapsLoaded]);
+  }, [searchAddress, isLoaded]);
 
   const handlePolygonComplete = useCallback((polygon: google.maps.Polygon) => {
     const path = polygon.getPath();
@@ -204,15 +222,37 @@ export default function MapBoundaryEditor({
     );
   }
 
+  if (loadError) {
+    return (
+      <div className="bg-red-50 dark:bg-red-900/20 border-2 border-red-300 dark:border-red-800 rounded-xl p-8 text-center">
+        <svg className="w-16 h-16 mx-auto mb-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+        </svg>
+        <p className="text-red-700 dark:text-red-300 font-semibold text-lg mb-2">
+          Erro ao carregar Google Maps
+        </p>
+      </div>
+    );
+  }
+
+  if (!isLoaded) {
+    return (
+      <div className="bg-[var(--surface)] rounded-xl p-8 text-center">
+        <svg className="animate-spin h-12 w-12 mx-auto mb-4 text-[var(--accent)]" fill="none" viewBox="0 0 24 24">
+          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+        </svg>
+        <p className="text-[var(--foreground)] font-semibold">
+          Carregando Google Maps...
+        </p>
+      </div>
+    );
+  }
+
   return (
-    <LoadScript 
-      googleMapsApiKey={GOOGLE_MAPS_API_KEY} 
-      libraries={libraries}
-      onLoad={() => setGoogleMapsLoaded(true)}
-    >
-      <div className="space-y-4">
-        {/* Etapa 1: Buscar Endereço */}
-        {currentStep === 'address' && (
+    <div className="space-y-4">
+      {/* Etapa 1: Buscar Endereço */}
+      {currentStep === 'address' && (
           <div className="space-y-4">
             <div>
               <label className="block text-[var(--foreground)] text-sm font-semibold mb-2">
@@ -223,14 +263,14 @@ export default function MapBoundaryEditor({
                   type="text"
                   value={searchAddress}
                   onChange={(e) => setSearchAddress(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && googleMapsLoaded && handleSearchAddress()}
+                  onKeyPress={(e) => e.key === 'Enter' && isLoaded && handleSearchAddress()}
                   placeholder="Digite o endereço (ex: Rua Principal, Cidade - Estado)"
                   className="flex-1 px-4 py-3 bg-[var(--surface)] border-2 border-[var(--border)] rounded-xl text-[var(--foreground)] focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  disabled={!googleMapsLoaded}
+                  disabled={!isLoaded}
                 />
                 <button
                   onClick={handleSearchAddress}
-                  disabled={!googleMapsLoaded || isSearching || !searchAddress.trim()}
+                  disabled={!isLoaded || isSearching || !searchAddress.trim()}
                   className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl transition-colors flex items-center gap-2 disabled:bg-gray-400 disabled:cursor-not-allowed"
                 >
                   {isSearching ? (
@@ -246,7 +286,7 @@ export default function MapBoundaryEditor({
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                       </svg>
-                      {googleMapsLoaded ? 'Buscar' : 'Carregando...'}
+                      {isLoaded ? 'Buscar' : 'Carregando...'}
                     </>
                   )}
                 </button>
@@ -385,6 +425,5 @@ export default function MapBoundaryEditor({
         </button>
       </div>
       </div>
-    </LoadScript>
   );
 }

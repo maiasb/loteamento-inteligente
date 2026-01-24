@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useCallback } from 'react';
-import { GoogleMap, LoadScript, DrawingManager, Polygon } from '@react-google-maps/api';
+import { GoogleMap, useLoadScript, DrawingManager, Polygon } from '@react-google-maps/api';
 import { GeoCoordinate, Lot } from '@/types';
 
 interface LotPolygonEditorProps {
@@ -23,6 +23,11 @@ export default function LotPolygonEditor({ lot, mapBoundary, onSave, onCancel }:
   const [coordinates, setCoordinates] = useState<GeoCoordinate[]>(lot.coordinates || []);
   const [isDrawing, setIsDrawing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+
+  const { isLoaded, loadError } = useLoadScript({
+    googleMapsApiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || '',
+    libraries: libraries as any,
+  });
 
   // Calcular centro do mapa baseado no boundary do loteamento ou usar padrão
   const getCenter = () => {
@@ -210,10 +215,24 @@ export default function LotPolygonEditor({ lot, mapBoundary, onSave, onCancel }:
 
       {/* Mapa do Google */}
       <div className="bg-white/5 rounded-xl overflow-hidden border-2 border-[var(--border)]">
-        <LoadScript
-          googleMapsApiKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || ''}
-          libraries={libraries}
-        >
+        {!isLoaded ? (
+          <div className="flex items-center justify-center h-[600px] bg-gray-100 dark:bg-gray-800">
+            <div className="text-center">
+              <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
+              <p className="text-gray-600 dark:text-gray-400">Carregando mapa...</p>
+            </div>
+          </div>
+        ) : loadError ? (
+          <div className="flex items-center justify-center h-[600px] bg-gray-100 dark:bg-gray-800">
+            <div className="text-center text-red-600">
+              <svg className="w-12 h-12 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <p>Erro ao carregar o mapa</p>
+              <p className="text-sm mt-2">{loadError.message}</p>
+            </div>
+          </div>
+        ) : (
           <GoogleMap
             mapContainerStyle={containerStyle}
             center={center}
@@ -273,7 +292,7 @@ export default function LotPolygonEditor({ lot, mapBoundary, onSave, onCancel }:
               />
             )}
           </GoogleMap>
-        </LoadScript>
+        )}
       </div>
     </div>
   );

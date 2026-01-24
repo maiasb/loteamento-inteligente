@@ -73,6 +73,7 @@ export default function MapDetails() {
   // Estados para configurar área do mapa
   const [isConfiguringLocation, setIsConfiguringLocation] = useState(false);
   const [editingLotPolygon, setEditingLotPolygon] = useState<Lot | null>(null);
+  const [showLotSelectionModal, setShowLotSelectionModal] = useState(false);
 
   const { blocks, loadBlocks, createBlock, updateBlock, deleteBlock } = useBlockOperations();
 
@@ -730,7 +731,7 @@ export default function MapDetails() {
     if (!mapId) return;
     
     try {
-      const lot = selectedBlockLots.find(l => l.id === lotId);
+      const lot = allLotsInMap.find(l => l.id === lotId) || selectedBlockLots.find(l => l.id === lotId);
       if (!lot) return;
       
       await axios.patch('/api/mapas/lotes/atualizar', {
@@ -748,11 +749,15 @@ export default function MapDetails() {
       
       alert('✅ Coordenadas do lote salvas com sucesso!');
       setEditingLotPolygon(null);
+      setShowLotSelectionModal(false);
       
       // Recarregar lotes da quadra
       if (selectedBlockId) {
         await loadSelectedBlockLots(selectedBlockId);
       }
+      
+      // Recarregar todos os lotes do mapa
+      await loadAllLotsInMap();
     } catch (error) {
       console.error('Erro ao salvar coordenadas do lote:', error);
       alert('❌ Erro ao salvar coordenadas. Tente novamente.');
@@ -1547,6 +1552,7 @@ export default function MapDetails() {
               multiSelectMode={multiSelectMode}
               selectedLots={selectedLots}
               onToggleLotSelection={handleToggleLotSelection}
+              onDefineArea={(lot) => setEditingLotPolygon(lot)}
             />
           </div>
         </div>
@@ -1594,6 +1600,16 @@ export default function MapDetails() {
               <PublicMapViewer 
                 address={map?.address}
                 boundaryCoordinates={map?.boundaryCoordinates}
+                lots={allLotsInMap}
+                onLotClick={(lot) => {
+                  console.log('[MapDetails] Lote clicado no mapa:', lot.lotNumber);
+                  setEditingLotPolygon(lot);
+                }}
+                onBoundaryClick={() => {
+                  console.log('[MapDetails] Área do loteamento clicada');
+                  setShowLotSelectionModal(true);
+                }}
+                isAdminContext={true}
               />
             </div>
             {map?.address && (
@@ -2143,6 +2159,109 @@ export default function MapDetails() {
         </div>
       )}
 
+      {/* Modal de Seleção de Lote para Vincular Área */}
+      {showLotSelectionModal && (
+        <div className="fixed inset-0 bg-[var(--foreground)]/40 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
+          <div className="bg-[var(--card-bg)] rounded-2xl w-full max-w-2xl max-h-[80vh] overflow-hidden shadow-[var(--shadow-xl)] border border-[var(--border)]">
+            <div className="sticky top-0 bg-gradient-to-r from-blue-600 to-blue-700 text-white p-6 rounded-t-2xl shadow-md z-10">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 bg-white/15 backdrop-blur-sm rounded-xl flex items-center justify-center">
+                    <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-bold">Selecione o Lote</h2>
+                    <p className="text-white/80 text-sm mt-1">Escolha qual lote deseja vincular a uma área no mapa</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowLotSelectionModal(false)}
+                  className="text-white hover:bg-white/20 rounded-lg p-2 transition-colors"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <div className="p-6 overflow-y-auto max-h-[calc(80vh-180px)]">
+              {allLotsInMap.length > 0 ? (
+                <div className="space-y-2">
+                  {allLotsInMap.map((lot) => (
+                    <button
+                      key={lot.id}
+                      onClick={async () => {
+                        if (!map?.boundaryCoordinates || map.boundaryCoordinates.length === 0) {
+                          alert('⚠️ O loteamento não tem área definida. Configure a área primeiro.');
+                          return;
+                        }
+                        
+                        const confirmLink = confirm(
+                          `Confirma vincular o lote ${lot.lotNumber} à área verde do loteamento?\n\n` +
+                          `O lote ficará com as mesmas coordenadas da área verde.`
+                        );
+                        
+                        if (confirmLink) {
+                          await saveLotCoordinates(lot.id, map.boundaryCoordinates);
+                        }
+                      }}
+                      className="w-full flex items-center justify-between p-4 bg-[var(--surface)] hover:bg-[var(--surface)]/80 border border-[var(--border)] rounded-xl transition-all duration-200 group"
+                    >
+                      <div className="flex items-center gap-4">
+                        <div className={`w-12 h-12 rounded-lg flex items-center justify-center font-bold text-white ${
+                          lot.status === 'available' ? 'bg-green-500' :
+                          lot.status === 'reserved' ? 'bg-yellow-500' :
+                          lot.status === 'sold' ? 'bg-red-500' : 'bg-gray-500'
+                        }`}>
+                          {lot.lotNumber}
+                        </div>
+                        <div className="text-left">
+                          <div className="font-semibold text-[var(--foreground)]">{lot.lotNumber}</div>
+                          <div className="text-sm text-[var(--foreground)]/60">
+                            {lot.size}m² • R$ {lot.price.toLocaleString('pt-BR')}
+                          </div>
+                          {lot.coordinates && lot.coordinates.length > 0 && (
+                            <div className="text-xs text-green-600 dark:text-green-400 flex items-center gap-1 mt-1">
+                              <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                              </svg>
+                              Área já definida
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <svg className="w-5 h-5 text-[var(--foreground)]/40 group-hover:text-[var(--accent)] transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-12">
+                  <svg className="w-16 h-16 mx-auto mb-4 text-[var(--foreground)]/40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+                  </svg>
+                  <p className="text-[var(--foreground)]/60 font-medium mb-2">Nenhum lote cadastrado</p>
+                  <p className="text-[var(--foreground)]/40 text-sm">Cadastre lotes primeiro para poder vincular áreas</p>
+                </div>
+              )}
+            </div>
+
+            <div className="sticky bottom-0 bg-[var(--surface)] px-6 py-4 border-t border-[var(--border)] rounded-b-2xl">
+              <button
+                onClick={() => setShowLotSelectionModal(false)}
+                className="w-full px-4 py-3 bg-gray-600 hover:bg-gray-700 text-white font-semibold rounded-xl transition-colors"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Modal de Editar Polígono do Lote */}
       {editingLotPolygon && (
         <div className="fixed inset-0 bg-[var(--foreground)]/40 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
@@ -2359,6 +2478,7 @@ interface BlockCardProps {
   multiSelectMode?: boolean;
   selectedLots?: Lot[];
   onToggleLotSelection?: (lot: Lot) => void;
+  onDefineArea?: (lot: Lot) => void;
 }
 
 function BlockCard({
@@ -2379,6 +2499,7 @@ function BlockCard({
   multiSelectMode = false,
   selectedLots = [],
   onToggleLotSelection,
+  onDefineArea,
 }: BlockCardProps) {
   const [isHovered, setIsHovered] = useState(false);
   
@@ -2429,6 +2550,7 @@ function BlockCard({
             onLotEdit={handleEditLot}
             onLotDelete={handleDeleteLot}
             onToggleLotStatus={handleToggleLotStatus}
+            onDefineArea={onDefineArea}
             selectedLotIds={selectedLots.map(l => l.id)}
             allowMultipleSelection={multiSelectMode}
             onMultipleSelect={multiSelectMode && onToggleLotSelection ? (lots) => {

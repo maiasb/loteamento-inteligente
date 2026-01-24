@@ -47,6 +47,8 @@ export default function LotManagement() {
           imageType: 'image',
           width: data.width || 800,
           height: data.height || 600,
+          address: data.address,
+          boundaryCoordinates: data.boundaryCoordinates,
           createdAt: data.createdAt ? new Date(data.createdAt) : new Date(),
           updatedAt: data.updatedAt ? new Date(data.updatedAt) : new Date(),
         };
@@ -442,6 +444,7 @@ export default function LotManagement() {
                   lots={filteredLots}
                   blocks={blocks}
                   onLotEdit={handleEditLot}
+                  onDefineArea={(lot) => setEditingLotPolygon(lot)}
                   selectedLotIds={[]}
                   allowMultipleSelection={false}
                   lotsPerRow={15}

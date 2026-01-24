@@ -13,6 +13,7 @@ interface LotSelectorProps {
   onLotEdit?: (lot: Lot) => void;
   onLotDelete?: (lotId: string) => void;
   onToggleLotStatus?: (lotId: string, currentStatus: LotStatus) => Promise<void>;
+  onDefineArea?: (lot: Lot) => void; // Callback para definir área do lote no mapa
   selectedLotIds?: string[];
   allowMultipleSelection?: boolean;
   lotsPerRow?: number;
@@ -31,6 +32,7 @@ export default function LotSelector({
   onLotEdit,
   onLotDelete,
   onToggleLotStatus,
+  onDefineArea,
   selectedLotIds = [],
   allowMultipleSelection = false,
   lotsPerRow = 10,
@@ -955,6 +957,23 @@ export default function LotSelector({
                   >
                     Cancelar
                   </button>
+                  {onDefineArea && !isEditing && (
+                    <button
+                      onClick={() => {
+                        onDefineArea(selectedLotForModal);
+                        setSelectedLotForModal(null);
+                        setIsEditing(false);
+                        setEditedLot(null);
+                      }}
+                      className="flex-1 px-4 sm:px-6 py-3 text-base bg-green-600 hover:bg-green-700 active:bg-green-800 text-white font-semibold rounded-xl transition-colors touch-manipulation flex items-center justify-center gap-2"
+                      title="Definir área do lote no Google Maps"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+                      </svg>
+                      {selectedLotForModal.coordinates && selectedLotForModal.coordinates.length > 0 ? 'Editar Área' : 'Definir Área'}
+                    </button>
+                  )}
                   {onLotEdit ? (
                     isEditing && editedLot ? (
                       <button
