@@ -10,12 +10,10 @@ import axios from 'axios';
 
 export default function MapManagement() {
   const router = useRouter();
-  const { maps, isLoading, deleteMapById, processFileUpload, loadMaps } = useMapOperations();
+  const { maps, isLoading, deleteMapById, loadMaps } = useMapOperations();
   const [isCreating, setIsCreating] = useState(false);
   const [editingMap, setEditingMap] = useState<Map | null>(null);
   const [isEditingDetails, setIsEditingDetails] = useState(false);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [filePreview, setFilePreview] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [mapsWithReservedLots, setMapsWithReservedLots] = useState<Record<string, { hasReserved: boolean; count: number }>>({});
 
@@ -53,21 +51,6 @@ export default function MapManagement() {
     }
   }, [maps]);
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setSelectedFile(file);
-    
-    // Criar preview
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const dataUrl = event.target?.result as string;
-      setFilePreview(dataUrl);
-    };
-    reader.readAsDataURL(file);
-  };
-
   const handleSubmit = async () => {
     if (!editingMap?.name?.trim()) {
       alert('Por favor, preencha o nome do mapa');
@@ -76,33 +59,26 @@ export default function MapManagement() {
 
     setIsSubmitting(true);
     try {
-      if (selectedFile) {
-        // Criar com imagem
-        await processFileUpload(selectedFile, editingMap);
-      } else {
-        // Criar sem imagem
-        const url = '/api/mapas/criar';
-        const payload = {
-          name: editingMap.name,
-          description: editingMap.description || '',
-          imageUrl: '',
-          imageType: 'image/png',
-          width: 800,
-          height: 600
-        };
+      // Criar sem imagem
+      const url = '/api/mapas/criar';
+      const payload = {
+        name: editingMap.name,
+        description: editingMap.description || '',
+        imageUrl: '',
+        imageType: 'image/png',
+        width: 800,
+        height: 600
+      };
 
-        await axios.post(url, payload, {
-          headers: { 'Content-Type': 'application/json' },
-          timeout: 10000,
-        });
+      await axios.post(url, payload, {
+        headers: { 'Content-Type': 'application/json' },
+        timeout: 10000,
+      });
 
-        await loadMaps();
-      }
+      await loadMaps();
       
       setIsCreating(false);
       setEditingMap(null);
-      setSelectedFile(null);
-      setFilePreview('');
       alert('✅ Mapa criado com sucesso!');
     } catch (error) {
       alert('❌ Erro ao criar mapa. Tente novamente.');
@@ -238,8 +214,6 @@ export default function MapManagement() {
                   onClick={() => {
                     setIsCreating(false);
                     setEditingMap(null);
-                    setSelectedFile(null);
-                    setFilePreview('');
                   }}
                   disabled={isSubmitting}
                   className="w-9 h-9 flex items-center justify-center rounded-lg bg-white/10 hover:bg-white/20 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
@@ -277,57 +251,6 @@ export default function MapManagement() {
                   rows={3}
                 />
               </div>
-              <div>
-                <label className="block text-[var(--foreground)] opacity-80 text-sm font-semibold mb-2">
-                  Upload de Imagem ou PDF (Opcional)
-                </label>
-                <input
-                  type="file"
-                  accept="image/*,application/pdf"
-                  onChange={handleFileUpload}
-                  disabled={isSubmitting}
-                  className="w-full text-[var(--foreground)] file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-[var(--primary)] file:text-white hover:file:bg-[var(--primary)]/90 file:cursor-pointer disabled:opacity-50"
-                />
-                {!filePreview && (
-                  <p className="text-xs text-blue-300 mt-2 bg-blue-500/20 p-3 rounded-lg border border-blue-500/30">
-                    💡 <span className="font-bold">Você pode criar o mapa sem imagem e adicionar depois.</span> Tamanho máximo: 50MB para PDFs, 10MB para imagens.
-                  </p>
-                )}
-              </div>
-              {filePreview && (
-                <div>
-                  <label className="block text-[var(--foreground)] opacity-80 text-sm font-semibold mb-2 flex items-center gap-2">
-                    <svg className="w-5 h-5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-                    </svg>
-                    Preview do Arquivo
-                  </label>
-                  <div className="border-2 border-green-500/50 rounded-xl overflow-hidden bg-[var(--surface)]">
-                    {selectedFile?.type === 'application/pdf' ? (
-                      <div className="p-10 text-center bg-gradient-to-br from-[var(--surface)] to-[var(--background)]">
-                        <svg className="w-20 h-20 mx-auto mb-4 text-red-400" fill="currentColor" viewBox="0 0 20 20">
-                          <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z" clipRule="evenodd" />
-                        </svg>
-                        <p className="text-base font-bold text-[var(--foreground)] break-words px-2 mb-2">{selectedFile?.name}</p>
-                        <p className="text-sm text-[var(--foreground)] opacity-70">Arquivo PDF selecionado</p>
-                        <p className="text-xs text-[var(--foreground)] opacity-50 mt-2">O PDF será convertido automaticamente para visualização</p>
-                      </div>
-                    ) : (
-                      <div className="p-2">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img 
-                          src={filePreview} 
-                          alt="Preview" 
-                          className="w-full max-h-96 object-contain rounded-lg" 
-                        />
-                        <div className="text-center mt-2 pb-2">
-                          <p className="text-xs font-semibold text-[var(--foreground)] opacity-70">{selectedFile?.name}</p>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
             </div>
 
             <div className="sticky bottom-0 bg-[var(--card-bg)] border-t border-[var(--border)] p-6 flex flex-col sm:flex-row gap-3">
@@ -335,8 +258,6 @@ export default function MapManagement() {
                 onClick={() => {
                   setIsCreating(false);
                   setEditingMap(null);
-                  setSelectedFile(null);
-                  setFilePreview('');
                 }}
                 disabled={isSubmitting}
                 className="flex-1 px-4 py-3 bg-[var(--surface)] hover:bg-[var(--background)] text-[var(--foreground)] font-semibold rounded-xl transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"

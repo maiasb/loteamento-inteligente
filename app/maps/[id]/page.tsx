@@ -4,8 +4,8 @@ import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import axios from 'axios';
 import { Map, Lot, Block } from '@/types';
-import InteractiveMap from '@/components/InteractiveMap';
 import LotSelector from '@/components/LotSelector';
+import InteractiveLotMap from '@/components/InteractiveLotMap';
 import PurchaseModal from '@/components/PurchaseModal';
 
 const API_URL = '/api';
@@ -50,6 +50,8 @@ export default function MapViewPage() {
           imageType: 'image',
           width: mapData.width || 800,
           height: mapData.height || 600,
+          address: mapData.address,
+          boundaryCoordinates: mapData.boundaryCoordinates,
           createdAt: mapData.createdAt ? new Date(mapData.createdAt) : new Date(),
           updatedAt: mapData.updatedAt ? new Date(mapData.updatedAt) : new Date(),
         };
@@ -212,25 +214,17 @@ export default function MapViewPage() {
           )}
         </div>
 
-        {/* Visualização do Mapa (apenas visual com zoom/pan) */}
-        {map.imageUrl && (
+        {/* Visualização do mapa com imagem (desabilitado - usando Google Maps agora) */}
+        {/* {map.imageUrl && (
           <div className="mb-8 bg-[var(--card-bg)] rounded-xl p-6 shadow-[var(--shadow-md)]">
             <h2 className="text-white text-xl font-semibold mb-4">
               Visualização do Loteamento
             </h2>
             <div className="bg-white/5 rounded-lg p-4">
-              <InteractiveMap
-                imageUrl={map.imageUrl}
-                lots={allLots}
-                selectedLotIds={selectedLots.map(l => l.id)}
-                isEditMode={false}
-              />
+              Visualização com imagem desabilitada - usando mapa interativo do Google Maps
             </div>
-            <p className="text-white/50 text-sm mt-2 text-center">
-              Use os botões de zoom para ampliar/reduzir a visualização. Esta é apenas uma visualização - selecione os lotes abaixo.
-            </p>
           </div>
-        )}
+        )} */}
 
         {/* Estatísticas de Status dos Lotes */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
@@ -291,19 +285,53 @@ export default function MapViewPage() {
           </div>
         </div>
 
+        {/* Mapa Interativo do Google Maps com Lotes */}
+        <div className="mb-8">
+          <InteractiveLotMap
+            mapBoundary={map?.boundaryCoordinates}
+            lots={selectedBlockId ? lots : allLots}
+            selectedLots={selectedLots}
+            onLotClick={(lot) => {
+              if (lot.status === 'available') {
+                const isSelected = selectedLots.some(l => l.id === lot.id);
+                if (isSelected) {
+                  setSelectedLots(selectedLots.filter(l => l.id !== lot.id));
+                } else {
+                  setSelectedLots([...selectedLots, lot]);
+                }
+              }
+            }}
+            showPrices={true}
+          />
+        </div>
+
         {/* Seleção de Quadras */}
         {blocks.length > 0 && (
           <div className="mb-6 bg-[var(--card-bg)] rounded-xl p-6 shadow-[var(--shadow-md)]">
-            <h2 className="text-white text-xl font-semibold mb-4">
-              Selecione a Quadra
+            <h2 className="text-white text-xl font-semibold mb-4 flex items-center gap-2">
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+              </svg>
+              Filtrar por Quadra
             </h2>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+              <button
+                onClick={() => setSelectedBlockId('')}
+                className={`p-4 rounded-xl font-semibold transition-all ${
+                  selectedBlockId === ''
+                    ? 'bg-gradient-to-br from-blue-600 to-blue-700 text-white shadow-lg scale-105'
+                    : 'bg-white/10 text-white/70 hover:bg-white/20 hover:text-white'
+                }`}
+              >
+                <div className="text-sm mb-1">Todas</div>
+                <div className="text-lg font-bold">Quadras</div>
+                <div className="text-xs mt-1 opacity-80">{allLots.length} lotes</div>
+              </button>
               {blocks.map((block) => (
                 <button
                   key={block.id}
                   onClick={() => {
                     setSelectedBlockId(block.id);
-                    setSelectedLots([]); // Limpa seleção ao trocar de quadra
                   }}
                   className={`p-4 rounded-xl font-semibold transition-all ${
                     selectedBlockId === block.id
@@ -325,64 +353,49 @@ export default function MapViewPage() {
         {blocks.length === 0 && !loading && (
           <div className="mb-6 bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-6 text-center">
             <p className="text-yellow-500 font-semibold">
-              Nenhuma quadra cadastrada neste loteamento.
+              ⚠️ Nenhuma quadra cadastrada neste loteamento.
+            </p>
+            <p className="text-yellow-400 text-sm mt-2">
+              Os lotes podem ser selecionados diretamente no mapa acima.
             </p>
           </div>
         )}
 
-        {/* Controles de visualização */}
-        {selectedBlockId && (
-          <>
-            <div className="mb-4 flex items-center justify-between flex-wrap gap-4">
-              <div className="flex items-center gap-4">
-                <label className="text-white/80 text-sm">
-                  Lotes por linha:
-                </label>
-                <input
-                  type="range"
-                  min="8"
-                  max="20"
-                  value={lotsPerRow}
-                  onChange={(e) => setLotsPerRow(parseInt(e.target.value))}
-                  className="w-32"
-                />
-                <span className="text-white font-medium">{lotsPerRow}</span>
-              </div>
-              <div className="text-white/80 text-sm">
-                Total de lotes na quadra: <span className="font-bold text-white">{lots.length}</span>
-                {allLots.length > 0 && (
-                  <span className="text-white/60 ml-2">
-                    ({allLots.length} no total do loteamento)
-                  </span>
-                )}
-              </div>
+        {/* Seletor de Lotes Estilo Grid (Alternativa) */}
+        {selectedBlockId && lots.length > 0 && (
+          <div className="mb-8">
+            <div className="bg-[var(--card-bg)] rounded-xl p-6 shadow-[var(--shadow-md)]">
+              <h2 className="text-white text-xl font-semibold mb-4 flex items-center justify-between">
+                <span className="flex items-center gap-2">
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 5a1 1 0 011-1h4a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM14 5a1 1 0 011-1h4a1 1 0 011 1v2a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h4a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM14 13a1 1 0 011-1h4a1 1 0 011 1v6a1 1 0 01-1 1h-4a1 1 0 01-1-1v-6z" />
+                  </svg>
+                  Seleção em Grade - Quadra {blocks.find(b => b.id === selectedBlockId)?.name}
+                </span>
+                <div className="flex items-center gap-4">
+                  <label className="text-white/80 text-sm">
+                    Lotes por linha:
+                  </label>
+                  <input
+                    type="range"
+                    min="8"
+                    max="20"
+                    value={lotsPerRow}
+                    onChange={(e) => setLotsPerRow(parseInt(e.target.value))}
+                    className="w-32"
+                  />
+                  <span className="text-white font-medium">{lotsPerRow}</span>
+                </div>
+              </h2>
+              <LotSelector
+                lots={lots}
+                onMultipleSelect={handleMultipleSelect}
+                selectedLotIds={selectedLots.map(l => l.id)}
+                allowMultipleSelection={true}
+                lotsPerRow={lotsPerRow}
+              />
             </div>
-
-            {/* Seletor de Lotes Estilo Cinema */}
-            {lots.length > 0 ? (
-              <div className="mb-8">
-                <LotSelector
-                  lots={lots}
-                  onMultipleSelect={handleMultipleSelect}
-                  selectedLotIds={selectedLots.map(l => l.id)}
-                  allowMultipleSelection={true}
-                  lotsPerRow={lotsPerRow}
-                />
-              </div>
-            ) : (
-              <div className="mb-8 bg-gray-800/50 rounded-xl p-12 text-center border-2 border-dashed border-gray-700">
-                <svg className="w-16 h-16 mx-auto mb-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
-                </svg>
-                <p className="text-white/70 text-lg font-semibold mb-2">
-                  Nenhum lote disponível nesta quadra
-                </p>
-                <p className="text-white/50 text-sm">
-                  Selecione outra quadra acima para ver os lotes disponíveis
-                </p>
-              </div>
-            )}
-          </>
+          </div>
         )}
 
         {/* Botão de Compra */}

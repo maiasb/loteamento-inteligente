@@ -66,6 +66,7 @@ export async function GET(request: NextRequest) {
       size: lot.size ? Number(lot.size) : 0,
       description: lot.description || '',
       features: lot.features ? JSON.parse(lot.features) : [],
+      coordinates: lot.coordinates ? (typeof lot.coordinates === 'string' ? JSON.parse(lot.coordinates) : lot.coordinates) : null,
       createdAt: lot.created_at || new Date(),
       updatedAt: lot.updated_at || new Date(),
     }));

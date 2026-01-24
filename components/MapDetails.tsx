@@ -3,12 +3,15 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import axios from 'axios';
-import { Map, Block, Lot, LotStatus } from '@/types';
+import { Map, Block, Lot, LotStatus, GeoCoordinate } from '@/types';
 import { useBlockOperations } from '@/hooks/useBlockOperations';
 import { loadPdfJs } from '@/lib/pdfjs-wrapper';
 import LotSelector from '@/components/LotSelector';
 import InteractiveMap from '@/components/InteractiveMap';
+import PublicMapViewer from '@/components/PublicMapViewer';
+import LotPolygonEditor from '@/components/LotPolygonEditor';
 import { useAuth } from '@/contexts/AuthContext';
+import MapBoundaryEditor from './MapBoundaryEditor';
 
 const API_URL = '/api';
 
@@ -40,10 +43,6 @@ export default function MapDetails() {
   const [selectedBlockForLot, setSelectedBlockForLot] = useState<string>('');
   const [canSubmitLot, setCanSubmitLot] = useState(false);
   const [submitLotFn, setSubmitLotFn] = useState<(() => void) | null>(null);
-  const [isEditingImage, setIsEditingImage] = useState(false);
-  const [imageFile, setImageFile] = useState<File | null>(null);
-  const [imagePreview, setImagePreview] = useState<string>('');
-  const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [selectedBlockId, setSelectedBlockId] = useState<string>('');
   const [reservations, setReservations] = useState<any[]>([]);
   const [selectedBlockLots, setSelectedBlockLots] = useState<Lot[]>([]); // Lotes da quadra selecionada
@@ -70,6 +69,10 @@ export default function MapDetails() {
   const [editMapName, setEditMapName] = useState('');
   const [editMapDescription, setEditMapDescription] = useState('');
   const [isSubmittingMapEdit, setIsSubmittingMapEdit] = useState(false);
+
+  // Estados para configurar área do mapa
+  const [isConfiguringLocation, setIsConfiguringLocation] = useState(false);
+  const [editingLotPolygon, setEditingLotPolygon] = useState<Lot | null>(null);
 
   const { blocks, loadBlocks, createBlock, updateBlock, deleteBlock } = useBlockOperations();
 
@@ -297,6 +300,8 @@ export default function MapDetails() {
         imageType: 'image',
         width: m.width || 800,
         height: m.height || 600,
+        address: m.address || '',
+        boundaryCoordinates: m.boundaryCoordinates || undefined,
         createdAt: m.createdAt ? new Date(m.createdAt) : new Date(),
         updatedAt: m.updatedAt ? new Date(m.updatedAt) : new Date(),
       }));
@@ -316,6 +321,8 @@ export default function MapDetails() {
             imageType: 'image',
             width: data.width || 800,
             height: data.height || 600,
+            address: data.address || '',
+            boundaryCoordinates: data.boundaryCoordinates || undefined,
             createdAt: data.createdAt ? new Date(data.createdAt) : new Date(),
             updatedAt: data.updatedAt ? new Date(data.updatedAt) : new Date(),
           };
@@ -350,7 +357,7 @@ export default function MapDetails() {
     } finally {
       setIsLoading(false);
     }
-  }, [router]);
+  }, [mapId, router]);
 
   // Flag para controlar se já inicializou
   const hasInitialized = useRef(false);
@@ -688,130 +695,67 @@ export default function MapDetails() {
     }
   };
 
-  const handleImageSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    // Validar tipo de arquivo (imagem ou PDF)
-    const isImage = file.type.startsWith('image/');
-    const isPDF = file.type === 'application/pdf';
+  const saveBoundaryCoordinates = async (coordinates: GeoCoordinate[], address: string) => {
+    if (!mapId || !map) return;
     
-    if (!isImage && !isPDF) {
-      alert('Por favor, selecione uma imagem (JPG, PNG, GIF) ou um arquivo PDF');
-      return;
-    }
-
-    // Validar tamanho (máximo 50MB para PDF, 10MB para imagem)
-    const maxSize = isPDF ? 50 * 1024 * 1024 : 10 * 1024 * 1024;
-    if (file.size > maxSize) {
-      alert(`O arquivo deve ter no máximo ${isPDF ? '50MB' : '10MB'}`);
-      return;
-    }
-
-    setImageFile(file);
-    
-    // Criar preview (apenas para imagens)
-    if (isImage) {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        setImagePreview(e.target?.result as string);
-      };
-      reader.readAsDataURL(file);
-    } else {
-      // Para PDF, mostrar ícone
-      setImagePreview('PDF');
+    try {
+      await axios.post('/api/mapas/configurar-area', {
+        mapId,
+        address,
+        boundaryCoordinates: coordinates
+      });
+      
+      alert('✅ Área configurada com sucesso!');
+      setIsConfiguringLocation(false);
+      
+      // Atualizar o estado local do mapa imediatamente
+      setMap(prev => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          address,
+          boundaryCoordinates: coordinates
+        };
+      });
+      
+      // Recarregar dados do mapa para garantir sincronização
+      await loadMapData(mapId);
+    } catch (error) {
+      console.error('Erro ao salvar boundary:', error);
+      alert('❌ Erro ao salvar área. Tente novamente.');
     }
   };
 
-  const handleUploadImage = async () => {
-    if (!imageFile || !mapId) return;
-
-    setIsUploadingImage(true);
-
+  const saveLotCoordinates = async (lotId: string, coordinates: GeoCoordinate[]) => {
+    if (!mapId) return;
+    
     try {
-      const isPDF = imageFile.type === 'application/pdf';
+      const lot = selectedBlockLots.find(l => l.id === lotId);
+      if (!lot) return;
       
-      // Converter arquivo para base64
-      const reader = new FileReader();
-      reader.onload = async (e) => {
-        const base64Data = e.target?.result as string;
-
-        try {
-          if (isPDF) {
-            // Para PDF, enviar direto sem verificar dimensões
-            await axios.post(`${API_URL}/mapas/atualizar-imagem`, {
-              mapId,
-              imageUrl: base64Data,
-              width: 800,  // Valor padrão para PDFs
-              height: 600, // Valor padrão para PDFs
-            }, {
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              timeout: 120000,
-            });
-
-            alert('✅ PDF atualizado com sucesso!');
-            setIsEditingImage(false);
-            setImageFile(null);
-            setImagePreview('');
-            
-            // Aguardar um pouco para o servidor processar antes de recarregar
-            setTimeout(async () => {
-              await loadMapImage(mapId); // Recarregar apenas a imagem
-              setIsUploadingImage(false);
-            }, 500);
-          } else {
-            // Para imagem, obter dimensões
-            const img = new Image();
-            img.onload = async () => {
-              const width = img.width;
-              const height = img.height;
-
-              await axios.post(`${API_URL}/mapas/atualizar-imagem`, {
-                mapId,
-                imageUrl: base64Data,
-                width,
-                height,
-              }, {
-                headers: {
-                  'Content-Type': 'application/json',
-                },
-                timeout: 30000,
-              });
-
-              alert('✅ Imagem atualizada com sucesso!');
-              setIsEditingImage(false);
-              setImageFile(null);
-              setImagePreview('');
-              
-              // Aguardar um pouco para o servidor processar antes de recarregar
-              setTimeout(async () => {
-                await loadMapImage(mapId); // Recarregar apenas a imagem
-                setIsUploadingImage(false);
-              }, 500);
-            };
-            img.onerror = () => {
-              alert('Erro ao processar imagem');
-              setIsUploadingImage(false);
-            };
-            img.src = base64Data;
-          }
-        } catch (err: any) {
-          console.error('[MapDetails] ❌ Erro ao enviar arquivo:', err);
-          alert(err.response?.data?.error || 'Erro ao fazer upload do arquivo');
-          setIsUploadingImage(false);
-        }
-      };
-      reader.onerror = () => {
-        alert('Erro ao ler arquivo');
-        setIsUploadingImage(false);
-      };
-      reader.readAsDataURL(imageFile);
-    } catch (err) {
-      console.error('[MapDetails] ❌ Erro:', err);
-      alert('Erro ao processar arquivo');
-      setIsUploadingImage(false);
+      await axios.patch('/api/mapas/lotes/atualizar', {
+        id: lotId,
+        mapId: lot.mapId || mapId,
+        blockId: lot.blockId,
+        lotNumber: lot.lotNumber,
+        coordinates,
+        status: lot.status,
+        price: lot.price,
+        size: lot.size,
+        description: lot.description,
+        features: lot.features,
+      });
+      
+      alert('✅ Coordenadas do lote salvas com sucesso!');
+      setEditingLotPolygon(null);
+      
+      // Recarregar lotes da quadra
+      if (selectedBlockId) {
+        await loadSelectedBlockLots(selectedBlockId);
+      }
+    } catch (error) {
+      console.error('Erro ao salvar coordenadas do lote:', error);
+      alert('❌ Erro ao salvar coordenadas. Tente novamente.');
     }
   };
 
@@ -1608,22 +1552,18 @@ export default function MapDetails() {
         </div>
       )}
 
-      {/* Mapa Interativo */}
+      {/* Visualização do Mapa no Google Maps */}
       <div className="mb-8">
         <div className="flex items-center justify-between mb-3">
           <label className="block text-sm font-bold text-[var(--foreground)] opacity-80">Visualização do Mapa</label>
           <button
-            onClick={() => setIsEditingImage(true)}
-            className={`px-4 py-2 text-white font-semibold rounded-xl shadow-[var(--shadow-md)] transition-all hover:shadow-[var(--shadow-lg)] cursor-pointer flex items-center gap-2 ${
-              map?.imageUrl 
-                ? 'bg-yellow-500 hover:bg-yellow-600' 
-                : 'bg-[var(--primary)] hover:bg-[var(--primary-dark)]'
-            }`}
+            onClick={() => setIsConfiguringLocation(true)}
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl shadow-[var(--shadow-md)] transition-all hover:shadow-[var(--shadow-lg)] cursor-pointer flex items-center gap-2"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
             </svg>
-            {map?.imageUrl ? 'Editar Imagem' : 'Adicionar Imagem'}
+            Configurar Área
           </button>
         </div>
         
@@ -1631,36 +1571,43 @@ export default function MapDetails() {
           <div className="bg-[var(--card-bg)] border-2 border-[var(--border)] rounded-2xl p-6">
             <div className="aspect-video bg-[var(--surface)] rounded-xl animate-pulse"></div>
           </div>
-        ) : map && map.imageUrl && map.imageUrl.trim() !== '' ? (
+        ) : (
           <div className="bg-[var(--card-bg)] border-2 border-[var(--primary)]/30 rounded-2xl overflow-hidden shadow-[var(--shadow-lg)] p-6">
-            <div className="bg-gradient-to-br from-[var(--surface)] to-[var(--background)] rounded-xl p-4 relative">
-            {isLoadingImage && (
-              <div className="absolute inset-0 bg-[var(--background)]/80 backdrop-blur-sm rounded-xl flex items-center justify-center z-10">
-                <div className="text-center">
-                  <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-[var(--accent)] mb-2"></div>
-                  <p className="text-[var(--foreground)] text-sm font-medium">Carregando imagem...</p>
-                </div>
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-[var(--foreground)] text-lg font-semibold">Localização do Loteamento</h3>
+              <button
+                onClick={() => {
+                  if (map?.address) {
+                    const searchQuery = encodeURIComponent(map.address);
+                    const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${searchQuery}`;
+                    window.open(mapsUrl, '_blank');
+                  }
+                }}
+                disabled={!map?.address}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white rounded-lg flex items-center gap-2 transition-colors text-sm"
+              >
+                <span>📍</span>
+                Abrir no Google Maps
+              </button>
+            </div>
+            <div className="bg-gradient-to-br from-[var(--surface)] to-[var(--background)] rounded-xl overflow-hidden">
+              <PublicMapViewer 
+                address={map?.address}
+                boundaryCoordinates={map?.boundaryCoordinates}
+              />
+            </div>
+            {map?.address && (
+              <p className="text-[var(--foreground)]/60 text-xs mt-3 text-center">
+                Endereço: {map.address}
+              </p>
+            )}
+            {!map?.boundaryCoordinates && (
+              <div className="mt-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-xl p-4 text-center">
+                <p className="text-yellow-800 dark:text-yellow-200 text-sm">
+                  ⚠️ Área do loteamento ainda não foi delimitada. Clique em "Configurar Área" para definir.
+                </p>
               </div>
             )}
-            <InteractiveMap
-              imageUrl={map.imageUrl}
-              lots={selectedBlockLots}
-              onLotClick={(lot) => {
-                // Aqui você pode adicionar lógica adicional se necessário
-              }}
-              selectedLotIds={[]}
-            />
-          </div>
-          </div>
-        ) : (
-          <div className="text-center py-12 bg-[var(--card-bg)] rounded-2xl border-2 border-dashed border-yellow-500/40 shadow-[var(--shadow-md)]">
-            <div className="inline-flex items-center justify-center w-16 h-16 bg-yellow-500/20 rounded-full mb-4 shadow-md">
-              <svg className="w-8 h-8 text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-              </svg>
-            </div>
-            <p className="text-[var(--foreground)] text-lg font-semibold mb-2">Nenhuma imagem do mapa</p>
-            <p className="text-[var(--foreground)]/80 text-sm font-medium mb-4">Clique em "Adicionar Imagem" acima para fazer upload</p>
           </div>
         )}
       </div>
@@ -1812,119 +1759,6 @@ export default function MapDetails() {
                 className="flex-1 px-4 sm:px-5 py-2.5 sm:py-3 bg-[var(--success)] text-white rounded-xl hover:bg-[var(--success)]/90 font-semibold text-sm sm:text-base shadow-[var(--shadow-md)] transition-all hover:shadow-[var(--shadow-lg)] disabled:bg-[var(--foreground)]/20 disabled:cursor-not-allowed cursor-pointer"
               >
                 Adicionar Lote
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal de Adicionar/Editar Imagem */}
-      {isEditingImage && (
-        <div className="fixed inset-0 bg-[var(--foreground)]/40 backdrop-blur-sm flex items-center justify-center z-50 p-2 sm:p-4 animate-in fade-in duration-200 overflow-y-auto">
-          <div className="bg-[var(--card-bg)] rounded-2xl w-full max-w-lg max-h-[95vh] sm:max-h-[90vh] my-auto overflow-y-auto shadow-[var(--shadow-xl)] border border-[var(--border)]">
-            <div className="sticky top-0 bg-gradient-to-r from-[var(--primary)] to-[var(--primary-light)] text-white p-4 sm:p-6 rounded-t-2xl shadow-[var(--shadow-md)] z-10">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 sm:gap-3">
-                  <div className="w-10 h-10 sm:w-12 sm:h-12 bg-white/15 backdrop-blur-sm rounded-xl flex items-center justify-center">
-                    <svg className="w-5 h-5 sm:w-7 sm:h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                    </svg>
-                  </div>
-                  <div>
-                    <h2 className="text-lg sm:text-2xl font-bold">{map?.imageUrl ? 'Editar Imagem do Mapa' : 'Adicionar Imagem do Mapa'}</h2>
-                  </div>
-                </div>
-                <button
-                  onClick={() => {
-                    setIsEditingImage(false);
-                    setImageFile(null);
-                    setImagePreview('');
-                  }}
-                  disabled={isUploadingImage}
-                  className="w-9 h-9 flex items-center justify-center rounded-lg bg-white/10 hover:bg-white/20 transition-colors cursor-pointer disabled:opacity-50"
-                  type="button"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
-            </div>
-            
-            <div className="p-4 sm:p-6 space-y-5">
-              <div>
-                <label className="block text-[var(--foreground)] text-sm font-semibold mb-2">
-                  Selecionar Arquivo
-                </label>
-                <input
-                  type="file"
-                  accept="image/*,application/pdf"
-                  onChange={handleImageSelect}
-                  disabled={isUploadingImage}
-                  className="w-full px-3 py-2 bg-[var(--surface)] border-2 border-[var(--border)] rounded-lg text-[var(--foreground)] cursor-pointer file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-[var(--primary)] file:text-white file:font-semibold hover:file:bg-[var(--primary-dark)] transition-colors disabled:opacity-50"
-                />
-                <p className="text-xs text-[var(--foreground)]/60 mt-1">
-                  Formatos aceitos: JPG, PNG, GIF, PDF. Tamanho máximo: 10MB (imagens) ou 50MB (PDF)
-                </p>
-              </div>
-
-              {imagePreview && (
-                <div>
-                  <p className="text-sm font-semibold text-[var(--foreground)] mb-2">Preview:</p>
-                  {imagePreview === 'PDF' ? (
-                    <div className="w-full h-40 bg-[var(--surface)] rounded-lg border-2 border-[var(--primary)] flex flex-col items-center justify-center">
-                      <svg className="w-16 h-16 text-red-400 mb-2" fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z" clipRule="evenodd" />
-                      </svg>
-                      <p className="text-white font-semibold">{imageFile?.name}</p>
-                      <p className="text-white/60 text-sm">Arquivo PDF selecionado</p>
-                    </div>
-                  ) : (
-                    <img
-                      src={imagePreview}
-                      alt="Preview"
-                      className="w-full max-h-64 object-contain bg-[var(--surface)] rounded-lg border-2 border-[var(--primary)]"
-                    />
-                  )}
-                </div>
-              )}
-            </div>
-
-            <div className="flex flex-col sm:flex-row gap-3 p-4 sm:p-6">
-              <button
-                type="button"
-                onClick={() => {
-                  setIsEditingImage(false);
-                  setImageFile(null);
-                  setImagePreview('');
-                }}
-                disabled={isUploadingImage}
-                className="flex-1 px-4 sm:px-5 py-2.5 sm:py-3 bg-[var(--surface)] text-[var(--foreground)] border border-[var(--border)] rounded-xl hover:bg-[var(--foreground)]/5 font-semibold text-sm sm:text-base shadow-[var(--shadow-sm)] transition-all hover:shadow-[var(--shadow-md)] disabled:opacity-50 cursor-pointer"
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={handleUploadImage}
-                disabled={!imageFile || isUploadingImage}
-                className="flex-1 px-4 sm:px-5 py-2.5 sm:py-3 bg-[var(--success)] text-white rounded-xl hover:bg-[var(--success)]/90 font-semibold text-sm sm:text-base shadow-[var(--shadow-md)] transition-all hover:shadow-[var(--shadow-lg)] disabled:bg-[var(--foreground)]/20 disabled:cursor-not-allowed cursor-pointer flex items-center justify-center gap-2"
-              >
-                {isUploadingImage ? (
-                  <>
-                    <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    Enviando...
-                  </>
-                ) : (
-                  <>
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                    </svg>
-                    Salvar Imagem
-                  </>
-                )}
               </button>
             </div>
           </div>
@@ -2261,6 +2095,89 @@ export default function MapDetails() {
                 </svg>
                 Excluir
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Configurar Área do Loteamento */}
+      {isConfiguringLocation && (
+        <div className="fixed inset-0 bg-[var(--foreground)]/40 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
+          <div className="bg-[var(--card-bg)] rounded-2xl w-full max-w-6xl max-h-[90vh] overflow-y-auto shadow-[var(--shadow-xl)] border border-[var(--border)]">
+            <div className="sticky top-0 bg-gradient-to-r from-blue-600 to-blue-700 text-white p-6 rounded-t-2xl shadow-[var(--shadow-md)] z-10">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 bg-white/15 backdrop-blur-sm rounded-xl flex items-center justify-center">
+                    <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h2 className="text-2xl font-bold">Configurar Área do Loteamento</h2>
+                    <p className="text-white/80 text-sm">Delimite a área do loteamento no mapa</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setIsConfiguringLocation(false)}
+                  className="w-9 h-9 flex items-center justify-center rounded-lg bg-white/10 hover:bg-white/20 transition-colors"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <div className="p-6">
+              {isConfiguringLocation && (
+                <MapBoundaryEditor
+                  key={`boundary-editor-${isConfiguringLocation}`}
+                  initialAddress={map?.address}
+                  initialBoundary={map?.boundaryCoordinates}
+                  onSave={saveBoundaryCoordinates}
+                  onCancel={() => setIsConfiguringLocation(false)}
+                />
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Editar Polígono do Lote */}
+      {editingLotPolygon && (
+        <div className="fixed inset-0 bg-[var(--foreground)]/40 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
+          <div className="bg-[var(--card-bg)] rounded-2xl w-full max-w-6xl max-h-[90vh] overflow-y-auto shadow-[var(--shadow-xl)] border border-[var(--border)]">
+            <div className="sticky top-0 bg-gradient-to-r from-green-600 to-green-700 text-white p-6 rounded-t-2xl shadow-[var(--shadow-md)] z-10">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 bg-white/15 backdrop-blur-sm rounded-xl flex items-center justify-center">
+                    <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h2 className="text-2xl font-bold">Definir Área do Lote {editingLotPolygon.lotNumber}</h2>
+                    <p className="text-white/80 text-sm">Desenhe o polígono do lote no mapa</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setEditingLotPolygon(null)}
+                  className="w-9 h-9 flex items-center justify-center rounded-lg bg-white/10 hover:bg-white/20 transition-colors"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <div className="p-6">
+              <LotPolygonEditor
+                lot={editingLotPolygon}
+                mapBoundary={map?.boundaryCoordinates}
+                onSave={(coordinates) => saveLotCoordinates(editingLotPolygon.id, coordinates)}
+                onCancel={() => setEditingLotPolygon(null)}
+              />
             </div>
           </div>
         </div>

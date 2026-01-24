@@ -3,9 +3,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import axios from 'axios';
-import { Map, Lot, LotStatus, Block } from '@/types';
+import { Map, Lot, LotStatus, Block, GeoCoordinate } from '@/types';
 import InteractiveMap from '@/components/InteractiveMap';
 import LotSelector from '@/components/LotSelector';
+import LotPolygonEditor from '@/components/LotPolygonEditor';
 import { useRealtimeUpdates } from '@/hooks/useRealtimeUpdates';
 import { useBlockOperations } from '@/hooks/useBlockOperations';
 
@@ -20,6 +21,7 @@ export default function LotManagement() {
   const [map, setMap] = useState<Map | null>(null);
   const [lots, setLots] = useState<Lot[]>([]);
   const [viewingLot, setViewingLot] = useState<Lot | null>(null);
+  const [editingLotPolygon, setEditingLotPolygon] = useState<Lot | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedBlockId, setSelectedBlockId] = useState<string>(blockIdParam);
   const [selectedBlockForNewLot, setSelectedBlockForNewLot] = useState<string>('');
@@ -146,6 +148,28 @@ export default function LotManagement() {
     } catch (error) {
       console.error('[LotManagement] ❌ Erro ao atualizar lote:', error);
       throw error;
+    }
+  };
+
+  const saveLotCoordinates = async (coordinates: GeoCoordinate[]) => {
+    if (!editingLotPolygon) return;
+
+    try {
+      await axios.patch(`${API_URL}/mapas/lotes/atualizar`, {
+        id: editingLotPolygon.id,
+        mapId: editingLotPolygon.mapId,
+        coordinates,
+      }, {
+        headers: { 'Content-Type': 'application/json' },
+        timeout: 10000,
+      });
+
+      alert('✅ Coordenadas do lote salvas com sucesso!');
+      setEditingLotPolygon(null);
+      await reloadLots();
+    } catch (error) {
+      console.error('[LotManagement] ❌ Erro ao salvar coordenadas:', error);
+      alert('❌ Erro ao salvar coordenadas. Tente novamente.');
     }
   };
 
@@ -528,13 +552,67 @@ export default function LotManagement() {
               )}
             </div>
 
-            <div className="bg-gray-50 px-6 py-4 rounded-b-2xl flex justify-end">
+            <div className="bg-gray-50 px-6 py-4 rounded-b-2xl flex justify-between gap-4">
+              <button
+                onClick={() => {
+                  setEditingLotPolygon(viewingLot);
+                  setViewingLot(null);
+                }}
+                className="px-6 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+                </svg>
+                Definir Área no Mapa
+              </button>
               <button
                 onClick={() => setViewingLot(null)}
                 className="px-6 py-2.5 text-sm font-medium text-[var(--foreground)] bg-gray-600 rounded-lg hover:bg-gray-700 transition-colors"
               >
                 Fechar
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Edição de Polígono do Lote */}
+      {editingLotPolygon && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 overflow-y-auto">
+          <div className="bg-[var(--card-bg)] rounded-2xl w-full max-w-7xl max-h-[95vh] overflow-y-auto shadow-2xl border border-[var(--border)]">
+            <div className="sticky top-0 bg-gradient-to-r from-blue-600 to-blue-700 text-white p-6 rounded-t-2xl shadow-lg z-10">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 bg-white/15 backdrop-blur-sm rounded-xl flex items-center justify-center">
+                    <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h2 className="text-2xl font-bold">Definir Área do Lote no Mapa</h2>
+                    <p className="text-white/80 text-sm mt-1">
+                      Lote {editingLotPolygon.lotNumber} {editingLotPolygon.blockName && `- Quadra ${editingLotPolygon.blockName}`}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setEditingLotPolygon(null)}
+                  className="w-10 h-10 flex items-center justify-center rounded-lg bg-white/10 hover:bg-white/20 transition-colors"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <div className="p-6">
+              <LotPolygonEditor
+                lot={editingLotPolygon}
+                mapBoundary={map?.boundaryCoordinates}
+                onSave={saveLotCoordinates}
+                onCancel={() => setEditingLotPolygon(null)}
+              />
             </div>
           </div>
         </div>

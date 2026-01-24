@@ -3,6 +3,11 @@ export interface Coordinate {
   y: number;
 }
 
+export interface GeoCoordinate {
+  lat: number;
+  lng: number;
+}
+
 export interface LotArea {
   points: Coordinate[]; // Polígono definindo a área do lote
 }
@@ -27,6 +32,7 @@ export interface Lot {
   size: number; // Área em m²
   description?: string;
   features?: string[];
+  coordinates?: GeoCoordinate[]; // Coordenadas do polígono no Google Maps
   createdAt: Date;
   updatedAt: Date;
 }
@@ -48,6 +54,11 @@ export interface Map {
   imageType: 'image' | 'pdf';
   width: number;
   height: number;
+  address?: string; // Endereço do loteamento
+  boundaryCoordinates?: GeoCoordinate[]; // Coordenadas do polígono que delimita a área do loteamento
+  centerLat?: number; // Latitude central (depreciado, use boundaryCoordinates)
+  centerLng?: number; // Longitude central (depreciado, use boundaryCoordinates)
+  zoom?: number; // Zoom do mapa (depreciado)
   createdAt: Date;
   updatedAt: Date;
 }

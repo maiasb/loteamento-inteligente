@@ -29,8 +29,8 @@ export const useMapSelection = () => {
 
     const fetchMaps = async () => {
       try {
-        // Buscar apenas mapas com lotes cadastrados (filtrado no servidor)
-        const response = await axios.get(`${API_URL}/mapas?minimal=true&withLots=true`);
+        // Buscar todos os mapas (sem filtro de lotes)
+        const response = await axios.get(`${API_URL}/mapas?minimal=true`);
         const mapsData = response.data;
 
         // Validar se mapsData é um array
@@ -52,6 +52,8 @@ export const useMapSelection = () => {
               imageType: mapData.imageType || 'image/png',
               width: mapData.width || 800,
               height: mapData.height || 600,
+              address: mapData.address || '',
+              boundaryCoordinates: mapData.boundaryCoordinates || undefined,
               createdAt: new Date(),
               updatedAt: new Date(),
             }));
