@@ -11,6 +11,7 @@ interface PublicMapViewerProps {
   onLotClick?: (lot: Lot) => void;
   onBoundaryClick?: () => void; // Novo: callback para clicar na área do loteamento
   isAdminContext?: boolean; // Novo: indica se está no contexto admin
+  selectedLotIds?: string[]; // Novo: IDs dos lotes selecionados
 }
 
 const GOOGLE_MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || '';
@@ -26,7 +27,7 @@ const defaultCenter = {
   lng: -46.6333,
 };
 
-export default function PublicMapViewer({ address, boundaryCoordinates, lots = [], onLotClick, onBoundaryClick, isAdminContext = false }: PublicMapViewerProps) {
+export default function PublicMapViewer({ address, boundaryCoordinates, lots = [], onLotClick, onBoundaryClick, isAdminContext = false, selectedLotIds = [] }: PublicMapViewerProps) {
   const [center, setCenter] = useState(defaultCenter);
   const [mapLoaded, setMapLoaded] = useState(false);
   const [hoveredLotId, setHoveredLotId] = useState<string | null>(null);
@@ -74,6 +75,8 @@ export default function PublicMapViewer({ address, boundaryCoordinates, lots = [
   };
 
   const getLotPolygonOptions = (lot: Lot, isHovered: boolean = false) => {
+    const isSelected = selectedLotIds.includes(lot.id);
+    
     // Cores baseadas no status do lote
     const colors: Record<string, { fill: string; stroke: string }> = {
       available: { fill: '#3B82F6', stroke: '#2563EB' }, // Azul
@@ -85,13 +88,13 @@ export default function PublicMapViewer({ address, boundaryCoordinates, lots = [
     const color = colors[lot.status] || colors.available;
 
     return {
-      fillColor: color.fill,
-      fillOpacity: isHovered ? 0.6 : 0.45,
-      strokeColor: color.stroke,
+      fillColor: isSelected ? '#10B981' : color.fill, // Verde para selecionado
+      fillOpacity: isSelected ? 0.7 : (isHovered ? 0.6 : 0.45),
+      strokeColor: isSelected ? '#059669' : color.stroke, // Verde escuro para borda selecionado
       strokeOpacity: 1,
-      strokeWeight: isHovered ? 3 : 2,
+      strokeWeight: isSelected ? 4 : (isHovered ? 3 : 2),
       clickable: true,
-      zIndex: isHovered ? 100 : 10,
+      zIndex: isSelected ? 200 : (isHovered ? 100 : 10),
       cursor: 'pointer',
     };
   };

@@ -199,6 +199,7 @@ export const useMapSelection = () => {
           size: parseFloat(lot.size) || 0,
           description: lot.description || '',
           features: lot.features ? (typeof lot.features === 'string' ? JSON.parse(lot.features) : lot.features) : [],
+          coordinates: lot.coordinates ? (typeof lot.coordinates === 'string' ? JSON.parse(lot.coordinates) : lot.coordinates) : undefined,
           createdAt: new Date(lot.createdAt),
           updatedAt: new Date(lot.updatedAt),
         }));

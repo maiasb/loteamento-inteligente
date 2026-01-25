@@ -548,9 +548,23 @@ export default function AdminMapsLotsPage() {
                           address={selectedMap.address}
                           boundaryCoordinates={selectedMap.boundaryCoordinates}
                           lots={lots}
+                          selectedLotIds={selectedLots.map(l => l.id)}
                           onLotClick={(lot) => {
-                            console.log('[Maps Page] onLotClick chamado:', lot.lotNumber);
-                            setClickedLot(lot);
+                            console.log('[Maps Page] onLotClick chamado:', lot.lotNumber, 'multiSelectMode:', multiSelectMode);
+                            
+                            if (multiSelectMode) {
+                              // Em modo de seleção múltipla, adiciona/remove da seleção
+                              handleToggleLotSelection(lot);
+                            } else {
+                              // Fora do modo de seleção múltipla, comportamento normal
+                              if (lot.status === LotStatus.AVAILABLE) {
+                                // Se disponível, abre modal de compra única
+                                setSingleLotPurchase(lot);
+                              } else {
+                                // Se não disponível, abre modal de informações
+                                setClickedLot(lot);
+                              }
+                            }
                           }}
                         />
                       </>
