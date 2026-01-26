@@ -36,6 +36,7 @@ export async function GET(request: NextRequest) {
       mapId: block.mapId,
       name: block.name,
       description: block.description || '',
+      coordinates: block.coordinates ? (typeof block.coordinates === 'string' ? JSON.parse(block.coordinates) : block.coordinates) : undefined,
       createdAt: block.createdAt,
       updatedAt: block.updatedAt,
     })) : [];

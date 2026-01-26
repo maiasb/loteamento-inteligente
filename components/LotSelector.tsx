@@ -21,6 +21,8 @@ interface LotSelectorProps {
   userRole?: string; // Role do usuário para verificar permissões
   userId?: number | string; // ID do usuário para verificar se é responsável pela reserva
   isAdminContext?: boolean; // True quando usado na página /admin/map-details para permitir edição de lotes bloqueados
+  externalViewingLot?: Lot | null; // Lote para visualizar vindo de fora (ex: clique no mapa)
+  onCloseExternalViewing?: () => void; // Callback para fechar visualização externa
 }
 
 export default function LotSelector({
@@ -40,10 +42,22 @@ export default function LotSelector({
   userRole,
   userId,
   isAdminContext = false,
+  externalViewingLot = null,
+  onCloseExternalViewing,
 }: LotSelectorProps) {
   const router = useRouter();
   const [selectedLotForModal, setSelectedLotForModal] = useState<Lot | null>(null);
   const [isEditing, setIsEditing] = useState(false);
+  
+  // Unifica visualização: usa externalViewingLot se fornecido, caso contrário selectedLotForModal
+  const viewingLot = externalViewingLot || selectedLotForModal;
+  
+  // Buscar reserva quando externalViewingLot mudar
+  React.useEffect(() => {
+    if (externalViewingLot && (externalViewingLot.status === LotStatus.RESERVED || externalViewingLot.status === LotStatus.SOLD)) {
+      fetchLotReservation(externalViewingLot.id);
+    }
+  }, [externalViewingLot]);
   const [editedLot, setEditedLot] = useState<Lot | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isTogglingBlock, setIsTogglingBlock] = useState(false);
@@ -54,6 +68,18 @@ export default function LotSelector({
   const [lotReservation, setLotReservation] = useState<any | null>(null);
   const [showUnblockConfirm, setShowUnblockConfirm] = useState(false);
   const [lotToUnblock, setLotToUnblock] = useState<Lot | null>(null);
+  
+  // Função unificada para fechar modal
+  const closeModal = () => {
+    if (externalViewingLot && onCloseExternalViewing) {
+      onCloseExternalViewing();
+    } else {
+      setSelectedLotForModal(null);
+    }
+    setIsEditing(false);
+    setEditedLot(null);
+    setLotReservation(null);
+  };
 
   // Buscar reserva específica do lote via API
   const fetchLotReservation = async (lotId: string) => {
@@ -114,12 +140,6 @@ export default function LotSelector({
       return;
     }
 
-    // Se está em modo single click (não multi-select) e tem handler específico
-    if (!allowMultipleSelection && onSingleLotClick && lot.status === LotStatus.AVAILABLE) {
-      onSingleLotClick(lot);
-      return;
-    }
-
     // Se está em modo multi-select
     if (allowMultipleSelection) {
       // No contexto admin, permite selecionar lotes disponíveis E bloqueados
@@ -140,7 +160,14 @@ export default function LotSelector({
       return;
     }
 
-    // Comportamento padrão: abrir modal para visualizar
+    // Se está em modo single click (não multi-select) e tem handler específico
+    // Mas APENAS em contexto não-admin (na página /maps por exemplo)
+    if (!allowMultipleSelection && onSingleLotClick && lot.status === LotStatus.AVAILABLE && !isAdminContext) {
+      onSingleLotClick(lot);
+      return;
+    }
+
+    // Comportamento padrão: abrir modal para visualizar/editar
     // Admin pode editar, usuário comum só visualiza reservados/vendidos
     
     // Abre o modal para mostrar detalhes do lote
@@ -167,16 +194,16 @@ export default function LotSelector({
   };
 
   const handleAddLot = () => {
-    if (!selectedLotForModal) return;
+    if (!viewingLot) return;
 
     if (allowMultipleSelection && onMultipleSelect) {
       // Apenas notificar qual lote foi clicado para toggle
-      onMultipleSelect([selectedLotForModal]);
+      onMultipleSelect([viewingLot]);
     } else if (onLotSelect) {
-      onLotSelect(selectedLotForModal);
+      onLotSelect(viewingLot);
     } 
 
-    setSelectedLotForModal(null);
+    closeModal();
   };
 
   const handleToggleBlockStatus = async () => {
@@ -318,46 +345,69 @@ export default function LotSelector({
             return (
               <div
                 key={lot.id}
-                className={`
-                  relative aspect-square rounded-lg border-2
-                  transition-all duration-200
-                  flex items-center justify-center
-                  min-h-[45px] sm:min-h-[60px]
-                  ${getLotColor(lot)}
-                  ${isClickable ? 'cursor-pointer active:scale-95 sm:hover:scale-105 touch-manipulation' : 'cursor-not-allowed opacity-70'}
-                `}
-                onClick={() => handleLotClick(lot)}
-                onMouseEnter={(e) => {
-                  // Apenas mostrar tooltip em desktop (não mobile)
-                  if (window.innerWidth >= 1024) {
-                    handleMouseEnter(lot, e);
-                  }
-                }}
-                onMouseLeave={handleMouseLeave}
-                title={`Lote ${lot.lotNumber} - ${lot.status}`}
+                className="relative group"
               >
-                <span className="text-white font-bold text-xs sm:text-sm select-none">
-                  {lot.lotNumber}
-                </span>
-                
-                {/* Círculo de seleção - apenas em modo multi-select */}
-                {allowMultipleSelection && (
-                  isAdminContext 
-                    ? (lot.status === LotStatus.AVAILABLE || lot.status === LotStatus.BLOCKED)
-                    : lot.status === LotStatus.AVAILABLE
-                ) && (
-                  <div className={`absolute top-0.5 right-0.5 w-4 h-4 rounded-full border-2 border-white shadow-md transition-all duration-200 ${
-                    isSelected 
-                      ? 'bg-blue-500 border-blue-500' 
-                      : 'bg-white/20 backdrop-blur-sm'
-                  }`}>
-                    {isSelected && (
-                      <svg className="w-full h-full text-white p-px" fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                      </svg>
-                    )}
-                  </div>
+                {/* Botão marcador (bookmark) para definir/visualizar área no mapa */}
+                {isAdminContext && onDefineArea && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDefineArea(lot);
+                    }}
+                    className="absolute -top-2 right-2 p-1.5 bg-green-500 hover:bg-green-600 rounded-t-lg rounded-b-sm shadow-lg cursor-pointer z-20 opacity-0 group-hover:opacity-100 transition-all duration-200 transform hover:scale-110"
+                    style={{
+                      clipPath: 'polygon(0 0, 100% 0, 100% 85%, 50% 100%, 0 85%)',
+                    }}
+                    title={lot.coordinates && lot.coordinates.length > 0 ? "Visualizar área do lote" : "Definir área do lote"}
+                  >
+                    <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+                    </svg>
+                  </button>
                 )}
+
+                <div
+                  className={`
+                    aspect-square rounded-lg border-2
+                    transition-all duration-200
+                    flex items-center justify-center
+                    min-h-[45px] sm:min-h-[60px]
+                    ${getLotColor(lot)}
+                    ${isClickable ? 'cursor-pointer active:scale-95 sm:hover:scale-105 touch-manipulation' : 'cursor-not-allowed opacity-70'}
+                  `}
+                  onClick={() => handleLotClick(lot)}
+                  onMouseEnter={(e) => {
+                    // Apenas mostrar tooltip em desktop (não mobile)
+                    if (window.innerWidth >= 1024) {
+                      handleMouseEnter(lot, e);
+                    }
+                  }}
+                  onMouseLeave={handleMouseLeave}
+                  title={`Lote ${lot.lotNumber} - ${lot.status}`}
+                >
+                  <span className="text-white font-bold text-xs sm:text-sm select-none">
+                    {lot.lotNumber}
+                  </span>
+                  
+                  {/* Círculo de seleção - apenas em modo multi-select */}
+                  {allowMultipleSelection && (
+                    isAdminContext 
+                      ? (lot.status === LotStatus.AVAILABLE || lot.status === LotStatus.BLOCKED)
+                      : lot.status === LotStatus.AVAILABLE
+                  ) && (
+                    <div className={`absolute top-0.5 right-0.5 w-4 h-4 rounded-full border-2 border-white shadow-md transition-all duration-200 ${
+                      isSelected 
+                        ? 'bg-blue-500 border-blue-500' 
+                        : 'bg-white/20 backdrop-blur-sm'
+                    }`}>
+                      {isSelected && (
+                        <svg className="w-full h-full text-white p-px" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                        </svg>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
             );
           })}
@@ -571,26 +621,24 @@ export default function LotSelector({
       )}
 
       {/* Modal de detalhes do lote */}
-      {selectedLotForModal && (
+      {viewingLot && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-2 sm:p-4 overflow-y-auto">
           <div className="bg-[var(--card-bg)] rounded-2xl max-w-lg w-full shadow-2xl border border-[var(--border)] my-auto max-h-[95vh] sm:max-h-[90vh] flex flex-col overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
             <div className="p-4 sm:p-6 border-b border-[var(--border)] flex-shrink-0">
               <div className="flex items-center justify-between">
                 <h3 className="text-xl sm:text-2xl font-bold text-[var(--foreground)]">
-                  Lote {selectedLotForModal.lotNumber}
+                  Lote {viewingLot.lotNumber}
                 </h3>
                 <div className="flex items-center gap-2">
                   {/* Botão de excluir apenas para administradores e desenvolvedores */}
-                  {onLotDelete && userRole !== 'seller' && (selectedLotForModal.status === LotStatus.AVAILABLE || selectedLotForModal.status === LotStatus.BLOCKED) && (
+                  {onLotDelete && userRole !== 'seller' && !externalViewingLot && (viewingLot.status === LotStatus.AVAILABLE || viewingLot.status === LotStatus.BLOCKED) && (
                     <button
                       onClick={async () => {
-                        if (confirm(`Tem certeza que deseja excluir o lote ${selectedLotForModal.lotNumber}?`)) {
+                        if (confirm(`Tem certeza que deseja excluir o lote ${viewingLot.lotNumber}?`)) {
                           setIsDeleting(true);
                           try {
-                            await onLotDelete(selectedLotForModal.id);
-                            setSelectedLotForModal(null);
-                            setIsEditing(false);
-                            setEditedLot(null);
+                            await onLotDelete(viewingLot.id);
+                            closeModal();
                           } finally {
                             setIsDeleting(false);
                           }
@@ -612,16 +660,16 @@ export default function LotSelector({
                     </button>
                   )}
                   {/* Botão de bloquear/desbloquear apenas para administradores e desenvolvedores */}
-                  {onToggleLotStatus && userRole !== 'seller' && (selectedLotForModal.status === LotStatus.AVAILABLE || selectedLotForModal.status === LotStatus.BLOCKED) && (
+                  {onToggleLotStatus && userRole !== 'seller' && !externalViewingLot && (viewingLot.status === LotStatus.AVAILABLE || viewingLot.status === LotStatus.BLOCKED) && (
                     <button
                       onClick={handleToggleBlockStatus}
                       disabled={isTogglingBlock}
                       className={`p-2 rounded-lg transition-colors touch-manipulation ${
-                        selectedLotForModal.status === LotStatus.BLOCKED
+                        viewingLot.status === LotStatus.BLOCKED
                           ? 'bg-yellow-500/20 text-yellow-400 hover:bg-yellow-500/30 cursor-pointer'
                           : 'bg-gray-700 text-gray-400 hover:bg-gray-600 hover:text-white cursor-pointer'
                       } disabled:opacity-50 disabled:cursor-not-allowed`}
-                      title={selectedLotForModal.status === LotStatus.BLOCKED ? 'Desbloquear lote' : 'Bloquear lote'}
+                      title={viewingLot.status === LotStatus.BLOCKED ? 'Desbloquear lote' : 'Bloquear lote'}
                     >
                       {isTogglingBlock ? (
                         <svg className="w-5 h-5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -629,7 +677,7 @@ export default function LotSelector({
                         </svg>
                       ) : (
                         <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                          {selectedLotForModal.status === LotStatus.BLOCKED ? (
+                          {viewingLot.status === LotStatus.BLOCKED ? (
                             <path d="M10 2a5 5 0 00-5 5v2a2 2 0 00-2 2v5a2 2 0 002 2h10a2 2 0 002-2v-5a2 2 0 00-2-2H7V7a3 3 0 015.905-.75 1 1 0 001.937-.5A5.002 5.002 0 0010 2z" />
                           ) : (
                             <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
@@ -639,11 +687,7 @@ export default function LotSelector({
                     </button>
                   )}
                   <button
-                    onClick={() => {
-                      setSelectedLotForModal(null);
-                      setIsEditing(false);
-                      setEditedLot(null);
-                    }}
+                    onClick={closeModal}
                     className="text-[var(--foreground)]/60 hover:text-[var(--foreground)] transition-colors p-2 -m-2 touch-manipulation"
                     aria-label="Fechar"
                   >
@@ -656,8 +700,8 @@ export default function LotSelector({
             </div>
 
             <div className="p-4 sm:p-6 space-y-3 sm:space-y-4 overflow-y-auto flex-1">
-              {isEditing && editedLot ? (
-                // Modo de edição
+              {isEditing && editedLot && !externalViewingLot ? (
+                // Modo de edição (apenas quando não é visualização externa)
                 <>
                   <div>
                     <label className="block text-[var(--foreground)] text-sm mb-2">Número do Lote *</label>
@@ -771,43 +815,43 @@ export default function LotSelector({
               ) : (
                 // Modo de visualização
                 <>
-                  {(selectedLotForModal.status === LotStatus.RESERVED || selectedLotForModal.status === LotStatus.SOLD) ? (
+                  {(viewingLot.status === LotStatus.RESERVED || viewingLot.status === LotStatus.SOLD) ? (
                     // Visualização mínima para lotes reservados/vendidos
                     (() => {
-                      const reservation = getReservationForLot(selectedLotForModal.id);
+                      const reservation = getReservationForLot(viewingLot.id);
                       // Buscar agreed_price do lote na reserva
                       const lotInReservation = reservation?.lots?.find(
-                        (l: any) => l.id === selectedLotForModal.id || l.id === parseInt(selectedLotForModal.id)
+                        (l: any) => l.id === viewingLot.id || l.id === parseInt(viewingLot.id)
                       );
                       const displayPrice = lotInReservation?.agreed_price 
                         ? Number(lotInReservation.agreed_price) 
-                        : selectedLotForModal.price;
+                        : viewingLot.price;
                       
                       return (
                         <>
                           <div className={`bg-[var(--surface)] rounded-xl p-4 border-l-4 ${
-                            selectedLotForModal.status === LotStatus.SOLD 
+                            viewingLot.status === LotStatus.SOLD 
                               ? 'border-red-500' 
                               : 'border-yellow-500'
                           }`}>
                             <div className="flex items-center justify-between mb-3">
                               <h4 className="text-[var(--foreground)] font-bold text-lg">Informações do Lote</h4>
                               <span className={`px-3 py-1.5 rounded-full text-sm font-bold shadow-md border-2 ${
-                                selectedLotForModal.status === LotStatus.RESERVED 
+                                viewingLot.status === LotStatus.RESERVED 
                                   ? 'bg-yellow-500 text-white border-yellow-600' 
                                   : 'bg-red-500 text-white border-red-600'
                               }`}>
-                                {selectedLotForModal.status === LotStatus.RESERVED ? 'Reservado' : 'Vendido'}
+                                {viewingLot.status === LotStatus.RESERVED ? 'Reservado' : 'Vendido'}
                               </span>
                             </div>
                             <div className="space-y-3">
                               <div className="flex justify-between items-center py-2 border-b border-[var(--border)]">
                                 <span className="text-[var(--foreground)]/60 text-sm">Número do Lote</span>
-                                <span className="text-[var(--foreground)] font-bold text-lg">{selectedLotForModal.lotNumber}</span>
+                                <span className="text-[var(--foreground)] font-bold text-lg">{viewingLot.lotNumber}</span>
                               </div>
                               <div className="flex justify-between items-center py-2 border-b border-[var(--border)]">
                                 <span className="text-[var(--foreground)]/60 text-sm">Área</span>
-                                <span className="text-[var(--foreground)] font-semibold">{selectedLotForModal.size} m²</span>
+                                <span className="text-[var(--foreground)] font-semibold">{viewingLot.size} m²</span>
                               </div>
                               <div className="flex justify-between items-center py-2 border-b border-[var(--border)]">
                                 <span className="text-[var(--foreground)]/60 text-sm">Valor Acordado</span>
@@ -815,11 +859,11 @@ export default function LotSelector({
                                   R$ {displayPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                 </span>
                               </div>
-                              {lotInReservation?.agreed_price && selectedLotForModal.price !== Number(lotInReservation.agreed_price) && (
+                              {lotInReservation?.agreed_price && viewingLot.price !== Number(lotInReservation.agreed_price) && (
                                 <div className="flex justify-between items-center py-2 border-b border-[var(--border)]">
                                   <span className="text-[var(--foreground)]/60 text-sm">Valor Base do Lote</span>
                                   <span className="text-[var(--foreground)]/60 text-sm">
-                                    R$ {selectedLotForModal.price.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    R$ {viewingLot.price.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                   </span>
                                 </div>
                               )}
@@ -841,8 +885,8 @@ export default function LotSelector({
                                 <div>
                                   <p className="font-bold text-orange-800 text-sm mb-1">⚠️ Lote com restrição</p>
                                   <p className="text-orange-700 text-sm">
-                                    Este lote não pode ser editado ou excluído enquanto estiver {selectedLotForModal.status === LotStatus.RESERVED ? 'reservado' : 'vendido'}. 
-                                    Cancele a {selectedLotForModal.status === LotStatus.RESERVED ? 'reserva' : 'venda'} primeiro na página de <strong>Reservas</strong>.
+                                    Este lote não pode ser editado ou excluído enquanto estiver {viewingLot.status === LotStatus.RESERVED ? 'reservado' : 'vendido'}. 
+                                    Cancele a {viewingLot.status === LotStatus.RESERVED ? 'reserva' : 'venda'} primeiro na página de <strong>Reservas</strong>.
                                   </p>
                                 </div>
                               </div>
@@ -858,25 +902,25 @@ export default function LotSelector({
                         <div className="bg-[var(--surface)] rounded-xl p-3 sm:p-4">
                           <p className="text-[var(--foreground)]/60 text-xs sm:text-sm mb-1">Status</p>
                           <p className={`font-bold text-base sm:text-lg ${
-                            selectedLotForModal.status === LotStatus.AVAILABLE
+                            viewingLot.status === LotStatus.AVAILABLE
                               ? 'text-green-400'
                               : 'text-gray-400'
                           }`}>
-                            {selectedLotForModal.status === LotStatus.AVAILABLE ? 'Disponível' : 'Bloqueado'}
+                            {viewingLot.status === LotStatus.AVAILABLE ? 'Disponível' : 'Bloqueado'}
                           </p>
                         </div>
 
                         <div className="bg-[var(--surface)] rounded-xl p-3 sm:p-4">
                           <p className="text-[var(--foreground)]/60 text-xs sm:text-sm mb-1">Área</p>
-                          <p className="font-bold text-base sm:text-lg text-[var(--foreground)]">{selectedLotForModal.size}m²</p>
+                          <p className="font-bold text-base sm:text-lg text-[var(--foreground)]">{viewingLot.size}m²</p>
                         </div>
                       </div>
 
-                      {selectedLotForModal.blockId && blocks.length > 0 && (
+                      {viewingLot.blockId && blocks.length > 0 && (
                         <div className="bg-[var(--surface)] rounded-xl p-3 sm:p-4">
                           <p className="text-[var(--foreground)]/60 text-xs sm:text-sm mb-1">Quadra</p>
                           <p className="font-bold text-base sm:text-lg text-[var(--foreground)]">
-                            {blocks.find(b => b.id === selectedLotForModal.blockId)?.name || 'Não identificada'}
+                            {blocks.find(b => b.id === viewingLot.blockId)?.name || 'Não identificada'}
                           </p>
                         </div>
                       )}
@@ -884,19 +928,19 @@ export default function LotSelector({
                       <div className="bg-[var(--surface)] rounded-xl p-3 sm:p-4">
                         <p className="text-[var(--foreground)]/60 text-xs sm:text-sm mb-1">Valor Total</p>
                         <p className="font-bold text-xl sm:text-2xl text-[var(--foreground)]">
-                          R$ {selectedLotForModal.price.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          R$ {viewingLot.price.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </p>
-                        {selectedLotForModal.pricePerM2 && (
+                        {viewingLot.pricePerM2 && (
                           <p className="text-[var(--foreground)]/60 text-xs sm:text-sm mt-1">
-                            R$ {selectedLotForModal.pricePerM2.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/m²
+                            R$ {viewingLot.pricePerM2.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/m²
                           </p>
                         )}
                       </div>
 
-                      {selectedLotForModal.description && (
+                      {viewingLot.description && (
                         <div className="bg-[var(--surface)] rounded-xl p-3 sm:p-4">
                           <p className="text-[var(--foreground)]/60 text-xs sm:text-sm mb-2">Descrição</p>
-                          <p className="text-[var(--foreground)] text-sm">{selectedLotForModal.description}</p>
+                          <p className="text-[var(--foreground)] text-sm">{viewingLot.description}</p>
                         </div>
                       )}
                     </>
@@ -907,7 +951,7 @@ export default function LotSelector({
 
             <div className="sticky bottom-0 p-4 sm:p-6 border-t border-[var(--border)] flex gap-2 sm:gap-3 flex-shrink-0 bg-[var(--card-bg)] rounded-b-2xl">
               {/* Modal para lotes reservados/vendidos: apenas botão de redirecionar */}
-              {(selectedLotForModal.status === LotStatus.RESERVED || selectedLotForModal.status === LotStatus.SOLD) ? (
+              {(viewingLot.status === LotStatus.RESERVED || viewingLot.status === LotStatus.SOLD) ? (
                 (() => {
                   const reservation = lotReservation; // Usar lotReservation buscado via API
                   
@@ -920,24 +964,18 @@ export default function LotSelector({
                     <button
                       onClick={() => {
                         handleReservationClick(reservation);
-                        setSelectedLotForModal(null);
-                        setLotReservation(null);
+                        closeModal();
                       }}
                       className="flex-1 px-4 sm:px-6 py-3 text-base bg-blue-500 hover:bg-blue-600 active:bg-blue-700 text-white font-semibold rounded-xl transition-colors touch-manipulation flex items-center justify-center gap-2 cursor-pointer"
                     >
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
                       </svg>
-                      Ir para {selectedLotForModal.status === LotStatus.RESERVED ? 'Reserva' : 'Compra'}
+                      Ir para {viewingLot.status === LotStatus.RESERVED ? 'Reserva' : 'Compra'}
                     </button>
                   ) : (
                     <button
-                      onClick={() => {
-                        setSelectedLotForModal(null);
-                        setIsEditing(false);
-                        setEditedLot(null);
-                        setLotReservation(null);
-                      }}
+                      onClick={closeModal}
                       className="flex-1 px-4 sm:px-6 py-3 text-base bg-gray-700 hover:bg-gray-600 active:bg-gray-500 text-white font-semibold rounded-xl transition-colors touch-manipulation"
                     >
                       Fechar
@@ -948,22 +986,16 @@ export default function LotSelector({
                 /* Modal para lotes disponíveis/bloqueados: botões normais */
                 <>
                   <button
-                    onClick={() => {
-                      setSelectedLotForModal(null);
-                      setIsEditing(false);
-                      setEditedLot(null);
-                    }}
+                    onClick={closeModal}
                     className="flex-1 px-4 sm:px-6 py-3 sm:py-3 text-base bg-gray-700 hover:bg-gray-600 active:bg-gray-500 text-white font-semibold rounded-xl transition-colors touch-manipulation"
                   >
                     Cancelar
                   </button>
-                  {onDefineArea && !isEditing && (
+                  {onDefineArea && !isEditing && !externalViewingLot && (
                     <button
                       onClick={() => {
-                        onDefineArea(selectedLotForModal);
-                        setSelectedLotForModal(null);
-                        setIsEditing(false);
-                        setEditedLot(null);
+                        onDefineArea(viewingLot);
+                        closeModal();
                       }}
                       className="flex-1 px-4 sm:px-6 py-3 text-base bg-green-600 hover:bg-green-700 active:bg-green-800 text-white font-semibold rounded-xl transition-colors touch-manipulation flex items-center justify-center gap-2"
                       title="Definir área do lote no Google Maps"
@@ -971,7 +1003,7 @@ export default function LotSelector({
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
                       </svg>
-                      {selectedLotForModal.coordinates && selectedLotForModal.coordinates.length > 0 ? 'Editar Área' : 'Definir Área'}
+                      {viewingLot.coordinates && viewingLot.coordinates.length > 0 ? 'Editar Área' : 'Definir Área'}
                     </button>
                   )}
                   {onLotEdit ? (
@@ -979,9 +1011,7 @@ export default function LotSelector({
                       <button
                         onClick={() => {
                           onLotEdit(editedLot);
-                          setSelectedLotForModal(null);
-                          setIsEditing(false);
-                          setEditedLot(null);
+                          closeModal();
                         }}
                         className="flex-1 px-4 sm:px-6 py-3 text-base bg-[var(--success)] hover:bg-[var(--success)]/90 active:bg-[var(--success)]/80 text-white font-semibold rounded-xl transition-colors touch-manipulation"
                       >
@@ -989,14 +1019,14 @@ export default function LotSelector({
                       </button>
                     ) : (
                       <>
-                        {(selectedLotForModal.status === LotStatus.AVAILABLE || selectedLotForModal.status === LotStatus.BLOCKED) && (
+                        {(viewingLot.status === LotStatus.AVAILABLE || viewingLot.status === LotStatus.BLOCKED) && (
                           <button
                             onClick={() => {
                               setIsEditing(true);
                               // Garante que pricePerM2 está calculado
                               const lotWithCalculatedPrice = {
-                                ...selectedLotForModal,
-                                pricePerM2: selectedLotForModal.pricePerM2 || (selectedLotForModal.size > 0 ? selectedLotForModal.price / selectedLotForModal.size : 0)
+                                ...viewingLot,
+                                pricePerM2: viewingLot.pricePerM2 || (viewingLot.size > 0 ? viewingLot.price / viewingLot.size : 0)
                               };
                               setEditedLot(lotWithCalculatedPrice);
                               setPriceDisplay(lotWithCalculatedPrice.price.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
@@ -1012,9 +1042,9 @@ export default function LotSelector({
                     <button
                       onClick={handleAddLot}
                       className="flex-1 px-4 sm:px-6 py-3 text-base bg-[var(--success)] hover:bg-[var(--success-dark)] text-white font-semibold rounded-xl transition-colors touch-manipulation disabled:opacity-50 disabled:cursor-not-allowed"
-                      disabled={selectedLotForModal.status !== LotStatus.AVAILABLE}
+                      disabled={viewingLot.status !== LotStatus.AVAILABLE}
                     >
-                      {selectedLotIds.includes(selectedLotForModal.id) ? 'Remover da Seleção' : 'Adicionar à Seleção'}
+                      {selectedLotIds.includes(viewingLot.id) ? 'Remover da Seleção' : 'Adicionar à Seleção'}
                     </button>
                   )}
                 </>

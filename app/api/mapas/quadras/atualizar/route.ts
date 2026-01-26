@@ -10,7 +10,7 @@ export async function PATCH(request: NextRequest) {
   
   try {
     const body = await request.json();
-    const { id, mapId, name, description } = body;
+    const { id, mapId, name, description, coordinates } = body;
 
     if (!id || !mapId) {
       return NextResponse.json(
@@ -21,10 +21,30 @@ export async function PATCH(request: NextRequest) {
 
     connection = await mysql.createConnection(dbConfig);
 
-    // UPDATE com updatedAt ao invés de updated_at
+    // Verificar se a coluna coordinates existe
+    const [columns] = await connection.execute(
+      `SELECT COLUMN_NAME 
+       FROM INFORMATION_SCHEMA.COLUMNS 
+       WHERE TABLE_SCHEMA = DATABASE() 
+       AND TABLE_NAME = 'blocks' 
+       AND COLUMN_NAME = 'coordinates'`
+    ) as any;
+
+    const hasCoordinates = Array.isArray(columns) && columns.length > 0;
+
+    // Criar coluna coordinates se não existir
+    if (!hasCoordinates) {
+      await connection.execute(
+        `ALTER TABLE blocks 
+         ADD COLUMN coordinates JSON AFTER description`
+      );
+      console.log('✅ Coluna coordinates criada na tabela blocks');
+    }
+
+    // UPDATE com coordenadas
     await connection.execute(
-      'UPDATE blocks SET name = ?, description = ?, updatedAt = NOW() WHERE id = ? AND mapId = ?',
-      [name, description || '', id, mapId]
+      'UPDATE blocks SET name = ?, description = ?, coordinates = ?, updatedAt = NOW() WHERE id = ? AND mapId = ?',
+      [name, description || '', coordinates ? JSON.stringify(coordinates) : null, id, mapId]
     );
 
     const updatedBlock = {
@@ -32,6 +52,7 @@ export async function PATCH(request: NextRequest) {
       mapId,
       name,
       description: description || '',
+      coordinates,
       updatedAt: new Date().toISOString(),
     };
 

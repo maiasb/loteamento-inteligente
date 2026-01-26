@@ -1,12 +1,13 @@
 'use client';
 
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { GoogleMap, useLoadScript, DrawingManager, Polygon } from '@react-google-maps/api';
 import { GeoCoordinate } from '@/types';
 
 interface MapBoundaryEditorProps {
   initialAddress?: string;
   initialBoundary?: GeoCoordinate[];
+  referenceBoundary?: GeoCoordinate[]; // Área de referência que deve conter o polígono (ex: área do loteamento para quadras)
   onSave: (coordinates: GeoCoordinate[], address: string) => void;
   onCancel: () => void;
 }
@@ -24,15 +25,31 @@ const defaultCenter = {
   lng: -50.0389,
 };
 
+// Função helper para verificar se um ponto está dentro de um polígono
+function isPointInPolygon(point: GeoCoordinate, polygon: GeoCoordinate[]): boolean {
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const xi = polygon[i].lat, yi = polygon[i].lng;
+    const xj = polygon[j].lat, yj = polygon[j].lng;
+    
+    const intersect = ((yi > point.lng) !== (yj > point.lng))
+        && (point.lat < (xj - xi) * (point.lng - yi) / (yj - yi) + xi);
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
 export default function MapBoundaryEditor({
   initialAddress = '',
   initialBoundary = [],
+  referenceBoundary,
   onSave,
   onCancel,
 }: MapBoundaryEditorProps) {
   const [currentStep, setCurrentStep] = useState<'address' | 'draw'>(initialAddress ? 'draw' : 'address');
   const [searchAddress, setSearchAddress] = useState(initialAddress);
   const [center, setCenter] = useState(defaultCenter);
+  const [zoom, setZoom] = useState(17);
   const [boundary, setBoundary] = useState<GeoCoordinate[]>(initialBoundary);
   const [mapLoaded, setMapLoaded] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -51,18 +68,32 @@ export default function MapBoundaryEditor({
   const polygonRef = useRef<google.maps.Polygon | null>(null);
   const geocoderRef = useRef<google.maps.Geocoder | null>(null);
 
-  // Calcular centro baseado no boundary inicial
-  useEffect(() => {
+  // Calcular centro baseado no boundary inicial ou na área de referência (usando useMemo para evitar loops)
+  const calculatedCenter = useMemo(() => {
     if (initialBoundary && initialBoundary.length > 0) {
+      // Prioridade 1: Centro do boundary inicial (quando está editando uma área existente)
       const latSum = initialBoundary.reduce((sum, coord) => sum + coord.lat, 0);
       const lngSum = initialBoundary.reduce((sum, coord) => sum + coord.lng, 0);
-      const calculatedCenter = {
+      return {
         lat: latSum / initialBoundary.length,
         lng: lngSum / initialBoundary.length,
       };
-      setCenter(calculatedCenter);
+    } else if (referenceBoundary && referenceBoundary.length > 0) {
+      // Prioridade 2: Centro da área de referência (quando está criando uma nova área dentro de outra)
+      const latSum = referenceBoundary.reduce((sum, coord) => sum + coord.lat, 0);
+      const lngSum = referenceBoundary.reduce((sum, coord) => sum + coord.lng, 0);
+      return {
+        lat: latSum / referenceBoundary.length,
+        lng: lngSum / referenceBoundary.length,
+      };
     }
-  }, [initialBoundary]);
+    return defaultCenter;
+  }, [initialBoundary?.length, referenceBoundary?.length]);
+
+  // Atualizar centro apenas quando o cálculo mudar
+  useEffect(() => {
+    setCenter(calculatedCenter);
+  }, [calculatedCenter]);
 
   // Cleanup ao desmontar
   useEffect(() => {
@@ -174,13 +205,25 @@ export default function MapBoundaryEditor({
       return;
     }
 
+    // Validar se está dentro da área de referência (quando fornecida)
+    if (referenceBoundary && referenceBoundary.length > 0) {
+      const isInside = boundary.every(point => {
+        return isPointInPolygon(point, referenceBoundary);
+      });
+
+      if (!isInside) {
+        alert('❌ A área da quadra deve estar completamente dentro da área do loteamento. Por favor, desenhe novamente.');
+        return;
+      }
+    }
+
     setIsSaving(true);
     try {
       await onSave(boundary, searchAddress);
     } finally {
       setIsSaving(false);
     }
-  }, [boundary, searchAddress, onSave]);
+  }, [boundary, searchAddress, referenceBoundary, onSave]);
 
   const polygonOptions = {
     fillColor: '#4CAF50',
@@ -347,10 +390,19 @@ export default function MapBoundaryEditor({
             <GoogleMap
               mapContainerStyle={mapContainerStyle}
               center={center}
-              zoom={17}
+              zoom={zoom}
               onLoad={(map) => {
                 mapRef.current = map;
                 setMapLoaded(true);
+                
+                // Ajustar zoom automaticamente para enquadrar a área de referência
+                if (referenceBoundary && referenceBoundary.length > 0 && !initialBoundary.length) {
+                  const bounds = new google.maps.LatLngBounds();
+                  referenceBoundary.forEach(coord => {
+                    bounds.extend(new google.maps.LatLng(coord.lat, coord.lng));
+                  });
+                  map.fitBounds(bounds);
+                }
               }}
               options={{
                 mapTypeId: 'satellite',
@@ -364,6 +416,21 @@ export default function MapBoundaryEditor({
                 <DrawingManager
                   onPolygonComplete={handlePolygonComplete}
                   options={getDrawingManagerOptions() || undefined}
+                />
+              )}
+
+              {/* Renderizar área de referência (ex: área do loteamento) */}
+              {mapLoaded && referenceBoundary && referenceBoundary.length > 0 && (
+                <Polygon
+                  paths={referenceBoundary}
+                  options={{
+                    fillColor: '#2196F3',
+                    fillOpacity: 0.1,
+                    strokeColor: '#2196F3',
+                    strokeOpacity: 0.8,
+                    strokeWeight: 2,
+                    clickable: false,
+                  }}
                 />
               )}
 

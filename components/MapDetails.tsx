@@ -74,6 +74,12 @@ export default function MapDetails() {
   const [isConfiguringLocation, setIsConfiguringLocation] = useState(false);
   const [editingLotPolygon, setEditingLotPolygon] = useState<Lot | null>(null);
   const [showLotSelectionModal, setShowLotSelectionModal] = useState(false);
+  const [isConfiguringBlockArea, setIsConfiguringBlockArea] = useState(false);
+  const [editingBlockArea, setEditingBlockArea] = useState<Block | null>(null);
+  
+  // Estados para controlar visualização filtrada no mapa principal
+  const [focusedBlockId, setFocusedBlockId] = useState<string | null>(null); // ID da quadra em foco
+  const [focusedLotId, setFocusedLotId] = useState<string | null>(null); // ID do lote em foco
 
   const { blocks, loadBlocks, createBlock, updateBlock, deleteBlock } = useBlockOperations();
 
@@ -764,6 +770,30 @@ export default function MapDetails() {
     }
   };
 
+  const saveBlockCoordinates = async (blockId: string, coordinates: GeoCoordinate[]) => {
+    if (!mapId) return;
+    
+    try {
+      const block = blocks.find(b => b.id === blockId);
+      if (!block) return;
+      
+      await updateBlock({
+        ...block,
+        coordinates,
+      });
+      
+      alert('✅ Coordenadas da quadra salvas com sucesso!');
+      setIsConfiguringBlockArea(false);
+      setEditingBlockArea(null);
+      
+      // Recarregar quadras para atualizar as coordenadas
+      await loadBlocks(mapId);
+    } catch (error) {
+      console.error('Erro ao salvar coordenadas da quadra:', error);
+      alert('❌ Erro ao salvar coordenadas. Tente novamente.');
+    }
+  };
+
   const handleCreateMap = async () => {
     if (!newMapName.trim()) {
       alert('Por favor, informe o nome do loteamento');
@@ -1424,14 +1454,21 @@ export default function MapDetails() {
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
               {blocks.map((block) => {
                 const isBlockDeletionDisabled = hasReservedOrSoldLotsInBlock(block.id);
+                const isFocused = focusedBlockId === block.id;
                 
                 return (
                 <div
                   key={block.id}
-                  onClick={() => setSelectedBlockId(selectedBlockId === block.id ? '' : block.id)}
+                  onClick={() => {
+                    setSelectedBlockId(selectedBlockId === block.id ? '' : block.id);
+                    setFocusedBlockId(block.id);
+                    setFocusedLotId(null);
+                  }}
                   className={`p-4 rounded-xl font-semibold transition-all relative group cursor-pointer border-2 ${
                     selectedBlockId === block.id
                       ? 'bg-gradient-to-br from-emerald-600 to-emerald-700 text-white shadow-lg scale-105 border-emerald-500'
+                      : isFocused
+                      ? 'bg-gradient-to-br from-purple-600 to-purple-700 text-white shadow-lg border-purple-500'
                       : 'bg-[var(--surface)] text-[var(--foreground)] hover:bg-[var(--surface-hover)] border-[var(--border)] hover:border-emerald-400 hover:shadow-md'
                   }`}
                 >
@@ -1447,6 +1484,28 @@ export default function MapDetails() {
                       ? 'opacity-100' 
                       : 'opacity-0 group-hover:opacity-100'
                   }`}>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (!map?.boundaryCoordinates || map.boundaryCoordinates.length === 0) {
+                          alert('Por favor, configure a área do loteamento primeiro antes de definir a área da quadra.');
+                          return;
+                        }
+                        if (block.coordinates && block.coordinates.length > 0) {
+                          setFocusedBlockId(block.id);
+                          setFocusedLotId(null);
+                        } else {
+                          setEditingBlockArea(block);
+                          setIsConfiguringBlockArea(true);
+                        }
+                      }}
+                      className="p-1.5 bg-green-500/80 hover:bg-green-600 rounded-lg backdrop-blur-sm cursor-pointer"
+                      title={block.coordinates && block.coordinates.length > 0 ? "Visualizar área da quadra" : "Configurar área da quadra"}
+                    >
+                      <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+                      </svg>
+                    </button>
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
@@ -1552,7 +1611,15 @@ export default function MapDetails() {
               multiSelectMode={multiSelectMode}
               selectedLots={selectedLots}
               onToggleLotSelection={handleToggleLotSelection}
-              onDefineArea={(lot) => setEditingLotPolygon(lot)}
+              onSingleLotClick={(lot) => {
+                setFocusedLotId(lot.id);
+                setFocusedBlockId(null);
+              }}
+              onDefineArea={(lot) => {
+                setFocusedLotId(lot.id);
+                setFocusedBlockId(null);
+                setEditingLotPolygon(lot);
+              }}
             />
           </div>
         </div>
@@ -1580,48 +1647,95 @@ export default function MapDetails() {
         ) : (
           <div className="bg-[var(--card-bg)] border-2 border-[var(--primary)]/30 rounded-2xl overflow-hidden shadow-[var(--shadow-lg)] p-6">
             <div className="mb-4 flex items-center justify-between">
-              <h3 className="text-[var(--foreground)] text-lg font-semibold">Localização do Loteamento</h3>
-              <button
-                onClick={() => {
-                  if (map?.address) {
-                    const searchQuery = encodeURIComponent(map.address);
-                    const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${searchQuery}`;
-                    window.open(mapsUrl, '_blank');
-                  }
-                }}
-                disabled={!map?.address}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white rounded-lg flex items-center gap-2 transition-colors text-sm"
-              >
-                <span>📍</span>
-                Abrir no Google Maps
-              </button>
+              <h3 className="text-[var(--foreground)] text-lg font-semibold">
+                {focusedLotId ? (
+                  `Lote ${allLotsInMap.find(l => l.id === focusedLotId)?.lotNumber || ''}`
+                ) : focusedBlockId ? (
+                  `Quadra ${blocks.find(b => b.id === focusedBlockId)?.name || ''}`
+                ) : (
+                  'Loteamento Completo'
+                )}
+              </h3>
+              <div className="flex gap-2">
+                {(focusedBlockId || focusedLotId) && (
+                  <button
+                    onClick={() => {
+                      setFocusedBlockId(null);
+                      setFocusedLotId(null);
+                    }}
+                    className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg flex items-center gap-2 transition-colors text-sm"
+                  >
+                    <span>🔄</span>
+                    Ver Tudo
+                  </button>
+                )}
+                {map?.address && (
+                  <button
+                    onClick={() => {
+                      const searchQuery = encodeURIComponent(map.address!);
+                      const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${searchQuery}`;
+                      window.open(mapsUrl, '_blank');
+                    }}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg flex items-center gap-2 transition-colors text-sm"
+                  >
+                    <span>📍</span>
+                    Abrir no Google Maps
+                  </button>
+                )}
+              </div>
             </div>
-            <div className="bg-gradient-to-br from-[var(--surface)] to-[var(--background)] rounded-xl overflow-hidden">
-              <PublicMapViewer 
-                address={map?.address}
-                boundaryCoordinates={map?.boundaryCoordinates}
-                lots={allLotsInMap}
-                onLotClick={(lot) => {
-                  console.log('[MapDetails] Lote clicado no mapa:', lot.lotNumber);
-                  setEditingLotPolygon(lot);
-                }}
-                onBoundaryClick={() => {
-                  console.log('[MapDetails] Área do loteamento clicada');
-                  setShowLotSelectionModal(true);
-                }}
-                isAdminContext={true}
-              />
-            </div>
-            {map?.address && (
-              <p className="text-[var(--foreground)]/60 text-xs mt-3 text-center">
-                Endereço: {map.address}
-              </p>
-            )}
-            {!map?.boundaryCoordinates && (
-              <div className="mt-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-xl p-4 text-center">
-                <p className="text-yellow-800 dark:text-yellow-200 text-sm">
-                  ⚠️ Área do loteamento ainda não foi delimitada. Clique em "Configurar Área" para definir.
-                </p>
+            
+            {/* Mapa sempre visível */}
+            {map?.boundaryCoordinates ? (
+              <div className="bg-gradient-to-br from-[var(--surface)] to-[var(--background)] rounded-xl overflow-hidden">
+                <PublicMapViewer 
+                  address={map?.address}
+                  boundaryCoordinates={map?.boundaryCoordinates}
+                  blocks={focusedBlockId ? blocks.filter(b => b.id === focusedBlockId) : blocks}
+                  lots={focusedLotId ? allLotsInMap.filter(l => l.id === focusedLotId) : focusedBlockId ? allLotsInMap.filter(l => l.blockId === focusedBlockId) : allLotsInMap}
+                  onLotClick={(lot) => {
+                    console.log('[MapDetails] Lote clicado no mapa:', lot.lotNumber);
+                    setFocusedLotId(lot.id);
+                    setFocusedBlockId(null);
+                  }}
+                  onBlockClick={(block) => {
+                    console.log('[MapDetails] Quadra clicada no mapa:', block.name);
+                    setFocusedBlockId(block.id);
+                    setFocusedLotId(null);
+                  }}
+                  onBoundaryClick={() => {
+                    console.log('[MapDetails] Área do loteamento clicada');
+                    setFocusedBlockId(null);
+                    setFocusedLotId(null);
+                  }}
+                  isAdminContext={true}
+                />
+                {map?.address && (
+                  <p className="text-[var(--foreground)]/60 text-xs mt-3 px-4 pb-4 text-center">
+                    Endereço: {map.address}
+                  </p>
+                )}
+              </div>
+            ) : (
+              <div className="bg-gradient-to-br from-[var(--surface)] to-[var(--background)] rounded-xl overflow-hidden p-8 text-center">
+                <div className="max-w-md mx-auto">
+                  <div className="w-20 h-20 mx-auto mb-4 bg-yellow-500/10 rounded-full flex items-center justify-center">
+                    <span className="text-4xl">🗺️</span>
+                  </div>
+                  <h4 className="text-lg font-semibold text-[var(--foreground)] mb-2">
+                    Área do Loteamento não definida
+                  </h4>
+                  <p className="text-[var(--foreground)]/60 text-sm mb-6">
+                    Configure a área do loteamento no Google Maps para visualizar a localização e gerenciar quadras e lotes.
+                  </p>
+                  <button
+                    onClick={() => setIsConfiguringLocation(true)}
+                    className="px-6 py-3 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white rounded-xl flex items-center gap-3 transition-all shadow-lg hover:shadow-xl mx-auto"
+                  >
+                    <span className="text-xl">📍</span>
+                    <span className="font-semibold">Criar Área do Loteamento</span>
+                  </button>
+                </div>
               </div>
             )}
           </div>
@@ -2159,6 +2273,56 @@ export default function MapDetails() {
         </div>
       )}
 
+      {/* Modal de Configurar Área da Quadra */}
+      {isConfiguringBlockArea && editingBlockArea && (
+        <div className="fixed inset-0 bg-[var(--foreground)]/40 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
+          <div className="bg-[var(--card-bg)] rounded-2xl w-full max-w-6xl max-h-[90vh] overflow-y-auto shadow-[var(--shadow-xl)] border border-[var(--border)]">
+            <div className="sticky top-0 bg-gradient-to-r from-purple-600 to-purple-700 text-white p-6 rounded-t-2xl shadow-[var(--shadow-md)] z-10">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 bg-white/15 backdrop-blur-sm rounded-xl flex items-center justify-center">
+                    <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h2 className="text-2xl font-bold">Configurar Área da Quadra {editingBlockArea.name}</h2>
+                    <p className="text-white/80 text-sm">Delimite a área da quadra no mapa</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    setIsConfiguringBlockArea(false);
+                    setEditingBlockArea(null);
+                  }}
+                  className="w-9 h-9 flex items-center justify-center rounded-lg bg-white/10 hover:bg-white/20 transition-colors"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            <div className="p-6">
+              {isConfiguringBlockArea && editingBlockArea && (
+                <MapBoundaryEditor
+                  key={`block-boundary-editor-${editingBlockArea.id}`}
+                  initialAddress={map?.address}
+                  initialBoundary={editingBlockArea.coordinates}
+                  referenceBoundary={map?.boundaryCoordinates}
+                  onSave={(coordinates) => saveBlockCoordinates(editingBlockArea.id, coordinates)}
+                  onCancel={() => {
+                    setIsConfiguringBlockArea(false);
+                    setEditingBlockArea(null);
+                  }}
+                />
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Modal de Seleção de Lote para Vincular Área */}
       {showLotSelectionModal && (
         <div className="fixed inset-0 bg-[var(--foreground)]/40 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
@@ -2294,6 +2458,7 @@ export default function MapDetails() {
               <LotPolygonEditor
                 lot={editingLotPolygon}
                 mapBoundary={map?.boundaryCoordinates}
+                blockBoundary={editingLotPolygon.blockId ? blocks.find(b => b.id === editingLotPolygon.blockId)?.coordinates : undefined}
                 onSave={(coordinates) => saveLotCoordinates(editingLotPolygon.id, coordinates)}
                 onCancel={() => setEditingLotPolygon(null)}
               />
@@ -2478,6 +2643,7 @@ interface BlockCardProps {
   multiSelectMode?: boolean;
   selectedLots?: Lot[];
   onToggleLotSelection?: (lot: Lot) => void;
+  onSingleLotClick?: (lot: Lot) => void;
   onDefineArea?: (lot: Lot) => void;
 }
 
@@ -2499,6 +2665,7 @@ function BlockCard({
   multiSelectMode = false,
   selectedLots = [],
   onToggleLotSelection,
+  onSingleLotClick,
   onDefineArea,
 }: BlockCardProps) {
   const [isHovered, setIsHovered] = useState(false);
@@ -2550,6 +2717,7 @@ function BlockCard({
             onLotEdit={handleEditLot}
             onLotDelete={handleDeleteLot}
             onToggleLotStatus={handleToggleLotStatus}
+            onSingleLotClick={onSingleLotClick}
             onDefineArea={onDefineArea}
             selectedLotIds={selectedLots.map(l => l.id)}
             allowMultipleSelection={multiSelectMode}

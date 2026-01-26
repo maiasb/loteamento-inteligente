@@ -2,13 +2,15 @@
 
 import React, { useEffect, useState } from 'react';
 import { GoogleMap, useLoadScript, Polygon } from '@react-google-maps/api';
-import { GeoCoordinate, Lot } from '@/types';
+import { GeoCoordinate, Lot, Block } from '@/types';
 
 interface PublicMapViewerProps {
   address?: string;
   boundaryCoordinates?: GeoCoordinate[];
+  blocks?: Block[]; // Novo: quadras com coordenadas
   lots?: Lot[];
   onLotClick?: (lot: Lot) => void;
+  onBlockClick?: (block: Block) => void; // Novo: callback para clicar em quadra
   onBoundaryClick?: () => void; // Novo: callback para clicar na área do loteamento
   isAdminContext?: boolean; // Novo: indica se está no contexto admin
   selectedLotIds?: string[]; // Novo: IDs dos lotes selecionados
@@ -27,10 +29,21 @@ const defaultCenter = {
   lng: -46.6333,
 };
 
-export default function PublicMapViewer({ address, boundaryCoordinates, lots = [], onLotClick, onBoundaryClick, isAdminContext = false, selectedLotIds = [] }: PublicMapViewerProps) {
+export default function PublicMapViewer({ 
+  address, 
+  boundaryCoordinates, 
+  blocks = [], 
+  lots = [], 
+  onLotClick, 
+  onBlockClick, 
+  onBoundaryClick, 
+  isAdminContext = false, 
+  selectedLotIds = [] 
+}: PublicMapViewerProps) {
   const [center, setCenter] = useState(defaultCenter);
   const [mapLoaded, setMapLoaded] = useState(false);
   const [hoveredLotId, setHoveredLotId] = useState<string | null>(null);
+  const [hoveredBlockId, setHoveredBlockId] = useState<string | null>(null);
 
   const { isLoaded, loadError } = useLoadScript({
     googleMapsApiKey: GOOGLE_MAPS_API_KEY,
@@ -39,10 +52,21 @@ export default function PublicMapViewer({ address, boundaryCoordinates, lots = [
 
   // Filtrar apenas lotes que têm coordenadas definidas
   const lotsWithCoordinates = lots.filter(lot => lot.coordinates && lot.coordinates.length > 0);
+  
+  // Filtrar apenas quadras que têm coordenadas definidas
+  const blocksWithCoordinates = blocks.filter(block => block.coordinates && block.coordinates.length > 0);
 
   console.log('[PublicMapViewer] Debug:', {
+    totalBlocks: blocks.length,
+    blocksWithCoordinates: blocksWithCoordinates.length,
     totalLots: lots.length,
     lotsWithCoordinates: lotsWithCoordinates.length,
+    blockDetails: blocks.map(b => ({ 
+      id: b.id, 
+      name: b.name, 
+      hasCoords: !!(b.coordinates && b.coordinates.length > 0),
+      coordsLength: b.coordinates?.length || 0 
+    })),
     lotDetails: lots.map(l => ({ 
       id: l.id, 
       number: l.lotNumber, 
@@ -96,6 +120,19 @@ export default function PublicMapViewer({ address, boundaryCoordinates, lots = [
       clickable: true,
       zIndex: isSelected ? 200 : (isHovered ? 100 : 10),
       cursor: 'pointer',
+    };
+  };
+  
+  const getBlockPolygonOptions = (block: Block, isHovered: boolean = false) => {
+    return {
+      fillColor: '#9333EA', // Roxo para quadras
+      fillOpacity: isHovered ? 0.3 : 0.15,
+      strokeColor: '#7C3AED',
+      strokeOpacity: 0.8,
+      strokeWeight: isHovered ? 3 : 2,
+      clickable: isAdminContext, // Clicável apenas no contexto admin
+      zIndex: 5, // Entre a área do loteamento (1) e os lotes (10+)
+      cursor: isAdminContext ? 'pointer' : 'default',
     };
   };
 
@@ -194,6 +231,23 @@ export default function PublicMapViewer({ address, boundaryCoordinates, lots = [
             }}
           />
         )}
+        
+        {/* Polígonos das quadras */}
+        {mapLoaded && blocksWithCoordinates.map((block) => (
+          <Polygon
+            key={`block-${block.id}`}
+            paths={block.coordinates || []}
+            options={getBlockPolygonOptions(block, hoveredBlockId === block.id)}
+            onClick={() => {
+              if (isAdminContext && onBlockClick) {
+                console.log('[PublicMapViewer] Quadra clicada:', block.name);
+                onBlockClick(block);
+              }
+            }}
+            onMouseOver={() => setHoveredBlockId(block.id)}
+            onMouseOut={() => setHoveredBlockId(null)}
+          />
+        ))}
 
         {/* Polígonos dos lotes */}
         {mapLoaded && lotsWithCoordinates.map((lot) => (

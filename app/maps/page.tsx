@@ -491,6 +491,8 @@ export default function AdminMapsLotsPage() {
                 reservations={reservations}
                 userRole={user?.role}
                 userId={user?.id}
+                externalViewingLot={clickedLot}
+                onCloseExternalViewing={() => setClickedLot(null)}
               />
             ) : !isLoading && selectedBlock && lots.length === 0 ? (
               <div className="text-center py-12 bg-[var(--card-bg)] rounded-2xl border-2 border-dashed border-red-500/40 shadow-[var(--shadow-md)]">
@@ -867,136 +869,7 @@ export default function AdminMapsLotsPage() {
         </div>
       )}
 
-      {/* Modal de informações do lote (clicado no mapa) */}
-      {clickedLot && (
-        <div
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4"
-          onClick={() => setClickedLot(null)}
-        >
-          <div
-            className="bg-[var(--card-bg)] rounded-2xl max-w-2xl w-full shadow-2xl border-2 border-[var(--border)] overflow-hidden"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Cabeçalho */}
-            <div className={`px-6 py-5 ${
-              clickedLot.status === LotStatus.AVAILABLE
-                ? 'bg-gradient-to-r from-green-600 to-green-700'
-                : clickedLot.status === LotStatus.RESERVED
-                ? 'bg-gradient-to-r from-amber-500 to-amber-600'
-                : clickedLot.status === LotStatus.SOLD
-                ? 'bg-gradient-to-r from-red-500 to-red-600'
-                : 'bg-gradient-to-r from-gray-500 to-gray-600'
-            }`}>
-              <div className="flex items-center justify-between">
-                <div>
-                  <h2 className="text-2xl font-bold text-white">Lote {clickedLot.lotNumber}</h2>
-                  <p className="text-white opacity-90 text-sm mt-1">
-                    {clickedLot.status === LotStatus.AVAILABLE && '✓ Disponível'}
-                    {clickedLot.status === LotStatus.RESERVED && '🔒 Reservado'}
-                    {clickedLot.status === LotStatus.SOLD && '✓ Vendido'}
-                    {clickedLot.status === LotStatus.BLOCKED && '⛔ Bloqueado'}
-                  </p>
-                </div>
-                <button
-                  onClick={() => setClickedLot(null)}
-                  className="text-white hover:bg-white/20 rounded-lg p-2 transition-colors"
-                >
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
-            </div>
-
-            {/* Conteúdo */}
-            <div className="p-6 space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="bg-[var(--surface)] rounded-xl p-4 border border-[var(--border)]">
-                  <label className="block text-sm font-medium text-[var(--foreground)] opacity-70 mb-1">Área</label>
-                  <p className="text-xl font-bold text-[var(--foreground)]">{clickedLot.size} m²</p>
-                </div>
-
-                <div className="bg-[var(--surface)] rounded-xl p-4 border border-[var(--border)]">
-                  <label className="block text-sm font-medium text-[var(--foreground)] opacity-70 mb-1">Preço Total</label>
-                  <p className="text-xl font-bold text-[var(--foreground)]">
-                    R$ {clickedLot.price.toLocaleString('pt-BR')}
-                  </p>
-                  {clickedLot.pricePerM2 && (
-                    <p className="text-xs text-[var(--foreground)] opacity-60 mt-1">
-                      R$ {clickedLot.pricePerM2.toLocaleString('pt-BR')}/m²
-                    </p>
-                  )}
-                </div>
-              </div>
-
-              {/* Descrição */}
-              {clickedLot.description && (
-                <div className="bg-[var(--surface)] rounded-xl p-4 border border-[var(--border)]">
-                  <label className="block text-sm font-medium text-[var(--foreground)] opacity-70 mb-2">Descrição</label>
-                  <p className="text-[var(--foreground)] leading-relaxed">{clickedLot.description}</p>
-                </div>
-              )}
-
-              {/* Características */}
-              {clickedLot.features && clickedLot.features.length > 0 && (
-                <div className="bg-[var(--surface)] rounded-xl p-4 border border-[var(--border)]">
-                  <label className="block text-sm font-medium text-[var(--foreground)] opacity-70 mb-3">Características</label>
-                  <div className="flex flex-wrap gap-2">
-                    {clickedLot.features.map((feature, index) => (
-                      <span
-                        key={index}
-                        className="px-3 py-1.5 bg-[var(--card-bg)] border border-[var(--border)] text-[var(--foreground)] text-sm font-medium rounded-lg"
-                      >
-                        {feature}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Footer */}
-            <div className="bg-[var(--surface)] px-6 py-4 rounded-b-2xl flex justify-end items-center gap-3 border-t border-[var(--border)]">
-              <button
-                onClick={() => setClickedLot(null)}
-                className="px-6 py-2.5 text-sm font-medium text-[var(--foreground)] bg-[var(--card-bg)] border-2 border-[var(--border)] rounded-lg hover:bg-[var(--surface)] transition-colors"
-              >
-                Fechar
-              </button>
-
-              {clickedLot.status === LotStatus.AVAILABLE && (
-                <button
-                  onClick={() => {
-                    handleToggleLotSelection(clickedLot);
-                    setClickedLot(null);
-                  }}
-                  className={`px-6 py-2.5 text-sm font-semibold rounded-lg transition-all duration-200 flex items-center gap-2 ${
-                    isLotSelected(clickedLot.id)
-                      ? 'bg-red-500 hover:bg-red-600 text-white'
-                      : 'bg-green-600 hover:bg-green-700 text-white'
-                  }`}
-                >
-                  {isLotSelected(clickedLot.id) ? (
-                    <>
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                      Remover da Lista
-                    </>
-                  ) : (
-                    <>
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
-                      </svg>
-                      Adicionar à Lista
-                    </>
-                  )}
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Modal agora é tratado pelo LotSelector via externalViewingLot */}
     </div>
   );
 }

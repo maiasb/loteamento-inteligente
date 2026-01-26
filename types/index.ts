@@ -42,6 +42,7 @@ export interface Block {
   mapId: string;
   name: string;
   description?: string;
+  coordinates?: GeoCoordinate[]; // Coordenadas do polígono da quadra no Google Maps
   createdAt: Date;
   updatedAt: Date;
 }

@@ -7,6 +7,7 @@ import { GeoCoordinate, Lot } from '@/types';
 interface LotPolygonEditorProps {
   lot: Lot;
   mapBoundary?: GeoCoordinate[]; // Área delimitada do loteamento
+  blockBoundary?: GeoCoordinate[]; // Área delimitada da quadra
   onSave: (coordinates: GeoCoordinate[]) => Promise<void>;
   onCancel: () => void;
 }
@@ -18,7 +19,21 @@ const containerStyle = {
 
 const libraries: ("drawing" | "places")[] = ["drawing", "places"];
 
-export default function LotPolygonEditor({ lot, mapBoundary, onSave, onCancel }: LotPolygonEditorProps) {
+// Função helper para verificar se um ponto está dentro de um polígono
+function isPointInPolygon(point: GeoCoordinate, polygon: GeoCoordinate[]): boolean {
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const xi = polygon[i].lat, yi = polygon[i].lng;
+    const xj = polygon[j].lat, yj = polygon[j].lng;
+    
+    const intersect = ((yi > point.lng) !== (yj > point.lng))
+        && (point.lat < (xj - xi) * (point.lng - yi) / (yj - yi) + xi);
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
+export default function LotPolygonEditor({ lot, mapBoundary, blockBoundary, onSave, onCancel }: LotPolygonEditorProps) {
   const [polygon, setPolygon] = useState<google.maps.Polygon | null>(null);
   const [coordinates, setCoordinates] = useState<GeoCoordinate[]>(lot.coordinates || []);
   const [isDrawing, setIsDrawing] = useState(false);
@@ -29,8 +44,18 @@ export default function LotPolygonEditor({ lot, mapBoundary, onSave, onCancel }:
     libraries: libraries as any,
   });
 
-  // Calcular centro do mapa baseado no boundary do loteamento ou usar padrão
+  // Calcular centro do mapa baseado na quadra (prioritário) ou no loteamento
   const getCenter = () => {
+    // Prioridade 1: Centro da área da quadra (mais específico)
+    if (blockBoundary && blockBoundary.length > 0) {
+      const latSum = blockBoundary.reduce((sum, coord) => sum + coord.lat, 0);
+      const lngSum = blockBoundary.reduce((sum, coord) => sum + coord.lng, 0);
+      return {
+        lat: latSum / blockBoundary.length,
+        lng: lngSum / blockBoundary.length,
+      };
+    }
+    // Prioridade 2: Centro da área do loteamento
     if (mapBoundary && mapBoundary.length > 0) {
       const latSum = mapBoundary.reduce((sum, coord) => sum + coord.lat, 0);
       const lngSum = mapBoundary.reduce((sum, coord) => sum + coord.lng, 0);
@@ -106,6 +131,20 @@ export default function LotPolygonEditor({ lot, mapBoundary, onSave, onCancel }:
     if (coordinates.length < 3) {
       alert('⚠️ Você precisa desenhar um polígono com pelo menos 3 pontos!');
       return;
+    }
+
+    // Validar se está dentro da área da quadra (quando fornecida)
+    const referenceBoundary = blockBoundary || mapBoundary;
+    if (referenceBoundary && referenceBoundary.length > 0) {
+      const isInside = coordinates.every(point => {
+        return isPointInPolygon(point, referenceBoundary);
+      });
+
+      if (!isInside) {
+        const boundaryType = blockBoundary ? 'quadra' : 'loteamento';
+        alert(`❌ A área do lote deve estar completamente dentro da área da ${boundaryType}. Por favor, desenhe novamente.`);
+        return;
+      }
     }
 
     setIsSaving(true);
@@ -237,6 +276,17 @@ export default function LotPolygonEditor({ lot, mapBoundary, onSave, onCancel }:
             mapContainerStyle={containerStyle}
             center={center}
             zoom={18}
+            onLoad={(map) => {
+              // Ajustar zoom automaticamente para enquadrar a área de referência
+              const referenceBoundary = blockBoundary || mapBoundary;
+              if (referenceBoundary && referenceBoundary.length > 0) {
+                const bounds = new google.maps.LatLngBounds();
+                referenceBoundary.forEach(coord => {
+                  bounds.extend(new google.maps.LatLng(coord.lat, coord.lng));
+                });
+                map.fitBounds(bounds);
+              }
+            }}
             options={{
               mapTypeId: 'satellite',
               streetViewControl: false,
@@ -244,8 +294,20 @@ export default function LotPolygonEditor({ lot, mapBoundary, onSave, onCancel }:
               fullscreenControl: true,
             }}
           >
-            {/* Mostrar área do loteamento se existir */}
-            {mapBoundary && mapBoundary.length > 0 && (
+            {/* Mostrar área da quadra (prioridade) ou do loteamento */}
+            {blockBoundary && blockBoundary.length > 0 ? (
+              <Polygon
+                paths={blockBoundary}
+                options={{
+                  fillColor: '#9C27B0',
+                  fillOpacity: 0.15,
+                  strokeColor: '#7B1FA2',
+                  strokeOpacity: 0.8,
+                  strokeWeight: 2,
+                  clickable: false,
+                }}
+              />
+            ) : mapBoundary && mapBoundary.length > 0 && (
               <Polygon
                 paths={mapBoundary}
                 options={{
