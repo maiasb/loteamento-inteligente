@@ -135,6 +135,7 @@ export const useMapSelection = () => {
           mapId: block.mapId,
           name: block.name,
           description: block.description || '',
+          coordinates: block.coordinates || undefined,
           createdAt: new Date(block.createdAt),
           updatedAt: new Date(block.updatedAt),
         }));

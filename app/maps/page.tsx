@@ -550,6 +550,7 @@ export default function AdminMapsLotsPage() {
                     <PublicMapViewer
                       address={selectedMap.address}
                       boundaryCoordinates={selectedMap.boundaryCoordinates}
+                      blocks={blocks}
                       lots={lots}
                       selectedLotIds={selectedLots.map(l => l.id)}
                       onLotClick={(lot) => {

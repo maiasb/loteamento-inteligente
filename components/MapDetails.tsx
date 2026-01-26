@@ -1531,16 +1531,11 @@ export default function MapDetails() {
                           alert('Por favor, configure a área do loteamento primeiro antes de definir a área da quadra.');
                           return;
                         }
-                        if (block.coordinates && block.coordinates.length > 0) {
-                          setFocusedBlockId(block.id);
-                          setFocusedLotId(null);
-                        } else {
-                          setEditingBlockArea(block);
-                          setIsConfiguringBlockArea(true);
-                        }
+                        setEditingBlockArea(block);
+                        setIsConfiguringBlockArea(true);
                       }}
                       className="p-1.5 bg-green-500/80 hover:bg-green-600 rounded-lg backdrop-blur-sm cursor-pointer"
-                      title={block.coordinates && block.coordinates.length > 0 ? "Visualizar área da quadra" : "Configurar área da quadra"}
+                      title={block.coordinates && block.coordinates.length > 0 ? "Editar área da quadra" : "Configurar área da quadra"}
                     >
                       <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
@@ -1731,9 +1726,10 @@ export default function MapDetails() {
                 <PublicMapViewer 
                   address={map?.address}
                   boundaryCoordinates={map?.boundaryCoordinates}
-                  blocks={focusedBlockId ? blocks.filter(b => b.id === focusedBlockId) : blocks}
+                  blocks={blocks}
                   lots={focusedLotId ? allLotsInMap.filter(l => l.id === focusedLotId) : focusedBlockId ? allLotsInMap.filter(l => l.blockId === focusedBlockId) : allLotsInMap}
                   focusedBlockId={focusedBlockId}
+                  focusedLotId={focusedLotId}
                   onLotClick={(lot) => {
                     console.log('[MapDetails] Lote clicado no mapa:', lot.lotNumber);
                     setFocusedLotId(lot.id);
@@ -2352,7 +2348,7 @@ export default function MapDetails() {
                   initialAddress={map?.address}
                   initialBoundary={editingBlockArea.coordinates}
                   referenceBoundary={map?.boundaryCoordinates}
-                  onSave={(coordinates) => saveBlockCoordinates(editingBlockArea.id, coordinates)}
+                  onSave={(coordinates, address) => saveBlockCoordinates(editingBlockArea.id, coordinates)}
                   onCancel={() => {
                     setIsConfiguringBlockArea(false);
                     setEditingBlockArea(null);

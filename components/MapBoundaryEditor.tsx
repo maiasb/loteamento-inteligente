@@ -414,6 +414,7 @@ export default function MapBoundaryEditor({
             >
               {mapLoaded && boundary.length === 0 && (
                 <DrawingManager
+                  key="drawing-manager-single"
                   onPolygonComplete={handlePolygonComplete}
                   options={getDrawingManagerOptions() || undefined}
                 />

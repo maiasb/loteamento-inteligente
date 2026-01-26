@@ -15,6 +15,7 @@ interface PublicMapViewerProps {
   isAdminContext?: boolean; // Novo: indica se está no contexto admin
   selectedLotIds?: string[]; // Novo: IDs dos lotes selecionados
   focusedBlockId?: string | null; // ID da quadra focada
+  focusedLotId?: string | null; // ID do lote focado
 }
 
 const GOOGLE_MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || '';
@@ -40,7 +41,8 @@ export default function PublicMapViewer({
   onBoundaryClick, 
   isAdminContext = false, 
   selectedLotIds = [],
-  focusedBlockId = null
+  focusedBlockId = null,
+  focusedLotId = null
 }: PublicMapViewerProps) {
   const [center, setCenter] = useState(defaultCenter);
   const [mapLoaded, setMapLoaded] = useState(false);
@@ -58,11 +60,18 @@ export default function PublicMapViewer({
   // Filtrar apenas quadras que têm coordenadas definidas
   const blocksWithCoordinates = blocks.filter(block => block.coordinates && block.coordinates.length > 0);
 
-  console.log('[PublicMapViewer] Debug:', {
+  console.log('[PublicMapViewer] Debug completo:', {
     totalBlocks: blocks.length,
     blocksWithCoordinates: blocksWithCoordinates.length,
     totalLots: lots.length,
     lotsWithCoordinates: lotsWithCoordinates.length,
+    allBlocksData: blocks.map(b => ({ 
+      id: b.id, 
+      name: b.name, 
+      hasCoords: !!(b.coordinates && b.coordinates.length > 0),
+      coordsLength: b.coordinates?.length || 0,
+      coordinates: b.coordinates || null
+    })),
     blockDetails: blocks.map(b => ({ 
       id: b.id, 
       name: b.name, 
@@ -100,7 +109,7 @@ export default function PublicMapViewer({
     zIndex: 1,
   };
 
-  const getLotPolygonOptions = (lot: Lot, isHovered: boolean = false) => {
+  const getLotPolygonOptions = (lot: Lot, isHovered: boolean = false, isFocused: boolean = false) => {
     const isSelected = selectedLotIds.includes(lot.id);
     
     // Cores bem definidas baseadas no status do lote
@@ -115,12 +124,12 @@ export default function PublicMapViewer({
 
     return {
       fillColor: isSelected ? '#3B82F6' : color.fill, // Azul para selecionado
-      fillOpacity: isSelected ? 0.7 : (isHovered ? 0.65 : 0.5),
-      strokeColor: isSelected ? '#2563EB' : color.stroke,
+      fillOpacity: isSelected ? 0.7 : (isFocused ? 0.8 : (isHovered ? 0.7 : 0.5)),
+      strokeColor: isSelected ? '#2563EB' : (isFocused ? color.stroke : color.stroke),
       strokeOpacity: 1,
-      strokeWeight: isSelected ? 4 : (isHovered ? 3 : 2.5),
+      strokeWeight: isSelected ? 4 : (isFocused ? 4 : (isHovered ? 3 : 2.5)),
       clickable: true,
-      zIndex: isSelected ? 200 : (isHovered ? 100 : 10),
+      zIndex: isSelected ? 200 : (isFocused ? 150 : (isHovered ? 100 : 10)),
       cursor: 'pointer',
     };
   };
@@ -256,7 +265,7 @@ export default function PublicMapViewer({
           <Polygon
             key={lot.id}
             paths={lot.coordinates || []}
-            options={getLotPolygonOptions(lot, hoveredLotId === lot.id)}
+            options={getLotPolygonOptions(lot, hoveredLotId === lot.id, focusedLotId === lot.id)}
             onClick={() => {
               console.log('[PublicMapViewer] Lote clicado:', lot.lotNumber);
               onLotClick && onLotClick(lot);
