@@ -244,18 +244,18 @@ export default function LotSelector({
   };
 
   const getLotColor = (lot: Lot): string => {
-    // Não mudar cor se estiver selecionado - manter cor por status
+    // Cores consistentes com o mapa para clara identificação de status
     switch (lot.status) {
       case LotStatus.AVAILABLE:
-        return 'bg-green-500 hover:bg-green-600 border-green-700';
+        return 'bg-green-500 hover:bg-green-600 border-green-600'; // Verde - Disponível
       case LotStatus.RESERVED:
-        return 'bg-yellow-500 hover:bg-yellow-600 border-yellow-700';
+        return 'bg-yellow-500 hover:bg-yellow-600 border-yellow-600'; // Amarelo - Reservado
       case LotStatus.SOLD:
-        return 'bg-red-500 border-red-700';
+        return 'bg-red-500 hover:bg-red-600 border-red-600'; // Vermelho - Vendido
       case LotStatus.BLOCKED:
-        return 'bg-gray-500 border-gray-700';
+        return 'bg-gray-500 hover:bg-gray-600 border-gray-600'; // Cinza - Bloqueado
       default:
-        return 'bg-gray-400 border-gray-600';
+        return 'bg-gray-400 border-gray-500';
     }
   };
 

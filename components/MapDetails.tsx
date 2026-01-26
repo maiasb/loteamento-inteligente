@@ -525,6 +525,24 @@ export default function MapDetails() {
 
       if (confirm(message)) {
         await deleteBlock(blockId, mapId);
+        
+        // Recarregar quadras para atualizar o mapa
+        await loadBlocks(mapId);
+        
+        // Recarregar todos os lotes do mapa
+        await loadAllLotsInMap();
+        
+        // Se a quadra excluída estava selecionada, limpar seleção
+        if (selectedBlockId === blockId) {
+          setSelectedBlockId('');
+          setSelectedBlockLots([]);
+        }
+        
+        // Limpar foco se a quadra excluída estava focada
+        if (focusedBlockId === blockId) {
+          setFocusedBlockId(null);
+        }
+        
         alert('✅ Quadra excluída com sucesso!');
       }
     } catch (error: any) {
@@ -690,6 +708,20 @@ export default function MapDetails() {
       const response = await axios.delete(`${API_URL}/mapas/lotes/deletar?lotId=${lotId}`, {
         timeout: 10000,
       });
+
+      // Recarregar lotes da quadra selecionada
+      if (selectedBlockId) {
+        const updatedLots = await loadLotsForBlock(selectedBlockId);
+        setSelectedBlockLots(updatedLots);
+      }
+      
+      // Recarregar todos os lotes do mapa para atualizar visualização
+      await loadAllLotsInMap();
+      
+      // Limpar foco se o lote excluído estava focado
+      if (focusedLotId === lotId) {
+        setFocusedLotId(null);
+      }
 
       // Força refresh dos cards após excluir lote
       setRefreshTrigger(prev => prev + 1);
@@ -1693,6 +1725,7 @@ export default function MapDetails() {
                   boundaryCoordinates={map?.boundaryCoordinates}
                   blocks={focusedBlockId ? blocks.filter(b => b.id === focusedBlockId) : blocks}
                   lots={focusedLotId ? allLotsInMap.filter(l => l.id === focusedLotId) : focusedBlockId ? allLotsInMap.filter(l => l.blockId === focusedBlockId) : allLotsInMap}
+                  focusedBlockId={focusedBlockId}
                   onLotClick={(lot) => {
                     console.log('[MapDetails] Lote clicado no mapa:', lot.lotNumber);
                     setFocusedLotId(lot.id);

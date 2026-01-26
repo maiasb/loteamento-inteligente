@@ -14,6 +14,7 @@ interface PublicMapViewerProps {
   onBoundaryClick?: () => void; // Novo: callback para clicar na área do loteamento
   isAdminContext?: boolean; // Novo: indica se está no contexto admin
   selectedLotIds?: string[]; // Novo: IDs dos lotes selecionados
+  focusedBlockId?: string | null; // ID da quadra focada
 }
 
 const GOOGLE_MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || '';
@@ -21,7 +22,7 @@ const libraries: ("drawing" | "places")[] = ["drawing", "places"];
 
 const mapContainerStyle = {
   width: '100%',
-  height: '500px',
+  height: '100%',
 };
 
 const defaultCenter = {
@@ -38,7 +39,8 @@ export default function PublicMapViewer({
   onBlockClick, 
   onBoundaryClick, 
   isAdminContext = false, 
-  selectedLotIds = [] 
+  selectedLotIds = [],
+  focusedBlockId = null
 }: PublicMapViewerProps) {
   const [center, setCenter] = useState(defaultCenter);
   const [mapLoaded, setMapLoaded] = useState(false);
@@ -89,11 +91,11 @@ export default function PublicMapViewer({
   }, [boundaryCoordinates]);
 
   const polygonOptions = {
-    fillColor: '#4CAF50',
-    fillOpacity: 0.2,
-    strokeColor: '#4CAF50',
-    strokeOpacity: 0.8,
-    strokeWeight: 2,
+    fillColor: '#10B981', // Verde esmeralda - Loteamento
+    fillOpacity: 0.25,
+    strokeColor: '#059669',
+    strokeOpacity: 0.9,
+    strokeWeight: 3,
     clickable: isAdminContext, // Clicável apenas no contexto admin
     zIndex: 1,
   };
@@ -101,37 +103,37 @@ export default function PublicMapViewer({
   const getLotPolygonOptions = (lot: Lot, isHovered: boolean = false) => {
     const isSelected = selectedLotIds.includes(lot.id);
     
-    // Cores baseadas no status do lote
+    // Cores bem definidas baseadas no status do lote
     const colors: Record<string, { fill: string; stroke: string }> = {
-      available: { fill: '#3B82F6', stroke: '#2563EB' }, // Azul
-      reserved: { fill: '#F59E0B', stroke: '#D97706' },  // Amarelo/laranja
-      sold: { fill: '#EF4444', stroke: '#DC2626' },      // Vermelho
-      blocked: { fill: '#6B7280', stroke: '#4B5563' },   // Cinza
+      available: { fill: '#22C55E', stroke: '#16A34A' },  // Verde - Disponível
+      reserved: { fill: '#F59E0B', stroke: '#D97706' },   // Amarelo - Reservado
+      sold: { fill: '#EF4444', stroke: '#DC2626' },       // Vermelho - Vendido
+      blocked: { fill: '#6B7280', stroke: '#4B5563' },    // Cinza - Bloqueado
     };
 
     const color = colors[lot.status] || colors.available;
 
     return {
-      fillColor: isSelected ? '#10B981' : color.fill, // Verde para selecionado
-      fillOpacity: isSelected ? 0.7 : (isHovered ? 0.6 : 0.45),
-      strokeColor: isSelected ? '#059669' : color.stroke, // Verde escuro para borda selecionado
+      fillColor: isSelected ? '#3B82F6' : color.fill, // Azul para selecionado
+      fillOpacity: isSelected ? 0.7 : (isHovered ? 0.65 : 0.5),
+      strokeColor: isSelected ? '#2563EB' : color.stroke,
       strokeOpacity: 1,
-      strokeWeight: isSelected ? 4 : (isHovered ? 3 : 2),
+      strokeWeight: isSelected ? 4 : (isHovered ? 3 : 2.5),
       clickable: true,
       zIndex: isSelected ? 200 : (isHovered ? 100 : 10),
       cursor: 'pointer',
     };
   };
   
-  const getBlockPolygonOptions = (block: Block, isHovered: boolean = false) => {
+  const getBlockPolygonOptions = (block: Block, isHovered: boolean = false, isFocused: boolean = false) => {
     return {
-      fillColor: '#9333EA', // Roxo para quadras
-      fillOpacity: isHovered ? 0.3 : 0.15,
-      strokeColor: '#7C3AED',
-      strokeOpacity: 0.8,
-      strokeWeight: isHovered ? 3 : 2,
+      fillColor: '#A855F7', // Roxo/Púrpura - Quadra
+      fillOpacity: isFocused ? 0.5 : (isHovered ? 0.35 : 0.2),
+      strokeColor: '#9333EA',
+      strokeOpacity: 0.9,
+      strokeWeight: isFocused ? 4 : (isHovered ? 3 : 2.5),
       clickable: isAdminContext, // Clicável apenas no contexto admin
-      zIndex: 5, // Entre a área do loteamento (1) e os lotes (10+)
+      zIndex: isFocused ? 50 : 5, // Entre a área do loteamento (1) e os lotes (10+)
       cursor: isAdminContext ? 'pointer' : 'default',
     };
   };
@@ -204,7 +206,7 @@ export default function PublicMapViewer({
   }
 
   return (
-    <div className="w-full h-[500px] rounded-xl overflow-hidden relative">
+    <div className="w-full h-full rounded-xl overflow-hidden relative">
       <GoogleMap
         mapContainerStyle={mapContainerStyle}
         center={center}
@@ -237,7 +239,7 @@ export default function PublicMapViewer({
           <Polygon
             key={`block-${block.id}`}
             paths={block.coordinates || []}
-            options={getBlockPolygonOptions(block, hoveredBlockId === block.id)}
+            options={getBlockPolygonOptions(block, hoveredBlockId === block.id, focusedBlockId === block.id)}
             onClick={() => {
               if (isAdminContext && onBlockClick) {
                 console.log('[PublicMapViewer] Quadra clicada:', block.name);
@@ -264,27 +266,6 @@ export default function PublicMapViewer({
           />
         ))}
       </GoogleMap>
-      
-      {/* Aviso quando não há lotes com coordenadas */}
-      {mapLoaded && lotsWithCoordinates.length === 0 && lots.length > 0 && (
-        <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 bg-amber-500 text-white px-4 py-3 rounded-lg shadow-lg text-sm font-medium flex items-center gap-2 max-w-md">
-          <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-          <div>
-            <div className="font-bold">Nenhum lote com área definida ainda</div>
-            <div className="text-xs opacity-90 mt-0.5">{lots.length} lote(s) cadastrado(s) - Defina as áreas para visualizá-los no mapa</div>
-          </div>
-        </div>
-      )}
-      {mapLoaded && lotsWithCoordinates.length === 0 && lots.length === 0 && (
-        <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 bg-blue-500 text-white px-4 py-2 rounded-lg shadow-lg text-sm font-medium flex items-center gap-2">
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-          Cadastre lotes e defina suas áreas para visualizá-los aqui
-        </div>
-      )}
     </div>
   );
 }

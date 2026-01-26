@@ -223,10 +223,14 @@ export default function AdminMapsLotsPage() {
   };
 
   return (
-    <div className="p-6">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold text-[var(--foreground)]">Loteamentos</h1>
-      </div>
+    <div className="flex flex-col lg:flex-row h-auto min-h-screen lg:h-screen overflow-y-auto lg:overflow-hidden">
+      {/* Sidebar à esquerda */}
+      <div className="w-full lg:w-[420px] xl:w-[480px] flex-shrink-0 bg-[var(--card-bg)] border-r border-[var(--border)] lg:overflow-y-auto">
+        <div className="p-6">
+          <>
+          <div className="mb-6">
+            <h1 className="text-3xl font-bold text-[var(--foreground)]">Loteamentos</h1>
+          </div>
 
       {!isLoading && maps.length === 0 && (
         <div className="text-center py-12 bg-[var(--card-bg)] rounded-2xl border-2 border-dashed border-[var(--accent)]/40 shadow-[var(--shadow-md)]">
@@ -273,10 +277,8 @@ export default function AdminMapsLotsPage() {
         </div>
       )}
 
-      {(isLoading || selectedMap) && (
-        <>
-          {/* Informações do Loteamento */}
-          {selectedMap && (
+      {/* Informações do Loteamento */}
+      {selectedMap && (
             <div className="bg-gradient-to-br from-[var(--card-bg)] to-[var(--surface)] rounded-2xl p-6 mb-8 shadow-[var(--shadow-lg)] border-2 border-[var(--border)]">
               <div className="flex items-start gap-4">
                 <div className="w-14 h-14 bg-gradient-to-br from-[var(--accent)] to-blue-600 rounded-xl flex items-center justify-center shadow-lg flex-shrink-0">
@@ -303,80 +305,11 @@ export default function AdminMapsLotsPage() {
             </div>
           )}
 
-          {/* Estatísticas de Status dos Lotes - Sempre visíveis */}
-          {(isLoading || selectedMap) && (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-              <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-2xl p-6 shadow-[var(--shadow-lg)]">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center">
-                    <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    </svg>
-                  </div>
-                </div>
-                <p className="text-white text-sm font-medium mb-1">Disponível</p>
-                {isLoading || isLoadingMapStats ? (
-                  <div className="h-10 w-20 bg-white/20 rounded-lg animate-pulse"></div>
-                ) : (
-                  <p className="text-white text-4xl font-bold">{mapStats.available}</p>
-                )}
-              </div>
-
-              <div className="bg-gradient-to-br from-orange-500 to-orange-600 rounded-2xl p-6 shadow-[var(--shadow-lg)]">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center">
-                    <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                  </div>
-                </div>
-                <p className="text-white text-sm font-medium mb-1">Reservado</p>
-                {isLoading || isLoadingMapStats ? (
-                  <div className="h-10 w-20 bg-white/20 rounded-lg animate-pulse"></div>
-                ) : (
-                  <p className="text-white text-4xl font-bold">{mapStats.reserved}</p>
-                )}
-              </div>
-
-              <div className="bg-gradient-to-br from-red-500 to-red-600 rounded-2xl p-6 shadow-[var(--shadow-lg)]">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center">
-                    <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                  </div>
-                </div>
-                <p className="text-white text-sm font-medium mb-1">Vendido</p>
-                {isLoading || isLoadingMapStats ? (
-                  <div className="h-10 w-20 bg-white/20 rounded-lg animate-pulse"></div>
-                ) : (
-                  <p className="text-white text-4xl font-bold">{mapStats.sold}</p>
-                )}
-              </div>
-
-              <div className="bg-gradient-to-br from-gray-500 to-gray-600 rounded-2xl p-6 shadow-[var(--shadow-lg)]">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center">
-                    <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
-                    </svg>
-                  </div>
-                </div>
-                <p className="text-white text-sm font-medium mb-1">Bloqueado</p>
-                {isLoading || isLoadingMapStats ? (
-                  <div className="h-10 w-20 bg-white/20 rounded-lg animate-pulse"></div>
-                ) : (
-                  <p className="text-white text-4xl font-bold">{mapStats.blocked}</p>
-                )}
-              </div>
-            </div>
-          )}
-
           {/* Seleção de Quadras */}
           {isLoading || isLoadingBlocks ? (
             <div className="mb-6">
               <label className="block text-sm font-bold text-[var(--foreground)] mb-2">Quadra</label>
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+              <div className="grid grid-cols-[repeat(auto-fill,minmax(120px,1fr))] gap-3">
                 {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((i) => (
                   <div
                     key={i}
@@ -402,7 +335,7 @@ export default function AdminMapsLotsPage() {
           ) : blocks.length > 0 ? (
             <div className="mb-6">
               <label className="block text-sm font-bold text-[var(--foreground)] mb-2">Quadra</label>
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+              <div className="grid grid-cols-[repeat(auto-fill,minmax(120px,1fr))] gap-3">
                 {blocks.map((block) => (
                   <button
                     key={block.id}
@@ -515,90 +448,203 @@ export default function AdminMapsLotsPage() {
               </div>
             ) : null}
           </div>
-        </>
-      )}
+          </>
+        </div>
+      </div>
 
-      {(isLoading || selectedMap) && (
-        <>
-          {/* Mapa Interativo */}
-          <div className="grid grid-cols-1 lg:grid-cols-1 gap-6 relative mb-8">
-            <div className="lg:col-span-3">
-              <div className="bg-[var(--card-bg)] rounded-2xl shadow-[var(--shadow-lg)] p-4 sm:p-6">
-                <h2 className="text-lg font-bold text-[var(--foreground)] mb-4 flex items-center gap-2">
-                  <svg className="w-5 h-5 text-[var(--accent)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                  </svg>
-                  Visualização do Mapa
-                </h2>
-                <div className="bg-gradient-to-br from-[var(--surface)] to-[var(--background)] rounded-xl p-2 relative">
-                  {isLoading || isLoadingImage ? (
-                    <div className="flex items-center justify-center py-32">
-                      <div className="text-center">
-                        <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-[var(--accent)] mb-4"></div>
-                        <p className="text-[var(--foreground)] text-sm font-medium">Carregando mapa...</p>
-                      </div>
-                    </div>
-                  ) : selectedMap ? (
-                    selectedMap.boundaryCoordinates && selectedMap.boundaryCoordinates.length > 0 ? (
-                      <>
-                        {console.log('[Maps Page] Renderizando PublicMapViewer com:', { 
-                          lotsTotal: lots.length, 
-                          lotsComCoordenadas: lots.filter(l => l.coordinates && l.coordinates.length > 0).length,
-                          selectedMap: selectedMap.name 
-                        })}
-                        <PublicMapViewer
-                          address={selectedMap.address}
-                          boundaryCoordinates={selectedMap.boundaryCoordinates}
-                          lots={lots}
-                          selectedLotIds={selectedLots.map(l => l.id)}
-                          onLotClick={(lot) => {
-                            console.log('[Maps Page] onLotClick chamado:', lot.lotNumber, 'multiSelectMode:', multiSelectMode);
-                            
-                            if (multiSelectMode) {
-                              // Em modo de seleção múltipla, adiciona/remove da seleção
-                              handleToggleLotSelection(lot);
-                            } else {
-                              // Fora do modo de seleção múltipla, comportamento normal
-                              if (lot.status === LotStatus.AVAILABLE) {
-                                // Se disponível, abre modal de compra única
-                                setSingleLotPurchase(lot);
-                              } else {
-                                // Se não disponível, abre modal de informações
-                                setClickedLot(lot);
-                              }
-                            }
-                          }}
-                        />
-                      </>
-                    ) : selectedMap.imageUrl ? (
-                      <InteractiveMap
-                        imageUrl={selectedMap.imageUrl}
-                        lots={lots}
-                        onLotClick={handleLotClick}
-                        selectedLotIds={selectedLots.map(lot => lot.id)}
-                      />
+      {/* Área do Mapa à direita */}
+      <div className="flex-1 relative flex flex-col min-h-[500px] lg:min-h-0 lg:overflow-hidden">
+        {/* Estatísticas de Status dos Lotes */}
+        {(isLoading || selectedMap) && (
+          <div className="flex-shrink-0 bg-[var(--card-bg)] border-b border-[var(--border)] p-2 lg:p-4">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 lg:gap-3">
+              <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-lg lg:rounded-xl p-2 lg:p-4 shadow-lg">
+                <div className="flex items-center gap-2 lg:gap-3">
+                  <div className="w-8 h-8 lg:w-10 lg:h-10 bg-white/20 rounded-lg flex items-center justify-center flex-shrink-0">
+                    <svg className="w-4 h-4 lg:w-5 lg:h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="text-white text-[10px] lg:text-xs font-medium mb-0.5">Disponível</p>
+                    {isLoading || isLoadingMapStats ? (
+                      <div className="h-5 w-8 lg:h-7 lg:w-12 bg-white/20 rounded animate-pulse"></div>
                     ) : (
-                      <div className="flex items-center justify-center py-32">
-                        <div className="text-center">
-                          <svg className="w-16 h-16 mx-auto mb-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                          </svg>
-                          <p className="text-gray-600 dark:text-gray-400 font-semibold text-lg mb-2">
-                            Nenhuma imagem do mapa carregada
-                          </p>
-                          <p className="text-gray-500 dark:text-gray-500 text-sm">
-                            Adicione uma imagem ao mapa para começar a desenhar os lotes
-                          </p>
-                        </div>
-                      </div>
-                    )
-                  ) : null}
+                      <p className="text-white text-lg lg:text-2xl font-bold">{mapStats.available}</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-gradient-to-br from-orange-500 to-orange-600 rounded-lg lg:rounded-xl p-2 lg:p-4 shadow-lg">
+                <div className="flex items-center gap-2 lg:gap-3">
+                  <div className="w-8 h-8 lg:w-10 lg:h-10 bg-white/20 rounded-lg flex items-center justify-center flex-shrink-0">
+                    <svg className="w-4 h-4 lg:w-5 lg:h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="text-white text-[10px] lg:text-xs font-medium mb-0.5">Reservado</p>
+                    {isLoading || isLoadingMapStats ? (
+                      <div className="h-5 w-8 lg:h-7 lg:w-12 bg-white/20 rounded animate-pulse"></div>
+                    ) : (
+                      <p className="text-white text-lg lg:text-2xl font-bold">{mapStats.reserved}</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-gradient-to-br from-red-500 to-red-600 rounded-lg lg:rounded-xl p-2 lg:p-4 shadow-lg">
+                <div className="flex items-center gap-2 lg:gap-3">
+                  <div className="w-8 h-8 lg:w-10 lg:h-10 bg-white/20 rounded-lg flex items-center justify-center flex-shrink-0">
+                    <svg className="w-4 h-4 lg:w-5 lg:h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="text-white text-[10px] lg:text-xs font-medium mb-0.5">Vendido</p>
+                    {isLoading || isLoadingMapStats ? (
+                      <div className="h-5 w-8 lg:h-7 lg:w-12 bg-white/20 rounded animate-pulse"></div>
+                    ) : (
+                      <p className="text-white text-lg lg:text-2xl font-bold">{mapStats.sold}</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-gradient-to-br from-gray-500 to-gray-600 rounded-lg lg:rounded-xl p-2 lg:p-4 shadow-lg">
+                <div className="flex items-center gap-2 lg:gap-3">
+                  <div className="w-8 h-8 lg:w-10 lg:h-10 bg-white/20 rounded-lg flex items-center justify-center flex-shrink-0">
+                    <svg className="w-4 h-4 lg:w-5 lg:h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 0 0 5.636 5.636m12.728 12.728A9 9 0 0 0 5.636 5.636m12.728 12.728L5.636 5.636" />
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="text-white text-[10px] lg:text-xs font-medium mb-0.5">Bloqueado</p>
+                    {isLoading || isLoadingMapStats ? (
+                      <div className="h-5 w-8 lg:h-7 lg:w-12 bg-white/20 rounded animate-pulse"></div>
+                    ) : (
+                      <p className="text-white text-lg lg:text-2xl font-bold">{mapStats.blocked}</p>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
           </div>
-        </>
-      )}
+        )}
+
+        {(isLoading || selectedMap) && (
+          <div className="flex-1 min-h-[500px] flex flex-col lg:overflow-hidden">
+            <div className="h-[500px] lg:flex-1 w-full relative">
+              {isLoading || isLoadingImage ? (
+                <div className="flex items-center justify-center h-full bg-[var(--surface)]">
+                  <div className="text-center">
+                    <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-[var(--accent)] mb-4"></div>
+                    <p className="text-[var(--foreground)] text-sm font-medium">Carregando mapa...</p>
+                  </div>
+                </div>
+              ) : selectedMap ? (
+                selectedMap.boundaryCoordinates && selectedMap.boundaryCoordinates.length > 0 ? (
+                  <>
+                  <div className="h-full relative">
+                    <PublicMapViewer
+                      address={selectedMap.address}
+                      boundaryCoordinates={selectedMap.boundaryCoordinates}
+                      lots={lots}
+                      selectedLotIds={selectedLots.map(l => l.id)}
+                      onLotClick={(lot) => {
+                        console.log('[Maps Page] onLotClick chamado:', lot.lotNumber, 'multiSelectMode:', multiSelectMode);
+                        
+                        if (multiSelectMode) {
+                          // Em modo de seleção múltipla, adiciona/remove da seleção
+                          handleToggleLotSelection(lot);
+                        } else {
+                          // Fora do modo de seleção múltipla, comportamento normal
+                          if (lot.status === LotStatus.AVAILABLE) {
+                            // Se disponível, abre modal de compra única
+                            setSingleLotPurchase(lot);
+                          } else {
+                            // Se não disponível, abre modal de informações
+                            setClickedLot(lot);
+                          }
+                        }
+                      }}
+                    />
+                  </div>
+                  
+                  {/* Avisos e Legenda fora da área do mapa */}
+                  <div className="flex-shrink-0 p-3 lg:p-4 bg-[var(--card-bg)] border-t border-[var(--border)] space-y-3">
+                    {/* Aviso quando não há lotes com coordenadas */}
+                    {lots.length > 0 && lots.filter(l => l.coordinates && l.coordinates.length > 0).length === 0 && (
+                      <div className="bg-amber-500 text-white px-3 py-2 lg:px-4 lg:py-3 rounded-lg shadow-lg text-xs lg:text-sm font-medium flex items-center gap-2">
+                        <svg className="w-4 h-4 lg:w-5 lg:h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <div>
+                          <div className="font-bold">Nenhum lote com área definida ainda</div>
+                          <div className="text-[10px] lg:text-xs opacity-90 mt-0.5">{lots.length} lote(s) cadastrado(s) - Defina as áreas para visualizá-los no mapa</div>
+                        </div>
+                      </div>
+                    )}
+                    
+                    {lots.length === 0 && (
+                      <div className="bg-blue-500 text-white px-3 py-2 lg:px-4 lg:py-2 rounded-lg shadow-lg text-xs lg:text-sm font-medium flex items-center gap-2">
+                        <svg className="w-4 h-4 lg:w-5 lg:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        Cadastre lotes e defina suas áreas para visualizá-los aqui
+                      </div>
+                    )}
+                    
+                    {/* Legenda */}
+                    <div className="bg-white/95 dark:bg-gray-900/95 backdrop-blur-sm rounded-lg lg:rounded-xl shadow-lg p-3 lg:p-4 border border-gray-200 dark:border-gray-700">
+                      <h3 className="text-xs lg:text-sm font-bold text-gray-800 dark:text-white mb-2 lg:mb-3">Legenda:</h3>
+                      <div className="grid grid-cols-3 gap-2 lg:gap-3">
+                        <div className="flex items-center gap-1.5 lg:gap-2">
+                          <div className="w-4 h-4 lg:w-6 lg:h-6 bg-green-500 rounded border-2 border-green-600 flex-shrink-0"></div>
+                          <span className="text-[10px] lg:text-xs font-medium text-gray-700 dark:text-gray-300">Disponível</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 lg:gap-2">
+                          <div className="w-4 h-4 lg:w-6 lg:h-6 bg-yellow-500 rounded border-2 border-yellow-600 flex-shrink-0"></div>
+                          <span className="text-[10px] lg:text-xs font-medium text-gray-700 dark:text-gray-300">Reservado</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 lg:gap-2">
+                          <div className="w-4 h-4 lg:w-6 lg:h-6 bg-red-500 rounded border-2 border-red-600 flex-shrink-0"></div>
+                          <span className="text-[10px] lg:text-xs font-medium text-gray-700 dark:text-gray-300">Vendido</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  </>
+                ) : selectedMap.imageUrl ? (
+                  <div className="h-full p-6">
+                    <InteractiveMap
+                      imageUrl={selectedMap.imageUrl}
+                      lots={lots}
+                      onLotClick={handleLotClick}
+                      selectedLotIds={selectedLots.map(lot => lot.id)}
+                    />
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-center h-full bg-[var(--surface)]">
+                    <div className="text-center">
+                      <svg className="w-16 h-16 mx-auto mb-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                      <p className="text-gray-600 dark:text-gray-400 font-semibold text-lg mb-2">
+                        Nenhuma imagem do mapa carregada
+                      </p>
+                      <p className="text-gray-500 dark:text-gray-500 text-sm">
+                        Adicione uma imagem ao mapa para começar a desenhar os lotes
+                      </p>
+                    </div>
+                  </div>
+                )
+              ) : null}
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* Barra de Ação Flutuante para Seleção Múltipla */}
       {selectedLots.length > 0 && (
