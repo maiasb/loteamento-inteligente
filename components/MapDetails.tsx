@@ -1719,7 +1719,7 @@ export default function MapDetails() {
             
             {/* Mapa sempre visível */}
             {map?.boundaryCoordinates ? (
-              <div className="bg-gradient-to-br from-[var(--surface)] to-[var(--background)] rounded-xl overflow-hidden">
+              <div className="bg-gradient-to-br from-[var(--surface)] to-[var(--background)] rounded-xl overflow-hidden h-[600px]">
                 <PublicMapViewer 
                   address={map?.address}
                   boundaryCoordinates={map?.boundaryCoordinates}
