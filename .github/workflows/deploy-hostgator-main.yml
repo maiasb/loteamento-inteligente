@@ -22,9 +22,6 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build
-        run: npm run build
-
       - name: Deploy to VPS via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -33,6 +30,8 @@ jobs:
           key: ${{ secrets.VPS_SSH_KEY }}
           port: ${{ secrets.VPS_PORT }}
           script: |
+            set -e  # Exit immediately if any command fails
+            
             echo "🚀 Starting deployment to VPS..."
             
             # Define application directory
@@ -46,12 +45,12 @@ jobs:
             
             # Navigate to application directory
             cd "$APP_DIR"
-            echo "📁 Working directory: $(pwd)"
+            echo "📁 Changed to application directory"
             
-            # Backup node_modules for optimization
-            echo "💾 Backing up node_modules..."
-            if [ -d "node_modules" ]; then
-              mv node_modules node_modules.tmp
+            # Check for uncommitted changes
+            if ! git diff-index --quiet HEAD --; then
+              echo "⚠️  Warning: Uncommitted changes detected. Stashing..."
+              git stash
             fi
             
             # Update code from main branch
@@ -59,19 +58,16 @@ jobs:
             git fetch origin
             git reset --hard origin/main
             
-            # Restore node_modules
-            echo "♻️  Restoring node_modules..."
-            if [ -d "node_modules.tmp" ]; then
-              mv node_modules.tmp node_modules
-            fi
-            
             # Install dependencies
             echo "📦 Installing dependencies..."
             npm ci
             
             # Execute migrations automatically
             echo "🔧 Running database migrations..."
-            npm run migrate
+            if ! npm run migrate; then
+              echo "❌ Error: Database migrations failed!"
+              exit 1
+            fi
             
             # Verify migration status
             echo "✅ Checking migration status..."
@@ -95,13 +91,15 @@ jobs:
             echo "💾 Saving PM2 configuration..."
             pm2 save
             
-            # Clean temporary files
-            echo "🧹 Cleaning temporary files..."
-            rm -rf node_modules.tmp
-            
             # Display application status
             echo "📊 Application status:"
-            pm2 status vale-dos-carajas
+            pm2 list
+            
+            # Verify process is online
+            if ! pm2 jlist | grep -q '"pm2_env":{"name":"vale-dos-carajas","status":"online"'; then
+              echo "⚠️  Warning: Process may not be running in online state"
+              pm2 show vale-dos-carajas
+            fi
             
             echo "✅ Deployment completed successfully!"
 
