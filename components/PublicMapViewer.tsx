@@ -16,6 +16,7 @@ interface PublicMapViewerProps {
   selectedLotIds?: string[]; // Novo: IDs dos lotes selecionados
   focusedBlockId?: string | null; // ID da quadra focada
   focusedLotId?: string | null; // ID do lote focado
+  showAreas?: boolean; // Controla visibilidade das áreas (controlado externamente)
 }
 
 const GOOGLE_MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || '';
@@ -42,7 +43,8 @@ export default function PublicMapViewer({
   isAdminContext = false, 
   selectedLotIds = [],
   focusedBlockId = null,
-  focusedLotId = null
+  focusedLotId = null,
+  showAreas = true
 }: PublicMapViewerProps) {
   const [center, setCenter] = useState(defaultCenter);
   const [mapLoaded, setMapLoaded] = useState(false);
@@ -230,7 +232,7 @@ export default function PublicMapViewer({
         }}
       >
         {/* Polígono da área do loteamento */}
-        {mapLoaded && boundaryCoordinates && boundaryCoordinates.length > 0 && (
+        {mapLoaded && showAreas && boundaryCoordinates && boundaryCoordinates.length > 0 && (
           <Polygon
             paths={boundaryCoordinates}
             options={polygonOptions}
@@ -244,7 +246,7 @@ export default function PublicMapViewer({
         )}
         
         {/* Polígonos das quadras */}
-        {mapLoaded && blocksWithCoordinates.map((block) => (
+        {mapLoaded && showAreas && blocksWithCoordinates.map((block) => (
           <Polygon
             key={`block-${block.id}`}
             paths={block.coordinates || []}
@@ -261,7 +263,7 @@ export default function PublicMapViewer({
         ))}
 
         {/* Polígonos dos lotes */}
-        {mapLoaded && lotsWithCoordinates.map((lot) => (
+        {mapLoaded && showAreas && lotsWithCoordinates.map((lot) => (
           <Polygon
             key={lot.id}
             paths={lot.coordinates || []}
