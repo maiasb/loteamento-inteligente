@@ -7,7 +7,8 @@ import { GeoCoordinate } from '@/types';
 interface MapBoundaryEditorProps {
   initialAddress?: string;
   initialBoundary?: GeoCoordinate[];
-  referenceBoundary?: GeoCoordinate[]; // Área de referência que deve conter o polígono (ex: área do loteamento para quadras)
+  referenceBoundary?: GeoCoordinate[]; // Área de referência principal (ex: área do loteamento para quadras)
+  existingAreas?: Array<{ id: string; name: string; coordinates: GeoCoordinate[] }>; // Áreas existentes para mostrar como referência (ex: outras quadras)
   onSave: (coordinates: GeoCoordinate[], address: string) => void;
   onCancel: () => void;
 }
@@ -43,6 +44,7 @@ export default function MapBoundaryEditor({
   initialAddress = '',
   initialBoundary = [],
   referenceBoundary,
+  existingAreas = [],
   onSave,
   onCancel,
 }: MapBoundaryEditorProps) {
@@ -205,17 +207,7 @@ export default function MapBoundaryEditor({
       return;
     }
 
-    // Validar se está dentro da área de referência (quando fornecida)
-    if (referenceBoundary && referenceBoundary.length > 0) {
-      const isInside = boundary.every(point => {
-        return isPointInPolygon(point, referenceBoundary);
-      });
-
-      if (!isInside) {
-        alert('❌ A área da quadra deve estar completamente dentro da área do loteamento. Por favor, desenhe novamente.');
-        return;
-      }
-    }
+    // Validação removida - permitir que lotes ultrapassem a delimitação da quadra
 
     setIsSaving(true);
     try {
@@ -223,7 +215,7 @@ export default function MapBoundaryEditor({
     } finally {
       setIsSaving(false);
     }
-  }, [boundary, searchAddress, referenceBoundary, onSave]);
+  }, [boundary, searchAddress, onSave]);
 
   const polygonOptions = {
     fillColor: '#4CAF50',
@@ -349,7 +341,7 @@ export default function MapBoundaryEditor({
               <svg className="w-6 h-6 text-blue-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
-              <div>
+              <div className="flex-1">
                 <p className="text-blue-900 dark:text-blue-100 font-semibold text-sm mb-1">Como desenhar a área:</p>
                 <ol className="text-blue-800 dark:text-blue-200 text-xs space-y-1 list-decimal list-inside">
                   <li>Clique no ícone de polígono no topo do mapa</li>
@@ -357,6 +349,30 @@ export default function MapBoundaryEditor({
                   <li>Clique no primeiro ponto novamente para fechar o polígono</li>
                   <li>Você pode arrastar os pontos para ajustar depois</li>
                 </ol>
+                
+                {(referenceBoundary || existingAreas.length > 0) && (
+                  <div className="mt-3 pt-3 border-t border-blue-200 dark:border-blue-700">
+                    <p className="text-blue-900 dark:text-blue-100 font-semibold text-sm mb-2">Legenda das áreas:</p>
+                    <div className="space-y-1.5">
+                      {referenceBoundary && (
+                        <div className="flex items-center gap-2 text-xs text-blue-800 dark:text-blue-200">
+                          <div className="w-4 h-4 rounded border-2" style={{ borderColor: '#2196F3', backgroundColor: 'rgba(33, 150, 243, 0.1)' }}></div>
+                          <span>Área do loteamento</span>
+                        </div>
+                      )}
+                      {existingAreas.length > 0 && (
+                        <div className="flex items-center gap-2 text-xs text-blue-800 dark:text-blue-200">
+                          <div className="w-4 h-4 rounded border-2" style={{ borderColor: '#FF8C00', backgroundColor: 'rgba(255, 165, 0, 0.15)' }}></div>
+                          <span>Outras quadras já cadastradas ({existingAreas.length})</span>
+                        </div>
+                      )}
+                      <div className="flex items-center gap-2 text-xs text-blue-800 dark:text-blue-200">
+                        <div className="w-4 h-4 rounded border-2" style={{ borderColor: '#4CAF50', backgroundColor: 'rgba(76, 175, 80, 0.3)' }}></div>
+                        <span>Sua área (nova ou editando)</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -420,7 +436,7 @@ export default function MapBoundaryEditor({
                 />
               )}
 
-              {/* Renderizar área de referência (ex: área do loteamento) */}
+              {/* Renderizar área de referência principal (ex: área do loteamento) */}
               {mapLoaded && referenceBoundary && referenceBoundary.length > 0 && (
                 <Polygon
                   paths={referenceBoundary}
@@ -431,9 +447,27 @@ export default function MapBoundaryEditor({
                     strokeOpacity: 0.8,
                     strokeWeight: 2,
                     clickable: false,
+                    zIndex: 1,
                   }}
                 />
               )}
+
+              {/* Renderizar áreas existentes (ex: outras quadras) */}
+              {mapLoaded && existingAreas.map((area) => (
+                <Polygon
+                  key={area.id}
+                  paths={area.coordinates}
+                  options={{
+                    fillColor: '#FFA500',
+                    fillOpacity: 0.15,
+                    strokeColor: '#FF8C00',
+                    strokeOpacity: 0.7,
+                    strokeWeight: 2,
+                    clickable: false,
+                    zIndex: 2,
+                  }}
+                />
+              ))}
 
               {mapLoaded && boundary.length > 0 && (
                 <Polygon

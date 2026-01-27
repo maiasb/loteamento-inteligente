@@ -2348,6 +2348,13 @@ export default function MapDetails() {
                   initialAddress={map?.address}
                   initialBoundary={editingBlockArea.coordinates}
                   referenceBoundary={map?.boundaryCoordinates}
+                  existingAreas={blocks
+                    .filter(b => b.id !== editingBlockArea.id && b.coordinates && b.coordinates.length > 0)
+                    .map(b => ({
+                      id: b.id,
+                      name: b.name,
+                      coordinates: b.coordinates || []
+                    }))}
                   onSave={(coordinates, address) => saveBlockCoordinates(editingBlockArea.id, coordinates)}
                   onCancel={() => {
                     setIsConfiguringBlockArea(false);
