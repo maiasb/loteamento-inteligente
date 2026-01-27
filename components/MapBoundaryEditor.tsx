@@ -66,6 +66,7 @@ export default function MapBoundaryEditor({
   
   // Cleanup ref para evitar memory leaks
   const cleanupRef = useRef<boolean>(false);
+  const drawingManagerRef = useRef<google.maps.drawing.DrawingManager | null>(null);
   
   const mapRef = useRef<google.maps.Map | null>(null);
   const polygonRef = useRef<google.maps.Polygon | null>(null);
@@ -107,11 +108,95 @@ export default function MapBoundaryEditor({
         polygonRef.current.setMap(null);
         polygonRef.current = null;
       }
+      // Limpar DrawingManager
+      if (drawingManagerRef.current) {
+        drawingManagerRef.current.setMap(null);
+        drawingManagerRef.current = null;
+      }
       // Limpar referências
       mapRef.current = null;
       geocoderRef.current = null;
     };
   }, []);
+
+  // Criar DrawingManager manualmente para evitar duplicação
+  useEffect(() => {
+    if (!mapRef.current || !isLoaded || boundary.length > 0 || drawingManagerRef.current) {
+      return;
+    }
+
+    const drawingManager = new google.maps.drawing.DrawingManager({
+      drawingMode: null,
+      drawingControl: true,
+      drawingControlOptions: {
+        position: google.maps.ControlPosition.TOP_CENTER,
+        drawingModes: [
+          google.maps.drawing.OverlayType.POLYGON,
+          google.maps.drawing.OverlayType.RECTANGLE,
+        ],
+      },
+      polygonOptions: {
+        fillColor: '#4CAF50',
+        fillOpacity: 0.3,
+        strokeColor: '#4CAF50',
+        strokeOpacity: 1,
+        strokeWeight: 2,
+        editable: true,
+        draggable: true,
+      },
+      rectangleOptions: {
+        fillColor: '#4CAF50',
+        fillOpacity: 0.3,
+        strokeColor: '#4CAF50',
+        strokeOpacity: 1,
+        strokeWeight: 2,
+        editable: true,
+        draggable: true,
+      },
+    });
+
+    drawingManager.setMap(mapRef.current);
+    drawingManagerRef.current = drawingManager;
+
+    // Listener para polígono completo
+    google.maps.event.addListener(drawingManager, 'polygoncomplete', (polygon: google.maps.Polygon) => {
+      const path = polygon.getPath();
+      const coordinates: GeoCoordinate[] = [];
+      for (let i = 0; i < path.getLength(); i++) {
+        const point = path.getAt(i);
+        coordinates.push({ lat: point.lat(), lng: point.lng() });
+      }
+      setBoundary(coordinates);
+      polygon.setMap(null);
+      drawingManager.setDrawingMode(null);
+    });
+
+    // Listener para retângulo completo
+    google.maps.event.addListener(drawingManager, 'rectanglecomplete', (rectangle: google.maps.Rectangle) => {
+      const bounds = rectangle.getBounds();
+      if (bounds) {
+        const ne = bounds.getNorthEast();
+        const sw = bounds.getSouthWest();
+        const rectangleCoords: GeoCoordinate[] = [
+          { lat: ne.lat(), lng: ne.lng() },
+          { lat: ne.lat(), lng: sw.lng() },
+          { lat: sw.lat(), lng: sw.lng() },
+          { lat: sw.lat(), lng: ne.lng() },
+        ];
+        setBoundary(rectangleCoords);
+        rectangle.setMap(null);
+        drawingManager.setDrawingMode(null);
+      }
+    });
+
+    return () => {
+      if (drawingManagerRef.current) {
+        google.maps.event.clearInstanceListeners(drawingManagerRef.current);
+        drawingManagerRef.current.setMap(null);
+        drawingManagerRef.current = null;
+      }
+    };
+  }, [mapRef.current, isLoaded, boundary.length]);
 
   const handleSearchAddress = useCallback(async () => {
     if (!searchAddress.trim()) {
@@ -228,19 +313,24 @@ export default function MapBoundaryEditor({
     draggable: true,
   };
 
-  const getDrawingManagerOptions = useCallback(() => {
+  const drawingManagerOptions = useMemo(() => {
     if (typeof window !== 'undefined' && window.google) {
       return {
         drawingControl: true,
         drawingControlOptions: {
           position: window.google.maps.ControlPosition.TOP_CENTER,
-          drawingModes: [window.google.maps.drawing.OverlayType.POLYGON],
+          drawingModes: [
+            window.google.maps.drawing.OverlayType.POLYGON,
+            window.google.maps.drawing.OverlayType.RECTANGLE,
+          ],
         },
+        drawingMode: null,
         polygonOptions,
+        rectangleOptions: polygonOptions,
       };
     }
     return null;
-  }, []);
+  }, [isLoaded]);
 
   if (!GOOGLE_MAPS_API_KEY) {
     return (
@@ -453,13 +543,7 @@ export default function MapBoundaryEditor({
                 zoomControl: true,
               }}
             >
-              {mapLoaded && boundary.length === 0 && (
-                <DrawingManager
-                  key="drawing-manager-single"
-                  onPolygonComplete={handlePolygonComplete}
-                  options={getDrawingManagerOptions() || undefined}
-                />
-              )}
+              {/* DrawingManager criado manualmente via useEffect */}
 
               {/* Renderizar área de referência principal (ex: área do loteamento) */}
               {mapLoaded && showReferenceAreas && referenceBoundary && referenceBoundary.length > 0 && (
