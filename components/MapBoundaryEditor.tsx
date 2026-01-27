@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
-import { GoogleMap, useLoadScript, DrawingManager, Polygon } from '@react-google-maps/api';
+import { GoogleMap, useLoadScript, DrawingManager, Polygon, Marker } from '@react-google-maps/api';
 import { GeoCoordinate } from '@/types';
 
 interface MapBoundaryEditorProps {
@@ -57,6 +57,11 @@ export default function MapBoundaryEditor({
   const [isSaving, setIsSaving] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
   const [showReferenceAreas, setShowReferenceAreas] = useState(true); // Controla visibilidade das áreas de referência
+  const [isRotatingMode, setIsRotatingMode] = useState(false);
+  const [isDraggingRotation, setIsDraggingRotation] = useState(false);
+  const rotationStartPoint = useRef<GeoCoordinate | null>(null);
+  const originalBoundary = useRef<GeoCoordinate[]>([]);
+  const draggedMarkerIndex = useRef<number>(-1);
   
   // useLoadScript para evitar conflitos
   const { isLoaded, loadError } = useLoadScript({
@@ -281,6 +286,109 @@ export default function MapBoundaryEditor({
       polygonRef.current = null;
     }
   }, []);
+
+  // Função para calcular o centro do polígono
+  const getPolygonCenter = useCallback((coords: GeoCoordinate[]) => {
+    if (coords.length === 0) return null;
+    const latSum = coords.reduce((sum, coord) => sum + coord.lat, 0);
+    const lngSum = coords.reduce((sum, coord) => sum + coord.lng, 0);
+    return {
+      lat: latSum / coords.length,
+      lng: lngSum / coords.length,
+    };
+  }, []);
+
+  // Função para rotacionar um ponto em torno de um centro
+  const rotatePoint = useCallback((point: GeoCoordinate, center: GeoCoordinate, angle: number) => {
+    const radians = (angle * Math.PI) / 180;
+    const cos = Math.cos(radians);
+    const sin = Math.sin(radians);
+    const dx = point.lat - center.lat;
+    const dy = point.lng - center.lng;
+    return {
+      lat: center.lat + (dx * cos - dy * sin),
+      lng: center.lng + (dx * sin + dy * cos),
+    };
+  }, []);
+
+  // Função para rotacionar o polígono
+  const handleRotatePolygon = useCallback((angle: number) => {
+    if (boundary.length === 0) return;
+    const center = getPolygonCenter(boundary);
+    if (!center) return;
+    const rotated = boundary.map(point => rotatePoint(point, center, angle));
+    setBoundary(rotated);
+  }, [boundary, getPolygonCenter, rotatePoint]);
+
+  // Função para calcular ângulo entre dois pontos
+  const calculateAngle = useCallback((center: GeoCoordinate, point: GeoCoordinate) => {
+    const dx = point.lng - center.lng;
+    const dy = point.lat - center.lat;
+    return Math.atan2(dy, dx) * (180 / Math.PI);
+  }, []);
+
+  // Ativar modo de rotação
+  const toggleRotationMode = useCallback(() => {
+    if (!isRotatingMode && boundary.length > 0) {
+      originalBoundary.current = [...boundary];
+    }
+    setIsRotatingMode(!isRotatingMode);
+  }, [isRotatingMode, boundary]);
+
+  // Aplicar rotação ao arrastar
+  const handleRotationDrag = useCallback((currentPoint: GeoCoordinate) => {
+    if (!isDraggingRotation || originalBoundary.current.length === 0 || !rotationStartPoint.current) return;
+    
+    const center = getPolygonCenter(originalBoundary.current);
+    if (!center) return;
+
+    const startAngle = calculateAngle(center, rotationStartPoint.current);
+    const currentAngle = calculateAngle(center, currentPoint);
+    const angleDiff = startAngle - currentAngle; // Invertido: startAngle - currentAngle
+
+    const rotated = originalBoundary.current.map(p => rotatePoint(p, center, angleDiff));
+    setBoundary(rotated);
+  }, [isDraggingRotation, getPolygonCenter, calculateAngle, rotatePoint]);
+
+  // Adicionar listeners de mouse para rotação
+  useEffect(() => {
+    if (!mapRef.current || !isDraggingRotation) return;
+
+    const handleMouseMove = (e: google.maps.MapMouseEvent) => {
+      if (e.latLng && isDraggingRotation) {
+        handleRotationDrag({
+          lat: e.latLng.lat(),
+          lng: e.latLng.lng(),
+        });
+      }
+    };
+
+    const listener = mapRef.current.addListener('mousemove', handleMouseMove);
+
+    return () => {
+      if (listener) {
+        google.maps.event.removeListener(listener);
+      }
+    };
+  }, [isDraggingRotation, handleRotationDrag]);
+
+  // Listener separado para mouseup (finalizar rotação) - global para capturar em qualquer lugar
+  useEffect(() => {
+    if (!isDraggingRotation) return;
+
+    const handleMouseUp = () => {
+      setIsDraggingRotation(false);
+      rotationStartPoint.current = null;
+      draggedMarkerIndex.current = -1;
+    };
+
+    // Adicionar listener no document para capturar mouseup em qualquer lugar
+    document.addEventListener('mouseup', handleMouseUp);
+
+    return () => {
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isDraggingRotation]);
 
   const handleSave = useCallback(async () => {
     if (boundary.length < 3) {
@@ -507,12 +615,28 @@ export default function MapBoundaryEditor({
                 Alterar Endereço
               </button>
               {boundary.length > 0 && (
-                <button
-                  onClick={handleClearPolygon}
-                  className="px-4 py-2 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors text-sm"
-                >
-                  Limpar Área
-                </button>
+                <>
+                  <button
+                    onClick={toggleRotationMode}
+                    className={`px-4 py-2 border rounded-lg transition-colors text-sm flex items-center gap-2 ${
+                      isRotatingMode
+                        ? 'bg-purple-600 text-white border-purple-600'
+                        : 'bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 border-purple-200 dark:border-purple-800 hover:bg-purple-100 dark:hover:bg-purple-900/30'
+                    }`}
+                    title="Ativar modo de rotação"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                    {isRotatingMode ? 'Modo Rotação Ativo' : 'Rotacionar'}
+                  </button>
+                  <button
+                    onClick={handleClearPolygon}
+                    className="px-4 py-2 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors text-sm"
+                  >
+                    Limpar Área
+                  </button>
+                </>
               )}
             </div>
           </div>
@@ -541,6 +665,8 @@ export default function MapBoundaryEditor({
                 mapTypeControl: true,
                 fullscreenControl: true,
                 zoomControl: true,
+                draggable: !isRotatingMode, // Desabilitar arrastar o mapa quando em modo de rotação
+                scrollwheel: true, // Manter zoom com scroll
               }}
             >
               {/* DrawingManager criado manualmente via useEffect */}
@@ -579,24 +705,75 @@ export default function MapBoundaryEditor({
               ))}
 
               {mapLoaded && boundary.length > 0 && (
-                <Polygon
-                  paths={boundary}
-                  options={polygonOptions}
-                  onMouseUp={() => {
-                    if (polygonRef.current) {
-                      const path = polygonRef.current.getPath();
-                      const newCoordinates: GeoCoordinate[] = [];
-                      for (let i = 0; i < path.getLength(); i++) {
-                        const point = path.getAt(i);
-                        newCoordinates.push({
-                          lat: point.lat(),
-                          lng: point.lng(),
-                        });
+                <>
+                  <Polygon
+                    paths={boundary}
+                    options={{
+                      ...polygonOptions,
+                      editable: !isRotatingMode,
+                      draggable: !isRotatingMode,
+                    }}
+                    onMouseUp={() => {
+                      if (!isRotatingMode && polygonRef.current) {
+                        const path = polygonRef.current.getPath();
+                        const newCoordinates: GeoCoordinate[] = [];
+                        for (let i = 0; i < path.getLength(); i++) {
+                          const point = path.getAt(i);
+                          newCoordinates.push({
+                            lat: point.lat(),
+                            lng: point.lng(),
+                          });
+                        }
+                        setBoundary(newCoordinates);
                       }
-                      setBoundary(newCoordinates);
-                    }
-                  }}
-                />
+                    }}
+                    onDragEnd={() => {
+                      if (!isRotatingMode && polygonRef.current) {
+                        const path = polygonRef.current.getPath();
+                        const newCoordinates: GeoCoordinate[] = [];
+                        for (let i = 0; i < path.getLength(); i++) {
+                          const point = path.getAt(i);
+                          newCoordinates.push({
+                            lat: point.lat(),
+                            lng: point.lng(),
+                          });
+                        }
+                        setBoundary(newCoordinates);
+                      }
+                    }}
+                    onLoad={(poly) => {
+                      polygonRef.current = poly;
+                    }}
+                  />
+                  
+                  {/* Marcadores de rotação nos cantos */}
+                  {isRotatingMode && boundary.map((point, index) => (
+                    <Marker
+                      key={`rotation-marker-${index}`}
+                      position={point}
+                      draggable={false}
+                      onMouseDown={() => {
+                        if (!isDraggingRotation) {
+                          setIsDraggingRotation(true);
+                          originalBoundary.current = [...boundary];
+                          rotationStartPoint.current = { ...boundary[index] };
+                          draggedMarkerIndex.current = index;
+                        }
+                      }}
+                      icon={{
+                        path: window.google.maps.SymbolPath.CIRCLE,
+                        scale: 8,
+                        fillColor: '#9333EA',
+                        fillOpacity: 1,
+                        strokeColor: '#ffffff',
+                        strokeWeight: 2,
+                      }}
+                      options={{
+                        cursor: 'grab'
+                      }}
+                    />
+                  ))}
+                </>
               )}
             </GoogleMap>
           </div>

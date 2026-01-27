@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState, useCallback } from 'react';
-import { GoogleMap, useLoadScript, DrawingManager, Polygon } from '@react-google-maps/api';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
+import { GoogleMap, useLoadScript, Polygon, Marker } from '@react-google-maps/api';
 import { GeoCoordinate, Lot } from '@/types';
 
 interface LotPolygonEditorProps {
@@ -38,11 +38,128 @@ export default function LotPolygonEditor({ lot, mapBoundary, blockBoundary, onSa
   const [coordinates, setCoordinates] = useState<GeoCoordinate[]>(lot.coordinates || []);
   const [isDrawing, setIsDrawing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const mapRef = useRef<google.maps.Map | null>(null);
+  const drawingManagerRef = useRef<google.maps.drawing.DrawingManager | null>(null);
 
   const { isLoaded, loadError } = useLoadScript({
     googleMapsApiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || '',
     libraries: libraries as any,
   });
+
+  // Criar DrawingManager manualmente para evitar duplicação
+  useEffect(() => {
+    if (!mapRef.current || !isLoaded || !isDrawing || drawingManagerRef.current) {
+      return;
+    }
+
+    const drawingManager = new google.maps.drawing.DrawingManager({
+      drawingMode: google.maps.drawing.OverlayType.POLYGON,
+      drawingControl: true,
+      drawingControlOptions: {
+        position: google.maps.ControlPosition.TOP_CENTER,
+        drawingModes: [
+          google.maps.drawing.OverlayType.POLYGON,
+          google.maps.drawing.OverlayType.RECTANGLE,
+        ],
+      },
+      polygonOptions: {
+        fillColor: '#4CAF50',
+        fillOpacity: 0.4,
+        strokeColor: '#2E7D32',
+        strokeWeight: 2,
+        editable: true,
+        draggable: true,
+      },
+      rectangleOptions: {
+        fillColor: '#4CAF50',
+        fillOpacity: 0.4,
+        strokeColor: '#2E7D32',
+        strokeWeight: 2,
+        editable: true,
+        draggable: true,
+      },
+    });
+
+    drawingManager.setMap(mapRef.current);
+    drawingManagerRef.current = drawingManager;
+
+    // Listener para polígono completo
+    google.maps.event.addListener(drawingManager, 'polygoncomplete', (poly: google.maps.Polygon) => {
+      const path = poly.getPath();
+      const coords: GeoCoordinate[] = [];
+      
+      for (let i = 0; i < path.getLength(); i++) {
+        const point = path.getAt(i);
+        coords.push({ lat: point.lat(), lng: point.lng() });
+      }
+
+      setCoordinates(coords);
+      setPolygon(poly);
+      setIsDrawing(false);
+      drawingManager.setDrawingMode(null);
+
+      // Fazer o polígono editável e arrastável
+      poly.setEditable(true);
+      poly.setDraggable(true);
+
+      // Atualizar coordenadas quando o polígono for editado
+      google.maps.event.addListener(poly.getPath(), 'set_at', () => {
+        updateCoordinatesFromPolygon(poly);
+      });
+      google.maps.event.addListener(poly.getPath(), 'insert_at', () => {
+        updateCoordinatesFromPolygon(poly);
+      });
+    });
+
+    // Listener para retângulo completo
+    google.maps.event.addListener(drawingManager, 'rectanglecomplete', (rectangle: google.maps.Rectangle) => {
+      const bounds = rectangle.getBounds();
+      if (bounds) {
+        const ne = bounds.getNorthEast();
+        const sw = bounds.getSouthWest();
+        const rectangleCoords: GeoCoordinate[] = [
+          { lat: ne.lat(), lng: ne.lng() },
+          { lat: ne.lat(), lng: sw.lng() },
+          { lat: sw.lat(), lng: sw.lng() },
+          { lat: sw.lat(), lng: ne.lng() },
+        ];
+        
+        // Criar polígono a partir do retângulo
+        const poly = new google.maps.Polygon({
+          paths: rectangleCoords,
+          fillColor: '#4CAF50',
+          fillOpacity: 0.4,
+          strokeColor: '#2E7D32',
+          strokeWeight: 2,
+          editable: true,
+          draggable: true,
+          map: mapRef.current,
+        });
+
+        setCoordinates(rectangleCoords);
+        setPolygon(poly);
+        setIsDrawing(false);
+        rectangle.setMap(null);
+        drawingManager.setDrawingMode(null);
+
+        // Atualizar coordenadas quando o polígono for editado
+        google.maps.event.addListener(poly.getPath(), 'set_at', () => {
+          updateCoordinatesFromPolygon(poly);
+        });
+        google.maps.event.addListener(poly.getPath(), 'insert_at', () => {
+          updateCoordinatesFromPolygon(poly);
+        });
+      }
+    });
+
+    return () => {
+      if (drawingManagerRef.current) {
+        google.maps.event.clearInstanceListeners(drawingManagerRef.current);
+        drawingManagerRef.current.setMap(null);
+        drawingManagerRef.current = null;
+      }
+    };
+  }, [mapRef.current, isLoaded, isDrawing]);
 
   // Calcular centro do mapa baseado na quadra (prioritário) ou no loteamento
   const getCenter = () => {
@@ -126,6 +243,44 @@ export default function LotPolygonEditor({ lot, mapBoundary, blockBoundary, onSa
     setCoordinates([]);
     setIsDrawing(false);
   };
+
+  // Função para calcular o centro do polígono
+  const getPolygonCenter = useCallback((coords: GeoCoordinate[]) => {
+    if (coords.length === 0) return null;
+    const latSum = coords.reduce((sum, coord) => sum + coord.lat, 0);
+    const lngSum = coords.reduce((sum, coord) => sum + coord.lng, 0);
+    return {
+      lat: latSum / coords.length,
+      lng: lngSum / coords.length,
+    };
+  }, []);
+
+  // Função para rotacionar um ponto em torno de um centro
+  const rotatePoint = useCallback((point: GeoCoordinate, center: GeoCoordinate, angle: number) => {
+    const radians = (angle * Math.PI) / 180;
+    const cos = Math.cos(radians);
+    const sin = Math.sin(radians);
+    const dx = point.lat - center.lat;
+    const dy = point.lng - center.lng;
+    return {
+      lat: center.lat + (dx * cos - dy * sin),
+      lng: center.lng + (dx * sin + dy * cos),
+    };
+  }, []);
+
+  // Função para rotacionar o polígono
+  const handleRotatePolygon = useCallback((angle: number) => {
+    if (coordinates.length === 0) return;
+    const center = getPolygonCenter(coordinates);
+    if (!center) return;
+    const rotated = coordinates.map(point => rotatePoint(point, center, angle));
+    setCoordinates(rotated);
+    
+    // Se há um polígono renderizado, atualizar suas coordenadas
+    if (polygon) {
+      polygon.setPath(rotated);
+    }
+  }, [coordinates, polygon, getPolygonCenter, rotatePoint]);
 
   const handleSave = async () => {
     if (coordinates.length < 3) {
@@ -211,6 +366,26 @@ export default function LotPolygonEditor({ lot, mapBoundary, blockBoundary, onSa
         {coordinates.length > 0 && (
           <>
             <button
+              onClick={() => handleRotatePolygon(-15)}
+              className="px-4 py-2 bg-purple-500 hover:bg-purple-600 text-white rounded-lg font-semibold transition-colors flex items-center gap-2"
+              title="Rotacionar -15°"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12.066 11.2a1 1 0 000 1.6l5.334 4A1 1 0 0019 16V8a1 1 0 00-1.6-.8l-5.333 4zM4.066 11.2a1 1 0 000 1.6l5.334 4A1 1 0 0011 16V8a1 1 0 00-1.6-.8l-5.334 4z" />
+              </svg>
+              ↶ 15°
+            </button>
+            <button
+              onClick={() => handleRotatePolygon(15)}
+              className="px-4 py-2 bg-purple-500 hover:bg-purple-600 text-white rounded-lg font-semibold transition-colors flex items-center gap-2"
+              title="Rotacionar +15°"
+            >
+              ↷ 15°
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.933 12.8a1 1 0 000-1.6L6.6 7.2A1 1 0 005 8v8a1 1 0 001.6.8l5.333-4zM19.933 12.8a1 1 0 000-1.6l-5.333-4A1 1 0 0013 8v8a1 1 0 001.6.8l5.333-4z" />
+              </svg>
+            </button>
+            <button
               onClick={handleClearDrawing}
               className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg font-semibold transition-colors flex items-center gap-2"
             >
@@ -277,6 +452,7 @@ export default function LotPolygonEditor({ lot, mapBoundary, blockBoundary, onSa
             center={center}
             zoom={18}
             onLoad={(map) => {
+              mapRef.current = map;
               // Ajustar zoom automaticamente para enquadrar a área de referência
               const referenceBoundary = blockBoundary || mapBoundary;
               if (referenceBoundary && referenceBoundary.length > 0) {
@@ -321,24 +497,7 @@ export default function LotPolygonEditor({ lot, mapBoundary, blockBoundary, onSa
               />
             )}
 
-            {/* Drawing Manager para desenhar o polígono do lote */}
-            {isDrawing && (
-              <DrawingManager
-                onPolygonComplete={onPolygonComplete}
-                options={{
-                  drawingControl: false,
-                  drawingMode: google.maps.drawing.OverlayType.POLYGON,
-                  polygonOptions: {
-                    fillColor: '#4CAF50',
-                    fillOpacity: 0.4,
-                    strokeColor: '#2E7D32',
-                    strokeWeight: 2,
-                    editable: false,
-                    draggable: false,
-                  },
-                }}
-              />
-            )}
+            {/* DrawingManager criado manualmente via useEffect */}
 
             {/* Mostrar polígono existente do lote */}
             {!isDrawing && coordinates.length > 0 && !polygon && (
@@ -349,7 +508,18 @@ export default function LotPolygonEditor({ lot, mapBoundary, blockBoundary, onSa
                   fillOpacity: 0.4,
                   strokeColor: '#2E7D32',
                   strokeWeight: 2,
-                  editable: false,
+                  editable: true,
+                  draggable: true,
+                }}
+                onLoad={(poly) => {
+                  setPolygon(poly);
+                  // Atualizar coordenadas quando o polígono for editado
+                  google.maps.event.addListener(poly.getPath(), 'set_at', () => {
+                    updateCoordinatesFromPolygon(poly);
+                  });
+                  google.maps.event.addListener(poly.getPath(), 'insert_at', () => {
+                    updateCoordinatesFromPolygon(poly);
+                  });
                 }}
               />
             )}
