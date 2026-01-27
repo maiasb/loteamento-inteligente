@@ -80,8 +80,8 @@ jobs:
             # Restart application with PM2
             echo "🔄 Restarting application with PM2..."
             if pm2 list | grep -q "vale-dos-carajas"; then
-              echo "♻️  Restarting existing PM2 process..."
-              pm2 restart vale-dos-carajas --update-env
+              echo "♻️  Reloading existing PM2 process with zero downtime..."
+              pm2 reload vale-dos-carajas --update-env
             else
               echo "▶️  Starting new PM2 process..."
               pm2 start npm --name vale-dos-carajas -- start
@@ -96,11 +96,21 @@ jobs:
             pm2 list
             
             # Verify process is online
-            if ! pm2 jlist | grep -q '"pm2_env":{"name":"vale-dos-carajas","status":"online"'; then
-              echo "⚠️  Warning: Process may not be running in online state"
-              pm2 show vale-dos-carajas
+            echo "🔍 Verifying process status..."
+            if ! pm2 show vale-dos-carajas --no-color > /dev/null 2>&1; then
+              echo "❌ Error: PM2 process 'vale-dos-carajas' not found!"
+              exit 1
             fi
             
+            # Check if process is in online state
+            PM2_STATUS=$(pm2 jlist | grep -o '"name":"vale-dos-carajas"[^}]*"status":"[^"]*"' | grep -o 'status":"[^"]*"' | cut -d'"' -f3)
+            if [ "$PM2_STATUS" != "online" ]; then
+              echo "❌ Error: Process is in '$PM2_STATUS' state, expected 'online'"
+              pm2 show vale-dos-carajas
+              exit 1
+            fi
+            
+            echo "✅ Process is running in online state"
             echo "✅ Deployment completed successfully!"
 
       - name: Deployment Status
