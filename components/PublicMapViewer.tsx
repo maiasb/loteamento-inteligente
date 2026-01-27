@@ -143,9 +143,9 @@ export default function PublicMapViewer({
       strokeColor: '#9333EA',
       strokeOpacity: 0.9,
       strokeWeight: isFocused ? 4 : (isHovered ? 3 : 2.5),
-      clickable: isAdminContext, // Clicável apenas no contexto admin
+      clickable: true, // Sempre clicável se houver callback
       zIndex: isFocused ? 50 : 5, // Entre a área do loteamento (1) e os lotes (10+)
-      cursor: isAdminContext ? 'pointer' : 'default',
+      cursor: 'pointer',
     };
   };
 
@@ -252,7 +252,7 @@ export default function PublicMapViewer({
             paths={block.coordinates || []}
             options={getBlockPolygonOptions(block, hoveredBlockId === block.id, focusedBlockId === block.id)}
             onClick={() => {
-              if (isAdminContext && onBlockClick) {
+              if (onBlockClick) {
                 console.log('[PublicMapViewer] Quadra clicada:', block.name);
                 onBlockClick(block);
               }

@@ -79,8 +79,8 @@ export default function MapDetails() {
   const [showMapAreas, setShowMapAreas] = useState(true); // Controla visibilidade das áreas no mapa
   
   // Estados para controlar visualização filtrada no mapa principal
-  const [focusedBlockId, setFocusedBlockId] = useState<string | null>(null); // ID da quadra em foco
-  const [focusedLotId, setFocusedLotId] = useState<string | null>(null); // ID do lote em foco
+  const [focusedBlockId, setFocusedBlockId] = useState<string | null>(null); // ID da quadra focada no mapa
+  const [focusedLotId, setFocusedLotId] = useState<string | null>(null); // ID do lote focado no mapa
 
   const { blocks, loadBlocks, createBlock, updateBlock, deleteBlock } = useBlockOperations();
 
@@ -539,11 +539,6 @@ export default function MapDetails() {
           setSelectedBlockLots([]);
         }
         
-        // Limpar foco se a quadra excluída estava focada
-        if (focusedBlockId === blockId) {
-          setFocusedBlockId(null);
-        }
-        
         alert('✅ Quadra excluída com sucesso!');
       }
     } catch (error: any) {
@@ -719,11 +714,6 @@ export default function MapDetails() {
       // Recarregar todos os lotes do mapa para atualizar visualização
       await loadAllLotsInMap();
       
-      // Limpar foco se o lote excluído estava focado
-      if (focusedLotId === lotId) {
-        setFocusedLotId(null);
-      }
-
       // Força refresh dos cards após excluir lote
       setRefreshTrigger(prev => prev + 1);
       alert('✅ Lote excluído com sucesso!');
@@ -1130,7 +1120,15 @@ export default function MapDetails() {
         {/* Modal de Criar Novo Loteamento */}
         {isCreatingMap && (
           <div className="fixed inset-0 bg-[var(--foreground)]/40 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
-            <div className="bg-[var(--card-bg)] rounded-2xl shadow-[var(--shadow-xl)] w-full max-w-md p-6 animate-in zoom-in-95 duration-200">
+            <div 
+              className="bg-[var(--card-bg)] rounded-2xl shadow-[var(--shadow-xl)] w-full max-w-md p-6 animate-in zoom-in-95 duration-200"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !isSubmittingMap && newMapName.trim()) {
+                  e.preventDefault();
+                  handleCreateMap();
+                }
+              }}
+            >
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-2xl font-bold text-[var(--foreground)]">Criar Novo Loteamento</h2>
                 <button
@@ -1495,21 +1493,21 @@ export default function MapDetails() {
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
               {blocks.map((block) => {
                 const isBlockDeletionDisabled = hasReservedOrSoldLotsInBlock(block.id);
-                const isFocused = focusedBlockId === block.id;
                 
                 return (
                 <div
                   key={block.id}
                   onClick={() => {
-                    setSelectedBlockId(selectedBlockId === block.id ? '' : block.id);
+                    // Apenas fazer requisição se for uma quadra diferente
+                    if (selectedBlockId !== block.id) {
+                      setSelectedBlockId(block.id);
+                    }
                     setFocusedBlockId(block.id);
                     setFocusedLotId(null);
                   }}
                   className={`p-4 rounded-xl font-semibold transition-all relative group cursor-pointer border-2 ${
                     selectedBlockId === block.id
                       ? 'bg-gradient-to-br from-emerald-600 to-emerald-700 text-white shadow-lg scale-105 border-emerald-500'
-                      : isFocused
-                      ? 'bg-gradient-to-br from-purple-600 to-purple-700 text-white shadow-lg border-purple-500'
                       : 'bg-[var(--surface)] text-[var(--foreground)] hover:bg-[var(--surface-hover)] border-[var(--border)] hover:border-emerald-400 hover:shadow-md'
                   }`}
                 >
@@ -1647,13 +1645,7 @@ export default function MapDetails() {
               multiSelectMode={multiSelectMode}
               selectedLots={selectedLots}
               onToggleLotSelection={handleToggleLotSelection}
-              onSingleLotClick={(lot) => {
-                setFocusedLotId(lot.id);
-                setFocusedBlockId(null);
-              }}
               onDefineArea={(lot) => {
-                setFocusedLotId(lot.id);
-                setFocusedBlockId(null);
                 setEditingLotPolygon(lot);
               }}
             />
@@ -1684,27 +1676,9 @@ export default function MapDetails() {
           <div className="bg-[var(--card-bg)] border-2 border-[var(--primary)]/30 rounded-2xl overflow-hidden shadow-[var(--shadow-lg)] p-6">
             <div className="mb-4 flex items-center justify-between">
               <h3 className="text-[var(--foreground)] text-lg font-semibold">
-                {focusedLotId ? (
-                  `Lote ${allLotsInMap.find(l => l.id === focusedLotId)?.lotNumber || ''}`
-                ) : focusedBlockId ? (
-                  `Quadra ${blocks.find(b => b.id === focusedBlockId)?.name || ''}`
-                ) : (
-                  'Loteamento Completo'
-                )}
+                Loteamento Completo
               </h3>
               <div className="flex gap-2">
-                {(focusedBlockId || focusedLotId) && (
-                  <button
-                    onClick={() => {
-                      setFocusedBlockId(null);
-                      setFocusedLotId(null);
-                    }}
-                    className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg flex items-center gap-2 transition-colors text-sm"
-                  >
-                    <span>🔄</span>
-                    Ver Tudo
-                  </button>
-                )}
                 <button
                   onClick={() => setShowMapAreas(!showMapAreas)}
                   className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg flex items-center gap-2 transition-colors text-sm"
@@ -1727,11 +1701,15 @@ export default function MapDetails() {
                     </>
                   )}
                 </button>
-                {map?.address && (
+                {map?.boundaryCoordinates && map.boundaryCoordinates.length > 0 && (
                   <button
                     onClick={() => {
-                      const searchQuery = encodeURIComponent(map.address!);
-                      const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${searchQuery}`;
+                      // Calcular centro das coordenadas
+                      const lats = map.boundaryCoordinates!.map(coord => coord.lat);
+                      const lngs = map.boundaryCoordinates!.map(coord => coord.lng);
+                      const centerLat = lats.reduce((a, b) => a + b, 0) / lats.length;
+                      const centerLng = lngs.reduce((a, b) => a + b, 0) / lngs.length;
+                      const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${centerLat},${centerLng}`;
                       window.open(mapsUrl, '_blank');
                     }}
                     className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg flex items-center gap-2 transition-colors text-sm"
@@ -1750,23 +1728,17 @@ export default function MapDetails() {
                   address={map?.address}
                   boundaryCoordinates={map?.boundaryCoordinates}
                   blocks={blocks}
-                  lots={focusedLotId ? allLotsInMap.filter(l => l.id === focusedLotId) : focusedBlockId ? allLotsInMap.filter(l => l.blockId === focusedBlockId) : allLotsInMap}
+                  lots={allLotsInMap}
                   focusedBlockId={focusedBlockId}
                   focusedLotId={focusedLotId}
                   showAreas={showMapAreas}
-                  onLotClick={(lot) => {
-                    console.log('[MapDetails] Lote clicado no mapa:', lot.lotNumber);
-                    setFocusedLotId(lot.id);
-                    setFocusedBlockId(null);
-                  }}
                   onBlockClick={(block) => {
                     console.log('[MapDetails] Quadra clicada no mapa:', block.name);
+                    // Apenas fazer requisição se for uma quadra diferente
+                    if (selectedBlockId !== block.id) {
+                      setSelectedBlockId(block.id);
+                    }
                     setFocusedBlockId(block.id);
-                    setFocusedLotId(null);
-                  }}
-                  onBoundaryClick={() => {
-                    console.log('[MapDetails] Área do loteamento clicada');
-                    setFocusedBlockId(null);
                     setFocusedLotId(null);
                   }}
                   isAdminContext={true}
@@ -1806,7 +1778,15 @@ export default function MapDetails() {
       {/* Modal de Adicionar/Editar Quadra */}
       {isAddingBlock && editingBlock && (
         <div className="fixed inset-0 bg-[var(--foreground)]/40 backdrop-blur-sm flex items-center justify-center z-50 p-2 sm:p-4 animate-in fade-in duration-200 overflow-y-auto">
-          <div className="bg-[var(--card-bg)] rounded-2xl w-full max-w-md max-h-[95vh] sm:max-h-[90vh] my-auto overflow-y-auto shadow-[var(--shadow-xl)] border border-[var(--border)]">
+          <div 
+            className="bg-[var(--card-bg)] rounded-2xl w-full max-w-md max-h-[95vh] sm:max-h-[90vh] my-auto overflow-y-auto shadow-[var(--shadow-xl)] border border-[var(--border)]"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && editingBlock.name.trim()) {
+                e.preventDefault();
+                handleSaveBlock();
+              }
+            }}
+          >
             <div className="sticky top-0 bg-gradient-to-r from-[var(--primary)] to-[var(--primary-light)] text-white p-4 sm:p-6 rounded-t-2xl shadow-[var(--shadow-md)] z-10">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 sm:gap-3">
@@ -1888,7 +1868,15 @@ export default function MapDetails() {
       {/* Modal de Adicionar Lote */}
       {isAddingLot && (
         <div className="fixed inset-0 bg-[var(--foreground)]/40 backdrop-blur-sm flex items-center justify-center z-50 p-2 sm:p-4 animate-in fade-in duration-200 overflow-y-auto">
-          <div className="bg-[var(--card-bg)] rounded-2xl w-full max-w-md max-h-[95vh] sm:max-h-[90vh] my-auto overflow-y-auto shadow-[var(--shadow-xl)] border border-[var(--border)] [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+          <div 
+            className="bg-[var(--card-bg)] rounded-2xl w-full max-w-md max-h-[95vh] sm:max-h-[90vh] my-auto overflow-y-auto shadow-[var(--shadow-xl)] border border-[var(--border)] [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && canSubmitLot && submitLotFn) {
+                e.preventDefault();
+                submitLotFn();
+              }
+            }}
+          >
             <div className="sticky top-0 bg-gradient-to-r from-[var(--primary)] to-[var(--primary-light)] text-white p-4 sm:p-6 rounded-t-2xl shadow-[var(--shadow-md)] z-10">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 sm:gap-3">

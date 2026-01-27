@@ -58,6 +58,8 @@ export default function AdminMapsLotsPage() {
   const [singleLotPurchase, setSingleLotPurchase] = useState<Lot | null>(null);
   const [clickedLot, setClickedLot] = useState<Lot | null>(null); // Lote clicado no mapa
   const [showMapAreas, setShowMapAreas] = useState(true); // Controla visibilidade das áreas no mapa
+  const [focusedBlockId, setFocusedBlockId] = useState<string | null>(null); // ID da quadra focada no mapa
+  const [focusedLotId, setFocusedLotId] = useState<string | null>(null); // ID do lote focado no mapa
 
   // Função para carregar estatísticas do mapa
   const loadMapStats = async (forceReload = false) => {
@@ -340,7 +342,14 @@ export default function AdminMapsLotsPage() {
                 {blocks.map((block) => (
                   <button
                     key={block.id}
-                    onClick={() => selectBlock(block.id)}
+                    onClick={() => {
+                      // Apenas fazer requisição se for uma quadra diferente
+                      if (selectedBlock?.id !== block.id) {
+                        selectBlock(block.id);
+                      }
+                      setFocusedBlockId(block.id);
+                      setFocusedLotId(null);
+                    }}
                     className={`p-4 rounded-xl font-semibold transition-all border-2 ${
                       selectedBlock?.id === block.id
                         ? 'bg-gradient-to-br from-emerald-600 to-emerald-700 text-white shadow-lg scale-105 border-emerald-500'
@@ -572,6 +581,23 @@ export default function AdminMapsLotsPage() {
                           </>
                         )}
                       </button>
+                      {selectedMap?.boundaryCoordinates && selectedMap.boundaryCoordinates.length > 0 && (
+                        <button
+                          onClick={() => {
+                            // Calcular centro das coordenadas
+                            const lats = selectedMap.boundaryCoordinates!.map(coord => coord.lat);
+                            const lngs = selectedMap.boundaryCoordinates!.map(coord => coord.lng);
+                            const centerLat = lats.reduce((a, b) => a + b, 0) / lats.length;
+                            const centerLng = lngs.reduce((a, b) => a + b, 0) / lngs.length;
+                            const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${centerLat},${centerLng}`;
+                            window.open(mapsUrl, '_blank');
+                          }}
+                          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg flex items-center gap-2 transition-colors text-sm"
+                        >
+                          <span>📍</span>
+                          Abrir no Google Maps
+                        </button>
+                      )}
                     </div>
                     
                     <div className="flex-1 relative">
@@ -581,7 +607,18 @@ export default function AdminMapsLotsPage() {
                       blocks={blocks}
                       lots={lots}
                       selectedLotIds={selectedLots.map(l => l.id)}
+                      focusedBlockId={focusedBlockId}
+                      focusedLotId={focusedLotId}
                       showAreas={showMapAreas}
+                      onBlockClick={(block) => {
+                        console.log('[Maps Page] Quadra clicada no mapa:', block.name);
+                        // Apenas fazer requisição se for uma quadra diferente
+                        if (selectedBlock?.id !== block.id) {
+                          selectBlock(block.id);
+                        }
+                        setFocusedBlockId(block.id);
+                        setFocusedLotId(null);
+                      }}
                       onLotClick={(lot) => {
                         console.log('[Maps Page] onLotClick chamado:', lot.lotNumber, 'multiSelectMode:', multiSelectMode);
                         
