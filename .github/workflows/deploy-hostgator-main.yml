@@ -1,0 +1,116 @@
+name: Deploy to HostGator VPS (Main)
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Deploy to VPS via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USERNAME }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT }}
+          script: |
+            echo "🚀 Starting deployment to VPS..."
+            
+            # Define application directory
+            APP_DIR="${{ secrets.VPS_APP_DIR }}"
+            
+            # Check if directory exists
+            if [ ! -d "$APP_DIR" ]; then
+              echo "❌ Error: Directory $APP_DIR does not exist!"
+              exit 1
+            fi
+            
+            # Navigate to application directory
+            cd "$APP_DIR"
+            echo "📁 Working directory: $(pwd)"
+            
+            # Backup node_modules for optimization
+            echo "💾 Backing up node_modules..."
+            if [ -d "node_modules" ]; then
+              mv node_modules node_modules.tmp
+            fi
+            
+            # Update code from main branch
+            echo "🔄 Pulling latest code from main branch..."
+            git fetch origin
+            git reset --hard origin/main
+            
+            # Restore node_modules
+            echo "♻️  Restoring node_modules..."
+            if [ -d "node_modules.tmp" ]; then
+              mv node_modules.tmp node_modules
+            fi
+            
+            # Install dependencies
+            echo "📦 Installing dependencies..."
+            npm ci
+            
+            # Execute migrations automatically
+            echo "🔧 Running database migrations..."
+            npm run migrate
+            
+            # Verify migration status
+            echo "✅ Checking migration status..."
+            npm run migrate:status
+            
+            # Build application
+            echo "🏗️  Building application..."
+            npm run build
+            
+            # Restart application with PM2
+            echo "🔄 Restarting application with PM2..."
+            if pm2 list | grep -q "vale-dos-carajas"; then
+              echo "♻️  Restarting existing PM2 process..."
+              pm2 restart vale-dos-carajas --update-env
+            else
+              echo "▶️  Starting new PM2 process..."
+              pm2 start npm --name vale-dos-carajas -- start
+            fi
+            
+            # Save PM2 configuration
+            echo "💾 Saving PM2 configuration..."
+            pm2 save
+            
+            # Clean temporary files
+            echo "🧹 Cleaning temporary files..."
+            rm -rf node_modules.tmp
+            
+            # Display application status
+            echo "📊 Application status:"
+            pm2 status vale-dos-carajas
+            
+            echo "✅ Deployment completed successfully!"
+
+      - name: Deployment Status
+        if: always()
+        run: |
+          if [ "${{ job.status }}" == "success" ]; then
+            echo "✅ Deployment to HostGator VPS completed successfully!"
+          else
+            echo "❌ Deployment to HostGator VPS failed!"
+            exit 1
+          fi
