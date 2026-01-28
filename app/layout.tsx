@@ -19,9 +19,9 @@ export const metadata: Metadata = {
   title: "Imobiliária Vale dos Carajás",
   description: "Sistema de gerenciamento de loteamentos",
   icons: {
-    icon: '/simbolo-vale-dos-carajas.svg',
-    shortcut: '/simbolo-vale-dos-carajas.svg',
-    apple: '/simbolo-vale-dos-carajas.svg',
+    icon: '/simbolo-vale-dos-carajas-escuro.svg',
+    shortcut: '/simbolo-vale-dos-carajas-escuro.svg',
+    apple: '/simbolo-vale-dos-carajas-escuro.svg',
   },
 };
 

@@ -113,21 +113,21 @@ function LoginForm() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-emerald-50 to-teal-100 p-4">
+    <div className="min-h-screen flex items-center justify-center p-4" style={{ backgroundColor: '#E8D5CE' }}>
       <div className="w-full max-w-md">
         <div className="bg-[var(--card-bg)] rounded-2xl shadow-xl p-8 border border-[var(--border)]">
           {/* Logo e Título */}
           <div className="text-center mb-8">
             <div className="mx-auto mb-4 flex items-center justify-center">
               <img 
-                src="/simbolo-vale-dos-carajas.svg" 
+                src="/simbolo-logotipo-epiteto-login.svg" 
                 alt="Imobiliária Vale dos Carajás" 
-                className="h-20 w-auto"
+                className="h-30 w-auto"
               />
             </div>
-            <p className="text-[var(--foreground)] opacity-70 mt-2">
-              Sistema de Gerenciamento
-            </p>
+            {/* <p className="text-[var(--foreground)] opacity-70 mt-2">
+              Sistema de Loteamento
+            </p> */}
           </div>
 
           {/* Formulário */}
