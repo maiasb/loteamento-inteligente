@@ -17,6 +17,7 @@
     "migrate:create": "node scripts/migrate.js create"
   },
   "dependencies": {
+    "@react-google-maps/api": "^2.19.3",
     "axios": "^1.13.2",
     "mysql2": "^3.15.3",
     "next": "16.0.1",
