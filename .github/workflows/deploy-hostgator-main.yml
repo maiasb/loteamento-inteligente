@@ -1,0 +1,127 @@
+name: Deploy to HostGator VPS (Main)
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Deploy to VPS via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USERNAME }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT }}
+          script: |
+            set -e  # Exit immediately if any command fails
+            
+            echo "🚀 Starting deployment to VPS..."
+            
+            # Define application directory
+            APP_DIR="${{ secrets.VPS_APP_DIR }}"
+            
+            # Check if directory exists
+            if [ ! -d "$APP_DIR" ]; then
+              echo "❌ Error: Directory $APP_DIR does not exist!"
+              exit 1
+            fi
+            
+            # Navigate to application directory
+            cd "$APP_DIR"
+            echo "📁 Changed to application directory"
+            
+            # Check for uncommitted changes
+            if ! git diff-index --quiet HEAD --; then
+              echo "⚠️  Warning: Uncommitted changes detected. Stashing..."
+              git stash
+            fi
+            
+            # Update code from main branch
+            echo "🔄 Pulling latest code from main branch..."
+            git fetch origin
+            git reset --hard origin/main
+            
+            # Install dependencies
+            echo "📦 Installing dependencies..."
+            npm ci
+            
+            # Execute migrations automatically
+            echo "🔧 Running database migrations..."
+            if ! npm run migrate; then
+              echo "❌ Error: Database migrations failed!"
+              exit 1
+            fi
+            
+            # Verify migration status
+            echo "✅ Checking migration status..."
+            npm run migrate:status
+            
+            # Build application
+            echo "🏗️  Building application..."
+            npm run build
+            
+            # Restart application with PM2
+            echo "🔄 Restarting application with PM2..."
+            if pm2 list | grep -q "vale-dos-carajas"; then
+              echo "♻️  Reloading existing PM2 process with zero downtime..."
+              pm2 reload vale-dos-carajas --update-env
+            else
+              echo "▶️  Starting new PM2 process..."
+              pm2 start npm --name vale-dos-carajas -- start
+            fi
+            
+            # Save PM2 configuration
+            echo "💾 Saving PM2 configuration..."
+            pm2 save
+            
+            # Display application status
+            echo "📊 Application status:"
+            pm2 list
+            
+            # Verify process is online
+            echo "🔍 Verifying process status..."
+            if ! pm2 show vale-dos-carajas --no-color > /dev/null 2>&1; then
+              echo "❌ Error: PM2 process 'vale-dos-carajas' not found!"
+              exit 1
+            fi
+            
+            # Check if process is in online state
+            PM2_STATUS=$(pm2 jlist | grep -o '"name":"vale-dos-carajas"[^}]*"status":"[^"]*"' | grep -o 'status":"[^"]*"' | cut -d'"' -f3)
+            if [ "$PM2_STATUS" != "online" ]; then
+              echo "❌ Error: Process is in '$PM2_STATUS' state, expected 'online'"
+              pm2 show vale-dos-carajas
+              exit 1
+            fi
+            
+            echo "✅ Process is running in online state"
+            echo "✅ Deployment completed successfully!"
+
+      - name: Deployment Status
+        if: always()
+        run: |
+          if [ "${{ job.status }}" == "success" ]; then
+            echo "✅ Deployment to HostGator VPS completed successfully!"
+          else
+            echo "❌ Deployment to HostGator VPS failed!"
+            exit 1
+          fi
