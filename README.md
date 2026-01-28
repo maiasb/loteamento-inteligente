@@ -6,6 +6,13 @@
 - ✅ Servidor rodando em **http://localhost:3000**
 - ✅ Todos os componentes implementados
 - ✅ Sistema funcional e pronto para uso
+- ⚠️ Deploy automático requer configuração - [Ver Status](./DEPLOY_SUMMARY.md)
+
+### 📚 Documentação de Deploy e Testes
+- **[DEPLOY_SUMMARY.md](./DEPLOY_SUMMARY.md)** - Resumo executivo do status de deploy
+- **[DEPLOY_STATUS.md](./DEPLOY_STATUS.md)** - Análise completa do deploy automático
+- **[TESTING_GUIDE.md](./TESTING_GUIDE.md)** - Guia completo de testes
+- **[check-deploy-status.sh](./check-deploy-status.sh)** - Script de verificação de status
 
 ## ⚙️ Configuração Inicial
 
