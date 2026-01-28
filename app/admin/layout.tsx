@@ -6,11 +6,13 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { UserRole } from '@/types';
 import ThemeToggle from '@/components/ThemeToggle';
+import { useTheme } from '@/contexts/ThemeContext';
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const { user, isAuthenticated, logout, canAccessUsers } = useAuth();
+  const { theme } = useTheme();
   const [mounted, setMounted] = useState(false);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
 
@@ -146,7 +148,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3 flex-1">
                 <img 
-                  src="/simbolo-logotipo-epiteto.svg" 
+                  src={theme === 'light' ? '/simbolo-logotipo-epiteto-verde.svg' : '/simbolo-logotipo-epiteto.svg'}
                   alt="Imobiliária Vale dos Carajás" 
                   className="h-auto w-auto"
                 />
