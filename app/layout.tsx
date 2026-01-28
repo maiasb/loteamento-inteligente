@@ -18,6 +18,11 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Imobiliária Vale dos Carajás",
   description: "Sistema de gerenciamento de loteamentos",
+  icons: {
+    icon: '/simbolo-vale-dos-carajas.svg',
+    shortcut: '/simbolo-vale-dos-carajas.svg',
+    apple: '/simbolo-vale-dos-carajas.svg',
+  },
 };
 
 export const viewport: Viewport = {
