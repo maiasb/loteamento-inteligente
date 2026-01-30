@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import mysql from 'mysql2/promise';
-import { dbConfig } from '@/lib/db';
+import { withDbConnection } from '@/lib/dbConnection';
 
 // Forçar rota dinâmica
 export const dynamic = 'force-dynamic';
@@ -11,55 +11,58 @@ export const dynamic = 'force-dynamic';
  * Otimizado para não trazer dados detalhados desnecessários
  */
 export async function GET(request: NextRequest) {
-  let connection;
-  
   try {
-
-    connection = await mysql.createConnection(dbConfig);
-
-    // Contar total de mapas
-    const [mapsCount] = await connection.execute(
-      'SELECT COUNT(*) as total FROM maps'
-    );
-    const totalMaps = (mapsCount as any)[0]?.total || 0;
-
-    // Estatísticas de lotes por status (contagem e valor)
-    const [lotsStats] = await connection.execute(`
-      SELECT 
-        status,
-        COUNT(*) as count,
-        SUM(price) as total_value
-      FROM lots
-      GROUP BY status
-    `);
-
-    // Buscar dados agregados das reservas
-    const [reservationsStats] = await connection.execute(`
-      SELECT 
-        pr.status,
-        SUM(prl.agreed_price) as total_agreed,
-        SUM(prl.first_payment) as total_first_payment
-      FROM purchase_requests pr
-      INNER JOIN purchase_request_lots prl ON pr.id = prl.purchase_request_id
-      GROUP BY pr.status
-    `);
-
-    // Buscar estatísticas por mapa
-    const [mapStats] = await connection.execute(`
-      SELECT 
-        m.id,
-        m.name,
-        m.description,
-        COUNT(l.id) as total_lots,
-        SUM(CASE WHEN l.status = 'available' THEN 1 ELSE 0 END) as available_lots,
-        SUM(CASE WHEN l.status = 'reserved' THEN 1 ELSE 0 END) as reserved_lots,
-        SUM(CASE WHEN l.status = 'sold' THEN 1 ELSE 0 END) as sold_lots,
-        SUM(CASE WHEN l.status = 'blocked' THEN 1 ELSE 0 END) as blocked_lots
-      FROM maps m
-      LEFT JOIN lots l ON m.id = l.map_id
-      GROUP BY m.id, m.name, m.description
-      ORDER BY m.created_at DESC
-    `);
+    const result = await withDbConnection(async (connection) => {
+      // Executar queries em paralelo para melhor performance
+      const [
+        [mapsCount],
+        [lotsStats],
+        [reservationsStats],
+        [mapStats]
+      ] = await Promise.all([
+        // Contar total de mapas
+        connection.execute('SELECT COUNT(*) as total FROM maps'),
+        
+        // Estatísticas de lotes por status (contagem e valor)
+        connection.execute(`
+          SELECT 
+            status,
+            COUNT(*) as count,
+            SUM(price) as total_value
+          FROM lots
+          GROUP BY status
+        `),
+        
+        // Buscar dados agregados das reservas
+        connection.execute(`
+          SELECT 
+            pr.status,
+            SUM(prl.agreed_price) as total_agreed,
+            SUM(prl.first_payment) as total_first_payment
+          FROM purchase_requests pr
+          INNER JOIN purchase_request_lots prl ON pr.id = prl.purchase_request_id
+          GROUP BY pr.status
+        `),
+        
+        // Buscar estatísticas por mapa
+        connection.execute(`
+          SELECT 
+            m.id,
+            m.name,
+            m.description,
+            COUNT(l.id) as total_lots,
+            SUM(CASE WHEN l.status = 'available' THEN 1 ELSE 0 END) as available_lots,
+            SUM(CASE WHEN l.status = 'reserved' THEN 1 ELSE 0 END) as reserved_lots,
+            SUM(CASE WHEN l.status = 'sold' THEN 1 ELSE 0 END) as sold_lots,
+            SUM(CASE WHEN l.status = 'blocked' THEN 1 ELSE 0 END) as blocked_lots
+          FROM maps m
+          LEFT JOIN lots l ON m.id = l.map_id
+          GROUP BY m.id, m.name, m.description
+          ORDER BY m.created_at DESC
+        `)
+      ]);
+      
+      const totalMaps = (mapsCount as any)[0]?.total || 0;
 
     // Processar estatísticas de lotes
     const lotsStatsMap = (lotsStats as any[]).reduce((acc, row) => {
@@ -128,16 +131,15 @@ export async function GET(request: NextRequest) {
       })),
     };
 
-    return NextResponse.json(response, { status: 200 });
+    return response;
+  });
+
+  return NextResponse.json(result, { status: 200 });
   } catch (error) {
     console.error('[API /dashboard/stats GET] ❌ Erro:', error);
     return NextResponse.json(
       { error: 'Erro ao buscar estatísticas do dashboard' },
       { status: 500 }
     );
-  } finally {
-    if (connection) {
-      await connection.end();
-    }
   }
 }
