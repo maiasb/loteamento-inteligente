@@ -77,9 +77,10 @@ export default function AdminMapsLotsPage() {
     loadedStatsForMapRef.current = selectedMap.id;
     setIsLoadingMapStats(true);
     try {
-      const response = await axios.get('/api/mapas/estatisticas', {
+      const response = await axios.get('/api/mapas/estatisticas/', {
         params: { mapId: selectedMap.id },
-        timeout: 10000,
+        timeout: 30000,
+        maxRedirects: 5,
       });
 
       if (response.data) {
@@ -105,13 +106,14 @@ export default function AdminMapsLotsPage() {
     
     try {
       // Buscar apenas reservas da quadra selecionada
-      const response = await axios.get('/api/reservas', {
+      const response = await axios.get('/api/reservas/', {
         params: {
           minimal: true,
           redirectOnly: true,
           blockId: selectedBlock.id, // Filtrar apenas reservas desta quadra
         },
-        timeout: 10000,
+        timeout: 30000,
+        maxRedirects: 5,
       });
       setReservations(response.data);
     } catch (error) {
@@ -203,7 +205,7 @@ export default function AdminMapsLotsPage() {
       const newStatus = currentStatus === LotStatus.BLOCKED ? LotStatus.AVAILABLE : LotStatus.BLOCKED;
 
       // Atualizar via API
-      await axios.patch('/api/mapas/lotes/atualizar', {
+      await axios.patch('/api/mapas/lotes/atualizar/', {
         id: lot.id,
         mapId: lot.mapId,
         blockId: lot.blockId,

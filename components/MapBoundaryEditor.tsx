@@ -59,6 +59,9 @@ export default function MapBoundaryEditor({
   const [showReferenceAreas, setShowReferenceAreas] = useState(true); // Controla visibilidade das áreas de referência
   const [isRotatingMode, setIsRotatingMode] = useState(false);
   const [isDraggingRotation, setIsDraggingRotation] = useState(false);
+  const [currentRotationAngle, setCurrentRotationAngle] = useState(0);
+  const [showSnapGuides, setShowSnapGuides] = useState(false);
+  const [snapAngle, setSnapAngle] = useState<number | null>(null);
   const rotationStartPoint = useRef<GeoCoordinate | null>(null);
   const originalBoundary = useRef<GeoCoordinate[]>([]);
   const draggedMarkerIndex = useRef<number>(-1);
@@ -327,6 +330,27 @@ export default function MapBoundaryEditor({
     return Math.atan2(dy, dx) * (180 / Math.PI);
   }, []);
 
+  // Função para normalizar ângulo entre 0 e 360
+  const normalizeAngle = (angle: number): number => {
+    let normalized = angle % 360;
+    if (normalized < 0) normalized += 360;
+    return normalized;
+  };
+
+  // Função para encontrar o ângulo snap mais próximo (0°, 90°, 180°, 270°)
+  const findSnapAngle = (angle: number, threshold: number = 5): number | null => {
+    const normalized = normalizeAngle(angle);
+    const snapAngles = [0, 90, 180, 270];
+    
+    for (const snapAngle of snapAngles) {
+      const diff = Math.abs(normalized - snapAngle);
+      if (diff <= threshold || diff >= (360 - threshold)) {
+        return snapAngle;
+      }
+    }
+    return null;
+  };
+
   // Ativar modo de rotação
   const toggleRotationMode = useCallback(() => {
     if (!isRotatingMode && boundary.length > 0) {
@@ -344,7 +368,22 @@ export default function MapBoundaryEditor({
 
     const startAngle = calculateAngle(center, rotationStartPoint.current);
     const currentAngle = calculateAngle(center, currentPoint);
-    const angleDiff = startAngle - currentAngle; // Invertido: startAngle - currentAngle
+    let angleDiff = startAngle - currentAngle;
+
+    // Detectar snap angle
+    const snapResult = findSnapAngle(angleDiff, 5);
+    
+    if (snapResult !== null) {
+      // Aplicar snap
+      angleDiff = snapResult;
+      setShowSnapGuides(true);
+      setSnapAngle(snapResult);
+    } else {
+      setShowSnapGuides(false);
+      setSnapAngle(null);
+    }
+
+    setCurrentRotationAngle(normalizeAngle(angleDiff));
 
     const rotated = originalBoundary.current.map(p => rotatePoint(p, center, angleDiff));
     setBoundary(rotated);
@@ -380,6 +419,8 @@ export default function MapBoundaryEditor({
       setIsDraggingRotation(false);
       rotationStartPoint.current = null;
       draggedMarkerIndex.current = -1;
+      setShowSnapGuides(false);
+      setSnapAngle(null);
     };
 
     // Adicionar listener no document para capturar mouseup em qualquer lugar
@@ -582,6 +623,18 @@ export default function MapBoundaryEditor({
               {boundary.length > 0 && (
                 <p className="text-sm text-green-600 dark:text-green-400">✓ Área delimitada com {boundary.length} pontos</p>
               )}
+              {isRotatingMode && isDraggingRotation && (
+                <div className="flex items-center gap-2 mt-1">
+                  <p className="text-sm text-purple-600 dark:text-purple-400">
+                    Ângulo: {Math.round(currentRotationAngle)}°
+                  </p>
+                  {showSnapGuides && (
+                    <span className="text-xs bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 px-2 py-0.5 rounded-full font-semibold">
+                      SNAP {snapAngle}°
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
             <div className="flex gap-2">
               {(referenceBoundary || existingAreas.length > 0) && (
@@ -630,6 +683,48 @@ export default function MapBoundaryEditor({
                     </svg>
                     {isRotatingMode ? 'Modo Rotação Ativo' : 'Rotacionar'}
                   </button>
+                  
+                  {isRotatingMode && (
+                    <div className="flex gap-1 px-2 py-1 bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-lg">
+                      <button
+                        onClick={() => handleRotatePolygon(90)}
+                        className="p-1.5 hover:bg-purple-100 dark:hover:bg-purple-900/40 rounded transition-colors"
+                        title="Rotacionar 90° (Horizontal)"
+                      >
+                        <svg className="w-5 h-5 text-purple-600 dark:text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                        </svg>
+                      </button>
+                      <button
+                        onClick={() => handleRotatePolygon(-90)}
+                        className="p-1.5 hover:bg-purple-100 dark:hover:bg-purple-900/40 rounded transition-colors"
+                        title="Rotacionar -90° (Vertical)"
+                      >
+                        <svg className="w-5 h-5 text-purple-600 dark:text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+                        </svg>
+                      </button>
+                      <button
+                        onClick={() => handleRotatePolygon(45)}
+                        className="p-1.5 hover:bg-purple-100 dark:hover:bg-purple-900/40 rounded transition-colors"
+                        title="Rotacionar 45°"
+                      >
+                        <svg className="w-5 h-5 text-purple-600 dark:text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9" />
+                        </svg>
+                      </button>
+                      <button
+                        onClick={() => handleRotatePolygon(-45)}
+                        className="p-1.5 hover:bg-purple-100 dark:hover:bg-purple-900/40 rounded transition-colors"
+                        title="Rotacionar -45°"
+                      >
+                        <svg className="w-5 h-5 text-purple-600 dark:text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 20v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                      </button>
+                    </div>
+                  )}
+                  
                   <button
                     onClick={handleClearPolygon}
                     className="px-4 py-2 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors text-sm"
@@ -640,6 +735,24 @@ export default function MapBoundaryEditor({
               )}
             </div>
           </div>
+
+          {isRotatingMode && (
+            <div className="mb-3 p-3 bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-lg">
+              <div className="flex items-start gap-2">
+                <svg className="w-5 h-5 text-purple-600 dark:text-purple-400 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <div className="text-sm text-purple-700 dark:text-purple-300">
+                  <p className="font-semibold mb-1">Modo de Rotação Ativo</p>
+                  <ul className="list-disc list-inside space-y-1 text-xs">
+                    <li>Clique em qualquer ponto da área e arraste para rotacionar</li>
+                    <li>Linhas verdes aparecem quando próximo a 0°, 90°, 180° ou 270° (snap automático)</li>
+                    <li>Use os botões acima para rotações rápidas (90°, 45°, etc)</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="rounded-xl overflow-hidden border-2 border-[var(--border)]">
             <GoogleMap
@@ -706,6 +819,55 @@ export default function MapBoundaryEditor({
 
               {mapLoaded && boundary.length > 0 && (
                 <>
+                  {/* Linhas guia de snap quando rotacionando */}
+                  {showSnapGuides && snapAngle !== null && mapRef.current && (() => {
+                    const center = getPolygonCenter(boundary);
+                    if (!center) return null;
+                    
+                    const bounds = mapRef.current.getBounds();
+                    if (!bounds) return null;
+                    
+                    const ne = bounds.getNorthEast();
+                    const sw = bounds.getSouthWest();
+                    const latSpan = ne.lat() - sw.lat();
+                    const lngSpan = ne.lng() - sw.lng();
+                    const extension = Math.max(latSpan, lngSpan) * 0.5;
+                    
+                    // Calcular linhas baseadas no ângulo snap
+                    const lines: GeoCoordinate[][] = [];
+                    
+                    if (snapAngle === 0 || snapAngle === 180) {
+                      // Linha horizontal
+                      lines.push([
+                        { lat: center.lat, lng: center.lng - extension },
+                        { lat: center.lat, lng: center.lng + extension }
+                      ]);
+                    }
+                    
+                    if (snapAngle === 90 || snapAngle === 270) {
+                      // Linha vertical
+                      lines.push([
+                        { lat: center.lat - extension, lng: center.lng },
+                        { lat: center.lat + extension, lng: center.lng }
+                      ]);
+                    }
+                    
+                    return lines.map((line, idx) => (
+                      <Polygon
+                        key={`snap-guide-${idx}`}
+                        paths={line}
+                        options={{
+                          strokeColor: '#00FF00',
+                          strokeOpacity: 0.8,
+                          strokeWeight: 2,
+                          fillColor: 'transparent',
+                          clickable: false,
+                          zIndex: 999,
+                        }}
+                      />
+                    ));
+                  })()}
+                  
                   <Polygon
                     paths={boundary}
                     options={{
