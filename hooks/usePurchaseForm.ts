@@ -17,6 +17,8 @@ interface FormData {
   paymentMethod: string;
   otherPayment: string;
   contract: string;
+  firstPayment: string;
+  installments: number;
 }
 
 export function usePurchaseForm(
@@ -40,6 +42,8 @@ export function usePurchaseForm(
     paymentMethod: '',
     otherPayment: '',
     contract: '',
+    firstPayment: '',
+    installments: 1,
   });
 
   const [isSubmitting, setIsSubmitting] = useState(false);

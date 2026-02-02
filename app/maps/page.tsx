@@ -136,22 +136,6 @@ export default function AdminMapsLotsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedBlock?.id]);
 
-  // Recarregar dados quando a página recebe foco (usuário volta de outra aba/página)
-  useEffect(() => {
-    const handleFocus = () => {
-      // Recarregar lotes, reservas e estatísticas quando voltar para a página
-      if (selectedBlock?.id) {
-        fetchReservations();
-        selectBlock(selectedBlock.id);
-        loadMapStats(true);
-      }
-    };
-
-    window.addEventListener('focus', handleFocus);
-    return () => window.removeEventListener('focus', handleFocus);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedBlock?.id]);
-
   // Recarregar estatísticas sempre que os lotes mudarem
   useEffect(() => {
     if (selectedMap?.id && lots.length > 0) {
