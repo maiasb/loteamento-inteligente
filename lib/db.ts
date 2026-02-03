@@ -6,10 +6,26 @@ export const dbConfig = {
   user: process.env.DB_USER,
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
+  waitForConnections: true,
+  connectionLimit: 5, // Reduzido para economizar memória
+  queueLimit: 0,
+  enableKeepAlive: true,
+  keepAliveInitialDelay: 0,
+  connectTimeout: 10000,
 };
 
+// Pool de conexões global
+let pool: mysql.Pool | null = null;
+
+export function getPool(): mysql.Pool {
+  if (!pool) {
+    pool = mysql.createPool(dbConfig);
+  }
+  return pool;
+}
+
 export async function createConnection() {
-  return await mysql.createConnection(dbConfig);
+  return await getPool().getConnection();
 }
 
 export async function executeQuery<T = any>(
@@ -21,6 +37,6 @@ export async function executeQuery<T = any>(
     const [rows] = await connection.execute(query, params);
     return rows as T;
   } finally {
-    await connection.end();
+    connection.release(); // Release ao invés de end() para reusar conexão
   }
 }

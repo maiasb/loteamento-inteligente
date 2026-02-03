@@ -10,12 +10,25 @@ const nextConfig: NextConfig = {
   },
   trailingSlash: true,
   
+  // Otimizações de memória para produção
+  ...(isProd && {
+    compress: true,
+    poweredByHeader: false,
+    generateEtags: false,
+  }),
+  
   // Configurações experimentais
   experimental: {
     serverActions: {
       bodySizeLimit: '500mb',
       allowedOrigins: ['*'],
     },
+    // Reduzir uso de memória
+    ...(isProd && {
+      workerThreads: false,
+      cpus: 1,
+      memoryBasedWorkersCount: true,
+    }),
   },
 
   // Configuração do Turbopack para resolver alias
@@ -23,6 +36,18 @@ const nextConfig: NextConfig = {
     resolveAlias: {
       canvas: './lib/canvas-mock.ts',
     },
+  },
+  
+  // Otimizações de webpack para produção
+  webpack: (config, { isServer }) => {
+    if (isProd && isServer) {
+      config.optimization = {
+        ...config.optimization,
+        moduleIds: 'deterministic',
+        minimize: true,
+      };
+    }
+    return config;
   },
 };
 
