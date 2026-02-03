@@ -357,8 +357,12 @@ export default function LotSelector({
                           e.stopPropagation();
                           onDefineArea(lot);
                         }}
-                        className="p-1.5 bg-blue-500 hover:bg-blue-600 rounded-lg shadow-lg cursor-pointer transform hover:scale-110 transition-all"
-                        title={lot.coordinates && lot.coordinates.length > 0 ? "Visualizar área do lote" : "Definir área do lote"}
+                        className={`p-1.5 rounded-lg shadow-lg cursor-pointer transform hover:scale-110 transition-all ${
+                          lot.coordinates && lot.coordinates.length > 0
+                            ? 'bg-yellow-500 hover:bg-yellow-600'
+                            : 'bg-green-500 hover:bg-green-600'
+                        }`}
+                        title={lot.coordinates && lot.coordinates.length > 0 ? "Editar área do lote" : "Definir área do lote"}
                       >
                         <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
@@ -681,7 +685,11 @@ export default function LotSelector({
                         onDefineArea(viewingLot);
                         closeModal();
                       }}
-                      className="p-2 rounded-lg transition-colors touch-manipulation bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 cursor-pointer"
+                      className={`p-2 rounded-lg transition-colors touch-manipulation cursor-pointer ${
+                        viewingLot.coordinates && viewingLot.coordinates.length > 0
+                          ? 'bg-yellow-500/20 text-yellow-400 hover:bg-yellow-500/30'
+                          : 'bg-green-500/20 text-green-400 hover:bg-green-500/30'
+                      }`}
                       title={viewingLot.coordinates && viewingLot.coordinates.length > 0 ? "Editar área do lote" : "Definir área do lote"}
                     >
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

@@ -144,7 +144,7 @@ export default function PublicMapViewer({
       strokeOpacity: 0.9,
       strokeWeight: isFocused ? 4 : (isHovered ? 3 : 2.5),
       clickable: true, // Sempre clicável se houver callback
-      zIndex: isFocused ? 50 : 5, // Entre a área do loteamento (1) e os lotes (10+)
+      zIndex: isFocused ? 8 : 5, // Sempre abaixo dos lotes (que começam em 10)
       cursor: 'pointer',
     };
   };

@@ -62,9 +62,15 @@ export default function MapBoundaryEditor({
   const [currentRotationAngle, setCurrentRotationAngle] = useState(0);
   const [showSnapGuides, setShowSnapGuides] = useState(false);
   const [snapAngle, setSnapAngle] = useState<number | null>(null);
+  const [lineDistances, setLineDistances] = useState<number[]>([]);
+  const [cursorDistance, setCursorDistance] = useState<number | null>(null);
+  const [cursorPosition, setCursorPosition] = useState<GeoCoordinate | null>(null);
+  const [drawingPoints, setDrawingPoints] = useState<GeoCoordinate[]>([]);
   const rotationStartPoint = useRef<GeoCoordinate | null>(null);
   const originalBoundary = useRef<GeoCoordinate[]>([]);
   const draggedMarkerIndex = useRef<number>(-1);
+  const distanceLabelRef = useRef<google.maps.Marker | null>(null);
+  const tempLineRef = useRef<google.maps.Polyline | null>(null);
   
   // useLoadScript para evitar conflitos
   const { isLoaded, loadError } = useLoadScript({
@@ -79,6 +85,222 @@ export default function MapBoundaryEditor({
   const mapRef = useRef<google.maps.Map | null>(null);
   const polygonRef = useRef<google.maps.Polygon | null>(null);
   const geocoderRef = useRef<google.maps.Geocoder | null>(null);
+
+  // Função para calcular distância entre dois pontos em metros
+  const calculateDistance = useCallback((point1: GeoCoordinate, point2: GeoCoordinate): number => {
+    const R = 6371e3; // Raio da Terra em metros
+    const φ1 = point1.lat * Math.PI / 180;
+    const φ2 = point2.lat * Math.PI / 180;
+    const Δφ = (point2.lat - point1.lat) * Math.PI / 180;
+    const Δλ = (point2.lng - point1.lng) * Math.PI / 180;
+
+    const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+              Math.cos(φ1) * Math.cos(φ2) *
+              Math.sin(Δλ/2) * Math.sin(Δλ/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+
+    return R * c; // Distância em metros
+  }, []);
+
+  // Calcular distâncias das linhas
+  const updateLineDistances = useCallback((coords: GeoCoordinate[]) => {
+    if (coords.length < 2) {
+      setLineDistances([]);
+      return;
+    }
+
+    const distances: number[] = [];
+    for (let i = 0; i < coords.length; i++) {
+      const nextIndex = (i + 1) % coords.length;
+      const distance = calculateDistance(coords[i], coords[nextIndex]);
+      distances.push(distance);
+    }
+    setLineDistances(distances);
+  }, [calculateDistance]);
+
+  // Função para calcular novo ponto baseado em distância e bearing
+  const calculateNewPoint = useCallback((startPoint: GeoCoordinate, bearing: number, distance: number): GeoCoordinate => {
+    const R = 6371e3; // Raio da Terra em metros
+    const φ1 = startPoint.lat * Math.PI / 180;
+    const λ1 = startPoint.lng * Math.PI / 180;
+    const brng = bearing * Math.PI / 180;
+
+    const φ2 = Math.asin(Math.sin(φ1) * Math.cos(distance / R) +
+                        Math.cos(φ1) * Math.sin(distance / R) * Math.cos(brng));
+    const λ2 = λ1 + Math.atan2(Math.sin(brng) * Math.sin(distance / R) * Math.cos(φ1),
+                               Math.cos(distance / R) - Math.sin(φ1) * Math.sin(φ2));
+
+    return {
+      lat: φ2 * 180 / Math.PI,
+      lng: λ2 * 180 / Math.PI,
+    };
+  }, []);
+
+  // Função para calcular o bearing (ângulo) entre dois pontos
+  const calculateBearing = useCallback((point1: GeoCoordinate, point2: GeoCoordinate): number => {
+    const φ1 = point1.lat * Math.PI / 180;
+    const φ2 = point2.lat * Math.PI / 180;
+    const Δλ = (point2.lng - point1.lng) * Math.PI / 180;
+
+    const y = Math.sin(Δλ) * Math.cos(φ2);
+    const x = Math.cos(φ1) * Math.sin(φ2) -
+              Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+    const θ = Math.atan2(y, x);
+
+    return (θ * 180 / Math.PI + 360) % 360; // Normalizar para 0-360
+  }, []);
+
+  // Função para ajustar o comprimento de uma linha específica
+  const handleLineDistanceChange = useCallback((lineIndex: number, newDistance: number) => {
+    if (boundary.length < 2 || newDistance <= 0) return;
+
+    const startIndex = lineIndex;
+    const endIndex = (lineIndex + 1) % boundary.length;
+
+    const startPoint = boundary[startIndex];
+    const endPoint = boundary[endIndex];
+
+    // Calcular o bearing (direção) da linha original
+    const bearing = calculateBearing(startPoint, endPoint);
+
+    // Calcular o novo ponto final mantendo a mesma direção
+    const newEndPoint = calculateNewPoint(startPoint, bearing, newDistance);
+
+    // Criar novo array de coordenadas com o ponto ajustado
+    const newBoundary = [...boundary];
+    newBoundary[endIndex] = newEndPoint;
+
+    setBoundary(newBoundary);
+
+    // Se há um polígono renderizado, atualizar suas coordenadas
+    if (polygonRef.current) {
+      polygonRef.current.setPath(newBoundary);
+    }
+  }, [boundary, calculateBearing, calculateNewPoint]);
+
+  // Atualizar distâncias quando boundary mudar
+  useEffect(() => {
+    updateLineDistances(boundary);
+  }, [boundary, updateLineDistances]);
+
+  // Listener para o movimento do mouse durante o desenho
+  useEffect(() => {
+    if (!mapRef.current || !isLoaded || boundary.length > 0) {
+      // Limpar label e linha temporária quando não está desenhando ou já tem polígono
+      if (distanceLabelRef.current) {
+        distanceLabelRef.current.setMap(null);
+        distanceLabelRef.current = null;
+      }
+      if (tempLineRef.current) {
+        tempLineRef.current.setMap(null);
+        tempLineRef.current = null;
+      }
+      setCursorDistance(null);
+      setCursorPosition(null);
+      setDrawingPoints([]);
+      return;
+    }
+
+    const mouseMoveListener = google.maps.event.addListener(
+      mapRef.current,
+      'mousemove',
+      (e: google.maps.MapMouseEvent) => {
+        if (!e.latLng) return;
+
+        const currentPos: GeoCoordinate = {
+          lat: e.latLng.lat(),
+          lng: e.latLng.lng(),
+        };
+
+        setCursorPosition(currentPos);
+
+        // Se já existem pontos desenhados, calcular distância do último ponto
+        setDrawingPoints((prevPoints) => {
+          if (prevPoints.length > 0) {
+            const lastPoint = prevPoints[prevPoints.length - 1];
+            const distance = calculateDistance(lastPoint, currentPos);
+            setCursorDistance(distance);
+
+            // Criar ou atualizar linha temporária
+            if (tempLineRef.current) {
+              tempLineRef.current.setPath([lastPoint, currentPos]);
+            } else {
+              tempLineRef.current = new google.maps.Polyline({
+                path: [lastPoint, currentPos],
+                strokeColor: '#FF0000',
+                strokeOpacity: 0.6,
+                strokeWeight: 2,
+                map: mapRef.current!,
+                zIndex: 1000,
+              });
+            }
+
+            // Criar ou atualizar marcador com a distância
+            const midPoint = {
+              lat: (lastPoint.lat + currentPos.lat) / 2,
+              lng: (lastPoint.lng + currentPos.lng) / 2,
+            };
+
+            if (distanceLabelRef.current) {
+              distanceLabelRef.current.setPosition(midPoint);
+              distanceLabelRef.current.setLabel({
+                text: `${distance.toFixed(2)} m`,
+                color: '#FFFFFF',
+                fontSize: '14px',
+                fontWeight: 'bold',
+              });
+            } else {
+              distanceLabelRef.current = new google.maps.Marker({
+                position: midPoint,
+                map: mapRef.current!,
+                icon: {
+                  path: google.maps.SymbolPath.CIRCLE,
+                  scale: 0,
+                },
+                label: {
+                  text: `${distance.toFixed(2)} m`,
+                  color: '#FFFFFF',
+                  fontSize: '14px',
+                  fontWeight: 'bold',
+                },
+                zIndex: 1001,
+              });
+            }
+          }
+          return prevPoints; // Retornar o mesmo array para não causar re-render
+        });
+      }
+    );
+
+    // Listener para cliques (adicionar pontos) - captura durante o desenho manual
+    const clickListener = google.maps.event.addListener(
+      mapRef.current,
+      'click',
+      (e: google.maps.MapMouseEvent) => {
+        if (!e.latLng || boundary.length > 0) return;
+
+        const newPoint: GeoCoordinate = {
+          lat: e.latLng.lat(),
+          lng: e.latLng.lng(),
+        };
+
+        setDrawingPoints((prev) => [...prev, newPoint]);
+      }
+    );
+
+    return () => {
+      google.maps.event.removeListener(mouseMoveListener);
+      google.maps.event.removeListener(clickListener);
+      if (distanceLabelRef.current) {
+        distanceLabelRef.current.setMap(null);
+        distanceLabelRef.current = null;
+      }
+      if (tempLineRef.current) {
+        tempLineRef.current.setMap(null);
+        tempLineRef.current = null;
+      }
+    };
+  }, [boundary.length, isLoaded, calculateDistance]);
 
   // Calcular centro baseado no boundary inicial ou na área de referência (usando useMemo para evitar loops)
   const calculatedCenter = useMemo(() => {
@@ -751,6 +973,66 @@ export default function MapBoundaryEditor({
                   </ul>
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* Metragem das Linhas */}
+          {boundary.length >= 2 && lineDistances.length > 0 && (
+            <div className="bg-gradient-to-br from-blue-500/10 to-purple-500/10 border-2 border-blue-500/30 rounded-xl p-4">
+              <h4 className="font-semibold text-[var(--foreground)] mb-3 flex items-center gap-2">
+                <svg className="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                </svg>
+                📏 Metragem das Linhas (Editável)
+              </h4>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                {lineDistances.map((distance, index) => (
+                  <div key={index} className="bg-white/50 dark:bg-black/20 rounded-lg p-3 border border-blue-500/20">
+                    <p className="text-xs text-[var(--foreground)] opacity-60 mb-2">
+                      Linha {index + 1} → {index + 2 > boundary.length ? '1' : index + 2}
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <input
+                        key={`line-${index}-${distance.toFixed(2)}`}
+                        type="number"
+                        step="0.01"
+                        min="0.01"
+                        defaultValue={distance.toFixed(2)}
+                        onBlur={(e) => {
+                          const newValue = parseFloat(e.target.value);
+                          if (!isNaN(newValue) && newValue > 0) {
+                            handleLineDistanceChange(index, newValue);
+                          } else {
+                            e.target.value = distance.toFixed(2);
+                          }
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            const newValue = parseFloat(e.currentTarget.value);
+                            if (!isNaN(newValue) && newValue > 0) {
+                              handleLineDistanceChange(index, newValue);
+                              e.currentTarget.blur();
+                            }
+                          }
+                        }}
+                        className="flex-1 px-2 py-1 text-sm font-bold text-blue-600 dark:text-blue-400 bg-white dark:bg-gray-800 border border-blue-300 dark:border-blue-700 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      />
+                      <span className="text-xs font-medium text-[var(--foreground)] opacity-60">m</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-3 pt-3 border-t border-blue-500/20">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm font-medium text-[var(--foreground)]">Perímetro Total:</span>
+                  <span className="text-lg font-bold text-blue-600 dark:text-blue-400">
+                    {lineDistances.reduce((sum, d) => sum + d, 0).toFixed(2)} m
+                  </span>
+                </div>
+              </div>
+              <p className="mt-2 text-xs text-[var(--foreground)] opacity-60 italic">
+                💡 Dica: Digite o valor desejado para ajustar o comprimento da linha mantendo sua direção
+              </p>
             </div>
           )}
 
