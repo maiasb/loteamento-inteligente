@@ -229,6 +229,7 @@ export default function PublicMapViewer({
           mapTypeControl: true,
           fullscreenControl: true,
           zoomControl: true,
+          gestureHandling: 'cooperative', // Requer Ctrl+scroll para zoom
         }}
       >
         {/* Polígono da área do loteamento */}

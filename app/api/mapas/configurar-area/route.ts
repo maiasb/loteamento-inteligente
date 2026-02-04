@@ -19,16 +19,27 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!address || !address.trim()) {
+    // Permitir endereço vazio quando também estiver limpando as coordenadas (zerar configuração)
+    const isClearing = (!address || !address.trim()) && Array.isArray(boundaryCoordinates) && boundaryCoordinates.length === 0;
+    
+    if (!isClearing && (!address || !address.trim())) {
       return NextResponse.json(
-        { error: 'Endereço é obrigatório' },
+        { error: 'Endereço é obrigatório quando há coordenadas' },
         { status: 400 }
       );
     }
 
-    if (!boundaryCoordinates || !Array.isArray(boundaryCoordinates) || boundaryCoordinates.length < 3) {
+    if (!Array.isArray(boundaryCoordinates)) {
       return NextResponse.json(
-        { error: 'Coordenadas do polígono são obrigatórias (mínimo 3 pontos)' },
+        { error: 'Coordenadas devem ser um array' },
+        { status: 400 }
+      );
+    }
+
+    // Permitir array vazio para limpar as coordenadas, mas validar se não for vazio
+    if (boundaryCoordinates.length > 0 && boundaryCoordinates.length < 3) {
+      return NextResponse.json(
+        { error: 'Se fornecidas, as coordenadas do polígono devem ter no mínimo 3 pontos' },
         { status: 400 }
       );
     }
@@ -79,13 +90,18 @@ export async function POST(request: NextRequest) {
     }
 
     // Atualizar endereço e coordenadas do boundary
+    // Se o array estiver vazio, salvar null ao invés de array vazio
+    // Se o endereço estiver vazio, também salvar null
+    const coordinatesValue = boundaryCoordinates.length === 0 ? null : JSON.stringify(boundaryCoordinates);
+    const addressValue = (address && address.trim()) ? address.trim() : null;
+    
     await connection.execute(
       `UPDATE maps 
        SET address = ?, 
            boundary_coordinates = ?, 
            updated_at = NOW()
        WHERE id = ?`,
-      [address.trim(), JSON.stringify(boundaryCoordinates), mapId]
+      [addressValue, coordinatesValue, mapId]
     );
 
     return NextResponse.json({

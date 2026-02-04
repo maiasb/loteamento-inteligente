@@ -36,16 +36,26 @@ function isPointInPolygon(point: GeoCoordinate, polygon: GeoCoordinate[]): boole
 export default function LotPolygonEditor({ lot, mapBoundary, blockBoundary, onSave, onCancel }: LotPolygonEditorProps) {
   const [polygon, setPolygon] = useState<google.maps.Polygon | null>(null);
   const [coordinates, setCoordinates] = useState<GeoCoordinate[]>(lot.coordinates || []);
-  const [isDrawing, setIsDrawing] = useState(false);
+  const [isDrawing, setIsDrawing] = useState(!lot.coordinates || lot.coordinates.length === 0);
   const [isSaving, setIsSaving] = useState(false);
   const [lineDistances, setLineDistances] = useState<number[]>([]);
   const [cursorDistance, setCursorDistance] = useState<number | null>(null);
   const [cursorPosition, setCursorPosition] = useState<GeoCoordinate | null>(null);
   const [drawingPoints, setDrawingPoints] = useState<GeoCoordinate[]>([]);
+  const [showReferenceAreas, setShowReferenceAreas] = useState(true);
+  const [isRotatingMode, setIsRotatingMode] = useState(false);
+  const [isDraggingRotation, setIsDraggingRotation] = useState(false);
+  const [currentRotationAngle, setCurrentRotationAngle] = useState(0);
+  const [showSnapGuides, setShowSnapGuides] = useState(false);
+  const [snapAngle, setSnapAngle] = useState<number | null>(null);
+  const [mapLoaded, setMapLoaded] = useState(false);
+  const rotationStartPoint = useRef<GeoCoordinate | null>(null);
+  const originalCoordinates = useRef<GeoCoordinate[]>([]);
   const mapRef = useRef<google.maps.Map | null>(null);
   const drawingManagerRef = useRef<google.maps.drawing.DrawingManager | null>(null);
   const distanceLabelRef = useRef<google.maps.Marker | null>(null);
   const tempLineRef = useRef<google.maps.Polyline | null>(null);
+  const drawnOverlaysRef = useRef<google.maps.MVCObject[]>([]);
 
   const { isLoaded, loadError } = useLoadScript({
     googleMapsApiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || '',
@@ -270,12 +280,12 @@ export default function LotPolygonEditor({ lot, mapBoundary, blockBoundary, onSa
 
   // Criar DrawingManager manualmente para evitar duplicação
   useEffect(() => {
-    if (!mapRef.current || !isLoaded || !isDrawing || drawingManagerRef.current) {
+    if (!mapLoaded || !isLoaded || !isDrawing || drawingManagerRef.current) {
       return;
     }
 
     const drawingManager = new google.maps.drawing.DrawingManager({
-      drawingMode: google.maps.drawing.OverlayType.POLYGON,
+      drawingMode: null,
       drawingControl: true,
       drawingControlOptions: {
         position: google.maps.ControlPosition.TOP_CENTER,
@@ -307,6 +317,7 @@ export default function LotPolygonEditor({ lot, mapBoundary, blockBoundary, onSa
 
     // Listener para polígono completo
     google.maps.event.addListener(drawingManager, 'polygoncomplete', (poly: google.maps.Polygon) => {
+      drawnOverlaysRef.current.push(poly);
       const path = poly.getPath();
       const coords: GeoCoordinate[] = [];
       
@@ -335,6 +346,7 @@ export default function LotPolygonEditor({ lot, mapBoundary, blockBoundary, onSa
 
     // Listener para retângulo completo
     google.maps.event.addListener(drawingManager, 'rectanglecomplete', (rectangle: google.maps.Rectangle) => {
+      drawnOverlaysRef.current.push(rectangle);
       const bounds = rectangle.getBounds();
       if (bounds) {
         const ne = bounds.getNorthEast();
@@ -360,6 +372,7 @@ export default function LotPolygonEditor({ lot, mapBoundary, blockBoundary, onSa
 
         setCoordinates(rectangleCoords);
         setPolygon(poly);
+        drawnOverlaysRef.current.push(poly);
         setIsDrawing(false);
         rectangle.setMap(null);
         drawingManager.setDrawingMode(null);
@@ -381,7 +394,7 @@ export default function LotPolygonEditor({ lot, mapBoundary, blockBoundary, onSa
         drawingManagerRef.current = null;
       }
     };
-  }, [mapRef.current, isLoaded, isDrawing]);
+  }, [mapLoaded, isLoaded, isDrawing]);
 
   // Calcular centro do mapa baseado na quadra (prioritário) ou no loteamento
   const getCenter = () => {
@@ -463,8 +476,20 @@ export default function LotPolygonEditor({ lot, mapBoundary, blockBoundary, onSa
       polygon.setMap(null);
       setPolygon(null);
     }
+    // Limpar todos os overlays desenhados
+    drawnOverlaysRef.current.forEach(overlay => {
+      if (overlay && typeof (overlay as any).setMap === 'function') {
+        (overlay as any).setMap(null);
+      }
+    });
+    drawnOverlaysRef.current = [];
+    
+    if (drawingManagerRef.current) {
+      drawingManagerRef.current.setMap(null);
+      drawingManagerRef.current = null;
+    }
     setCoordinates([]);
-    setIsDrawing(false);
+    setIsDrawing(true);
   };
 
   // Função para calcular o centro do polígono
@@ -491,6 +516,14 @@ export default function LotPolygonEditor({ lot, mapBoundary, blockBoundary, onSa
     };
   }, []);
 
+  // Função para alternar modo de rotação
+  const toggleRotationMode = useCallback(() => {
+    setIsRotatingMode(!isRotatingMode);
+    if (!isRotatingMode) {
+      originalCoordinates.current = [...coordinates];
+    }
+  }, [isRotatingMode, coordinates]);
+
   // Função para rotacionar o polígono
   const handleRotatePolygon = useCallback((angle: number) => {
     if (coordinates.length === 0) return;
@@ -514,6 +547,24 @@ export default function LotPolygonEditor({ lot, mapBoundary, blockBoundary, onSa
     setIsSaving(true);
     try {
       await onSave(coordinates);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleClearAndSave = async () => {
+    if (!confirm('Tem certeza que deseja limpar a área marcada e salvar sem coordenadas?')) {
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      await onSave([]);
+      setCoordinates([]);
+      if (polygon) {
+        polygon.setMap(null);
+        setPolygon(null);
+      }
     } finally {
       setIsSaving(false);
     }
@@ -618,82 +669,119 @@ export default function LotPolygonEditor({ lot, mapBoundary, blockBoundary, onSa
             </div>
           )}
 
-        <div className="flex flex-wrap gap-3">
-          {!isDrawing && coordinates.length === 0 && (
-            <button
-              onClick={() => setIsDrawing(true)}
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors flex items-center gap-2"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-              </svg>
-              Iniciar Desenho
-            </button>
-          )}
+        <div className="flex items-center justify-between mb-3">
+          <div></div>
+          <div className="flex gap-2">
+            {(mapBoundary || blockBoundary) && (
+              <button
+                onClick={() => setShowReferenceAreas(!showReferenceAreas)}
+                className="px-4 py-2 bg-[var(--surface)] text-[var(--foreground)] border border-[var(--border)] rounded-lg hover:bg-[var(--foreground)]/5 transition-colors text-sm flex items-center gap-2"
+                title={showReferenceAreas ? "Ocultar áreas de referência" : "Mostrar áreas de referência"}
+              >
+                {showReferenceAreas ? (
+                  <>
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                    </svg>
+                    Ocultar Áreas
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                    </svg>
+                    Mostrar Áreas
+                  </>
+                )}
+              </button>
+            )}
+            {coordinates.length > 0 && (
+              <>
+                <button
+                  onClick={toggleRotationMode}
+                  className={`px-4 py-2 border rounded-lg transition-colors text-sm flex items-center gap-2 ${
+                    isRotatingMode
+                      ? 'bg-purple-600 text-white border-purple-600'
+                      : 'bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 border-purple-200 dark:border-purple-800 hover:bg-purple-100 dark:hover:bg-purple-900/30'
+                  }`}
+                  title="Ativar modo de rotação"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  {isRotatingMode ? 'Modo Rotação Ativo' : 'Rotacionar'}
+                </button>
+                
+                {isRotatingMode && (
+                  <div className="flex gap-1 px-2 py-1 bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-lg">
+                    <button
+                      onClick={() => handleRotatePolygon(90)}
+                      className="p-1.5 hover:bg-purple-100 dark:hover:bg-purple-900/40 rounded transition-colors"
+                      title="Rotacionar 90° (Horizontal)"
+                    >
+                      <svg className="w-5 h-5 text-purple-600 dark:text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                      </svg>
+                    </button>
+                    <button
+                      onClick={() => handleRotatePolygon(-90)}
+                      className="p-1.5 hover:bg-purple-100 dark:hover:bg-purple-900/40 rounded transition-colors"
+                      title="Rotacionar -90° (Vertical)"
+                    >
+                      <svg className="w-5 h-5 text-purple-600 dark:text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+                      </svg>
+                    </button>
+                    <button
+                      onClick={() => handleRotatePolygon(45)}
+                      className="p-1.5 hover:bg-purple-100 dark:hover:bg-purple-900/40 rounded transition-colors"
+                      title="Rotacionar 45°"
+                    >
+                      <svg className="w-5 h-5 text-purple-600 dark:text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9" />
+                      </svg>
+                    </button>
+                    <button
+                      onClick={() => handleRotatePolygon(-45)}
+                      className="p-1.5 hover:bg-purple-100 dark:hover:bg-purple-900/40 rounded transition-colors"
+                      title="Rotacionar -45°"
+                    >
+                      <svg className="w-5 h-5 text-purple-600 dark:text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 20v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                    </button>
+                  </div>
+                )}
+                
+                <button
+                  onClick={handleClearDrawing}
+                  className="px-4 py-2 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors text-sm"
+                >
+                  Limpar Área
+                </button>
+              </>
+            )}
+          </div>
+        </div>
 
-          {coordinates.length > 0 && (
-          <>
-            <button
-              onClick={() => handleRotatePolygon(-15)}
-              className="px-4 py-2 bg-purple-500 hover:bg-purple-600 text-white rounded-lg font-semibold transition-colors flex items-center gap-2"
-              title="Rotacionar -15°"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12.066 11.2a1 1 0 000 1.6l5.334 4A1 1 0 0019 16V8a1 1 0 00-1.6-.8l-5.333 4zM4.066 11.2a1 1 0 000 1.6l5.334 4A1 1 0 0011 16V8a1 1 0 00-1.6-.8l-5.334 4z" />
+        {isRotatingMode && (
+          <div className="mb-3 p-3 bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-lg">
+            <div className="flex items-start gap-2">
+              <svg className="w-5 h-5 text-purple-600 dark:text-purple-400 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
-              ↶ 15°
-            </button>
-            <button
-              onClick={() => handleRotatePolygon(15)}
-              className="px-4 py-2 bg-purple-500 hover:bg-purple-600 text-white rounded-lg font-semibold transition-colors flex items-center gap-2"
-              title="Rotacionar +15°"
-            >
-              ↷ 15°
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.933 12.8a1 1 0 000-1.6L6.6 7.2A1 1 0 005 8v8a1 1 0 001.6.8l5.333-4zM19.933 12.8a1 1 0 000-1.6l-5.333-4A1 1 0 0013 8v8a1 1 0 001.6.8l5.333-4z" />
-              </svg>
-            </button>
-            <button
-              onClick={handleClearDrawing}
-              className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg font-semibold transition-colors flex items-center gap-2"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-              </svg>
-              Limpar Desenho
-            </button>
-            <button
-              onClick={handleSave}
-              disabled={isSaving || coordinates.length < 3}
-              className="px-6 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-500 disabled:cursor-not-allowed text-white rounded-lg font-semibold transition-colors flex items-center gap-2"
-            >
-              {isSaving ? (
-                <>
-                  <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                  </svg>
-                  Salvando...
-                </>
-              ) : (
-                <>
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
-                  Salvar Coordenadas
-                </>
-              )}
-            </button>
-          </>
+              <div className="text-sm text-purple-700 dark:text-purple-300">
+                <p className="font-semibold mb-1">Modo de Rotação Ativo</p>
+                <ul className="list-disc list-inside space-y-1 text-xs">
+                  <li>Use os botões de rotação rápida (90°, -90°, 45°, -45°)</li>
+                  <li>Ou clique no mapa e arraste para rotacionar livremente</li>
+                  <li>Clique em "Modo Rotação Ativo" novamente para desativar</li>
+                </ul>
+              </div>
+            </div>
+          </div>
         )}
-
-        <button
-          onClick={onCancel}
-          className="px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg font-semibold transition-colors"
-        >
-          Cancelar
-        </button>
-      </div>
 
       {/* Mapa do Google */}
       <div className="bg-white/5 rounded-xl overflow-hidden border-2 border-[var(--border)]">
@@ -721,6 +809,7 @@ export default function LotPolygonEditor({ lot, mapBoundary, blockBoundary, onSa
             zoom={18}
             onLoad={(map) => {
               mapRef.current = map;
+              setMapLoaded(true);
               // Ajustar zoom automaticamente para enquadrar a área de referência
               const referenceBoundary = blockBoundary || mapBoundary;
               if (referenceBoundary && referenceBoundary.length > 0) {
@@ -739,7 +828,7 @@ export default function LotPolygonEditor({ lot, mapBoundary, blockBoundary, onSa
             }}
           >
             {/* Mostrar área da quadra (prioridade) ou do loteamento */}
-            {blockBoundary && blockBoundary.length > 0 ? (
+            {showReferenceAreas && blockBoundary && blockBoundary.length > 0 ? (
               <Polygon
                 paths={blockBoundary}
                 options={{
@@ -751,7 +840,7 @@ export default function LotPolygonEditor({ lot, mapBoundary, blockBoundary, onSa
                   clickable: false,
                 }}
               />
-            ) : mapBoundary && mapBoundary.length > 0 && (
+            ) : showReferenceAreas && mapBoundary && mapBoundary.length > 0 && (
               <Polygon
                 paths={mapBoundary}
                 options={{
@@ -789,9 +878,47 @@ export default function LotPolygonEditor({ lot, mapBoundary, blockBoundary, onSa
                     updateCoordinatesFromPolygon(poly);
                   });
                 }}
+                onUnmount={(poly) => {
+                  google.maps.event.clearInstanceListeners(poly);
+                }}
               />
             )}
           </GoogleMap>
+        )}
+      </div>
+
+      {/* Botões de ação */}
+      <div className="flex gap-3">
+        <button
+          onClick={onCancel}
+          disabled={isSaving}
+          className="flex-1 px-5 py-3 bg-[var(--surface)] text-[var(--foreground)] border border-[var(--border)] rounded-xl hover:bg-[var(--foreground)]/5 font-semibold transition-colors disabled:opacity-50"
+        >
+          Cancelar
+        </button>
+        {coordinates.length > 0 && (
+          <button
+            onClick={handleSave}
+            disabled={isSaving || coordinates.length < 3}
+            className="flex-1 px-5 py-3 bg-green-600 hover:bg-green-700 text-white rounded-xl font-semibold transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          >
+            {isSaving ? (
+              <>
+                <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                </svg>
+                Salvando...
+              </>
+            ) : (
+              <>
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+                Salvar Área
+              </>
+            )}
+          </button>
         )}
       </div>
     </div>

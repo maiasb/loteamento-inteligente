@@ -9,6 +9,7 @@ interface MapBoundaryEditorProps {
   initialBoundary?: GeoCoordinate[];
   referenceBoundary?: GeoCoordinate[]; // Área de referência principal (ex: área do loteamento para quadras)
   existingAreas?: Array<{ id: string; name: string; coordinates: GeoCoordinate[] }>; // Áreas existentes para mostrar como referência (ex: outras quadras)
+  allowAddressChange?: boolean; // Se permite alterar o endereço (false para quadras e lotes)
   onSave: (coordinates: GeoCoordinate[], address: string) => void;
   onCancel: () => void;
 }
@@ -45,6 +46,7 @@ export default function MapBoundaryEditor({
   initialBoundary = [],
   referenceBoundary,
   existingAreas = [],
+  allowAddressChange = true,
   onSave,
   onCancel,
 }: MapBoundaryEditorProps) {
@@ -674,6 +676,29 @@ export default function MapBoundaryEditor({
     }
   }, [boundary, searchAddress, onSave]);
 
+  const handleClearAndSave = useCallback(async () => {
+    if (!searchAddress.trim()) {
+      alert('❌ Informe o endereço mesmo ao salvar sem coordenadas.');
+      return;
+    }
+
+    if (!confirm('Tem certeza que deseja limpar a área marcada e salvar sem coordenadas?')) {
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      await onSave([], searchAddress);
+      setBoundary([]);
+      if (polygonRef.current) {
+        polygonRef.current.setMap(null);
+        polygonRef.current = null;
+      }
+    } finally {
+      setIsSaving(false);
+    }
+  }, [searchAddress, onSave]);
+
   const polygonOptions = {
     fillColor: '#4CAF50',
     fillOpacity: 0.3,
@@ -883,12 +908,14 @@ export default function MapBoundaryEditor({
                   )}
                 </button>
               )}
-              <button
-                onClick={() => setCurrentStep('address')}
-                className="px-4 py-2 bg-[var(--surface)] text-[var(--foreground)] border border-[var(--border)] rounded-lg hover:bg-[var(--foreground)]/5 transition-colors text-sm"
-              >
-                Alterar Endereço
-              </button>
+              {allowAddressChange && (
+                <button
+                  onClick={() => setCurrentStep('address')}
+                  className="px-4 py-2 bg-[var(--surface)] text-[var(--foreground)] border border-[var(--border)] rounded-lg hover:bg-[var(--foreground)]/5 transition-colors text-sm"
+                >
+                  Alterar Endereço
+                </button>
+              )}
               {boundary.length > 0 && (
                 <>
                   <button
@@ -947,12 +974,14 @@ export default function MapBoundaryEditor({
                     </div>
                   )}
                   
-                  <button
-                    onClick={handleClearPolygon}
-                    className="px-4 py-2 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors text-sm"
-                  >
-                    Limpar Área
-                  </button>
+                  {boundary.length > 0 && (
+                    <button
+                      onClick={handleClearPolygon}
+                      className="px-4 py-2 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors text-sm"
+                    >
+                      Limpar Área
+                    </button>
+                  )}
                 </>
               )}
             </div>
@@ -1061,7 +1090,7 @@ export default function MapBoundaryEditor({
                 fullscreenControl: true,
                 zoomControl: true,
                 draggable: !isRotatingMode, // Desabilitar arrastar o mapa quando em modo de rotação
-                scrollwheel: true, // Manter zoom com scroll
+                gestureHandling: 'cooperative', // Requer Ctrl+scroll para zoom
               }}
             >
               {/* DrawingManager criado manualmente via useEffect */}
