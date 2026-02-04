@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { GoogleMap, useLoadScript, Polygon, Marker } from '@react-google-maps/api';
+import { GoogleMap, useLoadScript, Polygon, Marker, OverlayView } from '@react-google-maps/api';
 import { GeoCoordinate, Lot } from '@/types';
 
 interface LotPolygonEditorProps {
@@ -870,20 +870,46 @@ export default function LotPolygonEditor({ lot, mapBoundary, blockBoundary, othe
               };
               
               const color = statusColors[otherLot.status] || statusColors.available;
+              const lotCenter = getPolygonCenter(otherLot.coordinates);
               
               return (
-                <Polygon
-                  key={otherLot.id}
-                  paths={otherLot.coordinates}
-                  options={{
-                    fillColor: color.fill,
-                    fillOpacity: 0.3,
-                    strokeColor: color.stroke,
-                    strokeOpacity: 0.7,
-                    strokeWeight: 2,
-                    clickable: false,
-                  }}
-                />
+                <React.Fragment key={otherLot.id}>
+                  <Polygon
+                    paths={otherLot.coordinates}
+                    options={{
+                      fillColor: color.fill,
+                      fillOpacity: 0.3,
+                      strokeColor: color.stroke,
+                      strokeOpacity: 0.7,
+                      strokeWeight: 2,
+                      clickable: false,
+                    }}
+                  />
+                  {/* Label do lote */}
+                  {lotCenter && (
+                    <OverlayView
+                      position={lotCenter}
+                      mapPaneName={OverlayView.OVERLAY_MOUSE_TARGET}
+                    >
+                      <div
+                        style={{
+                          position: 'absolute',
+                          transform: 'translate(-50%, -50%)',
+                          fontSize: '14px',
+                          fontWeight: '600',
+                          color: '#FFFFFF',
+                          textShadow: '1px 1px 3px rgba(0,0,0,0.9)',
+                          opacity: 0.85,
+                          pointerEvents: 'none',
+                          whiteSpace: 'nowrap',
+                          userSelect: 'none'
+                        }}
+                      >
+                        {otherLot.lotNumber}
+                      </div>
+                    </OverlayView>
+                  )}
+                </React.Fragment>
               );
             })}
 

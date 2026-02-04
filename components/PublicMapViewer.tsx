@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { GoogleMap, useLoadScript, Polygon } from '@react-google-maps/api';
+import { GoogleMap, useLoadScript, Polygon, OverlayView } from '@react-google-maps/api';
 import { GeoCoordinate, Lot, Block } from '@/types';
 
 interface PublicMapViewerProps {
@@ -48,6 +48,52 @@ export default function PublicMapViewer({
 }: PublicMapViewerProps) {
   const [center, setCenter] = useState(defaultCenter);
   const [mapLoaded, setMapLoaded] = useState(false);
+
+  // Função para calcular o centroide de um polígono usando área ponderada
+  const getPolygonCenter = (coordinates: GeoCoordinate[]) => {
+    if (!coordinates || coordinates.length === 0) return null;
+    
+    let area = 0;
+    let centroidLat = 0;
+    let centroidLng = 0;
+    
+    for (let i = 0; i < coordinates.length; i++) {
+      const j = (i + 1) % coordinates.length;
+      const xi = coordinates[i].lat;
+      const yi = coordinates[i].lng;
+      const xj = coordinates[j].lat;
+      const yj = coordinates[j].lng;
+      
+      const cross = xi * yj - xj * yi;
+      area += cross;
+      centroidLat += (xi + xj) * cross;
+      centroidLng += (yi + yj) * cross;
+    }
+    
+    area /= 2;
+    
+    if (area === 0) {
+      // Fallback para média simples se área for zero
+      let totalLat = 0;
+      let totalLng = 0;
+      coordinates.forEach(coord => {
+        totalLat += coord.lat;
+        totalLng += coord.lng;
+      });
+      return {
+        lat: totalLat / coordinates.length,
+        lng: totalLng / coordinates.length
+      };
+    }
+    
+    centroidLat /= (6 * area);
+    centroidLng /= (6 * area);
+    
+    return {
+      lat: centroidLat,
+      lng: centroidLng
+    };
+  };
   const [hoveredLotId, setHoveredLotId] = useState<string | null>(null);
   const [hoveredBlockId, setHoveredBlockId] = useState<string | null>(null);
 
@@ -248,34 +294,92 @@ export default function PublicMapViewer({
         
         {/* Polígonos das quadras */}
         {mapLoaded && showAreas && blocksWithCoordinates.map((block) => (
-          <Polygon
-            key={`block-${block.id}`}
-            paths={block.coordinates || []}
-            options={getBlockPolygonOptions(block, hoveredBlockId === block.id, focusedBlockId === block.id)}
-            onClick={() => {
-              if (onBlockClick) {
-                console.log('[PublicMapViewer] Quadra clicada:', block.name);
-                onBlockClick(block);
-              }
-            }}
-            onMouseOver={() => setHoveredBlockId(block.id)}
-            onMouseOut={() => setHoveredBlockId(null)}
-          />
+          <React.Fragment key={`block-${block.id}`}>
+            <Polygon
+              paths={block.coordinates || []}
+              options={getBlockPolygonOptions(block, hoveredBlockId === block.id, focusedBlockId === block.id)}
+              onClick={() => {
+                if (onBlockClick) {
+                  console.log('[PublicMapViewer] Quadra clicada:', block.name);
+                  onBlockClick(block);
+                }
+              }}
+              onMouseOver={() => setHoveredBlockId(block.id)}
+              onMouseOut={() => setHoveredBlockId(null)}
+            />
+            {/* Label da quadra - esconder quando focada */}
+            {focusedBlockId !== block.id && (() => {
+              const blockCenter = getPolygonCenter(block.coordinates || []);
+              if (!blockCenter) return null;
+              return (
+                <OverlayView
+                  position={blockCenter}
+                  mapPaneName={OverlayView.OVERLAY_MOUSE_TARGET}
+                >
+                  <div
+                    style={{
+                      position: 'absolute',
+                      transform: 'translate(-50%, -50%)',
+                      fontSize: '16px',
+                      fontWeight: 'bold',
+                      color: '#FFFFFF',
+                      textShadow: '2px 2px 4px rgba(0,0,0,0.8)',
+                      opacity: 0.85,
+                      pointerEvents: 'none',
+                      whiteSpace: 'nowrap',
+                      userSelect: 'none'
+                    }}
+                  >
+                    {block.name}
+                  </div>
+                </OverlayView>
+              );
+            })()}
+          </React.Fragment>
         ))}
 
         {/* Polígonos dos lotes */}
         {mapLoaded && showAreas && lotsWithCoordinates.map((lot) => (
-          <Polygon
-            key={lot.id}
-            paths={lot.coordinates || []}
-            options={getLotPolygonOptions(lot, hoveredLotId === lot.id, focusedLotId === lot.id)}
-            onClick={() => {
-              console.log('[PublicMapViewer] Lote clicado:', lot.lotNumber);
-              onLotClick && onLotClick(lot);
-            }}
-            onMouseOver={() => setHoveredLotId(lot.id)}
-            onMouseOut={() => setHoveredLotId(null)}
-          />
+          <React.Fragment key={lot.id}>
+            <Polygon
+              paths={lot.coordinates || []}
+              options={getLotPolygonOptions(lot, hoveredLotId === lot.id, focusedLotId === lot.id)}
+              onClick={() => {
+                console.log('[PublicMapViewer] Lote clicado:', lot.lotNumber);
+                onLotClick && onLotClick(lot);
+              }}
+              onMouseOver={() => setHoveredLotId(lot.id)}
+              onMouseOut={() => setHoveredLotId(null)}
+            />
+            {/* Label do lote - mostrar apenas quando a quadra estiver focada */}
+            {focusedBlockId === lot.blockId && (() => {
+              const lotCenter = getPolygonCenter(lot.coordinates || []);
+              if (!lotCenter) return null;
+              return (
+                <OverlayView
+                  position={lotCenter}
+                  mapPaneName={OverlayView.OVERLAY_MOUSE_TARGET}
+                >
+                  <div
+                    style={{
+                      position: 'absolute',
+                      transform: 'translate(-50%, -50%)',
+                      fontSize: '14px',
+                      fontWeight: '600',
+                      color: '#FFFFFF',
+                      textShadow: '1px 1px 3px rgba(0,0,0,0.9)',
+                      opacity: 0.9,
+                      pointerEvents: 'none',
+                      whiteSpace: 'nowrap',
+                      userSelect: 'none'
+                    }}
+                  >
+                    {lot.lotNumber}
+                  </div>
+                </OverlayView>
+              );
+            })()}
+          </React.Fragment>
         ))}
       </GoogleMap>
     </div>

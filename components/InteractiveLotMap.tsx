@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useCallback } from 'react';
-import { GoogleMap, LoadScript, Polygon } from '@react-google-maps/api';
+import { GoogleMap, LoadScript, Polygon, OverlayView } from '@react-google-maps/api';
 import { GeoCoordinate, Lot, LotStatus } from '@/types';
 
 interface InteractiveLotMapProps {
@@ -45,6 +45,24 @@ export default function InteractiveLotMap({
 
   // Filtrar apenas lotes com coordenadas
   const lotsWithCoordinates = lots.filter(lot => lot.coordinates && lot.coordinates.length >= 3);
+
+  // Função para calcular o centro de um polígono
+  const getPolygonCenter = (coordinates: GeoCoordinate[]) => {
+    if (!coordinates || coordinates.length === 0) return null;
+    
+    let totalLat = 0;
+    let totalLng = 0;
+    
+    coordinates.forEach(coord => {
+      totalLat += coord.lat;
+      totalLng += coord.lng;
+    });
+    
+    return {
+      lat: totalLat / coordinates.length,
+      lng: totalLng / coordinates.length
+    };
+  };
 
   // Função para obter cor do lote baseado no status
   const getLotColor = (lot: Lot, isSelected: boolean, isHovered: boolean) => {
@@ -237,23 +255,49 @@ export default function InteractiveLotMap({
               const isSelected = selectedLots.some(l => l.id === lot.id);
               const isHovered = hoveredLot === lot.id;
               const isClickable = lot.status === LotStatus.AVAILABLE;
+              const lotCenter = getPolygonCenter(lot.coordinates!);
 
               return (
-                <Polygon
-                  key={lot.id}
-                  paths={lot.coordinates!}
-                  options={{
-                    ...getLotColor(lot, isSelected, isHovered),
-                    clickable: isClickable,
-                  }}
-                  onClick={() => {
-                    if (isClickable) {
-                      onLotClick(lot);
-                    }
-                  }}
-                  onMouseOver={() => setHoveredLot(lot.id)}
-                  onMouseOut={() => setHoveredLot(null)}
-                />
+                <React.Fragment key={lot.id}>
+                  <Polygon
+                    paths={lot.coordinates!}
+                    options={{
+                      ...getLotColor(lot, isSelected, isHovered),
+                      clickable: isClickable,
+                    }}
+                    onClick={() => {
+                      if (isClickable) {
+                        onLotClick(lot);
+                      }
+                    }}
+                    onMouseOver={() => setHoveredLot(lot.id)}
+                    onMouseOut={() => setHoveredLot(null)}
+                  />
+                  {/* Label do lote */}
+                  {lotCenter && (
+                    <OverlayView
+                      position={lotCenter}
+                      mapPaneName={OverlayView.OVERLAY_MOUSE_TARGET}
+                    >
+                      <div
+                        style={{
+                          position: 'absolute',
+                          transform: 'translate(-50%, -50%)',
+                          fontSize: '14px',
+                          fontWeight: '600',
+                          color: '#FFFFFF',
+                          textShadow: '1px 1px 3px rgba(0,0,0,0.9)',
+                          opacity: 0.9,
+                          pointerEvents: 'none',
+                          whiteSpace: 'nowrap',
+                          userSelect: 'none'
+                        }}
+                      >
+                        {lot.lotNumber}
+                      </div>
+                    </OverlayView>
+                  )}
+                </React.Fragment>
               );
             })}
           </GoogleMap>
