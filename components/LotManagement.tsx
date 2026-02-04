@@ -613,6 +613,7 @@ export default function LotManagement() {
               <LotPolygonEditor
                 lot={editingLotPolygon}
                 mapBoundary={map?.boundaryCoordinates}
+                otherLotsInBlock={editingLotPolygon.blockId ? lots.filter(l => l.blockId === editingLotPolygon.blockId && l.id !== editingLotPolygon.id) : []}
                 onSave={saveLotCoordinates}
                 onCancel={() => setEditingLotPolygon(null)}
               />

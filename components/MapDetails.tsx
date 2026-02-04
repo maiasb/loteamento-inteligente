@@ -2541,6 +2541,7 @@ export default function MapDetails() {
                 lot={editingLotPolygon}
                 mapBoundary={map?.boundaryCoordinates}
                 blockBoundary={editingLotPolygon.blockId ? blocks.find(b => b.id === editingLotPolygon.blockId)?.coordinates : undefined}
+                otherLotsInBlock={selectedBlockLots.filter(l => l.id !== editingLotPolygon.id)}
                 onSave={(coordinates) => saveLotCoordinates(editingLotPolygon.id, coordinates)}
                 onCancel={() => setEditingLotPolygon(null)}
               />

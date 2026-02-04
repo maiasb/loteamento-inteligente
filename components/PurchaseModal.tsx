@@ -340,7 +340,7 @@ export default function PurchaseModal({ lots, onClose, onSuccess, onToggleLotSta
             <button
               type="button"
               onClick={() => setShowOptionalFields(!showOptionalFields)}
-              className="w-full py-3 px-4 bg-[var(--surface)] hover:bg-[var(--surface-hover)] border-2 border-[var(--border)] rounded-xl text-[var(--foreground)] font-semibold transition-all flex items-center justify-center gap-2"
+              className="w-full py-3 px-4 bg-[var(--surface)] hover:bg-[var(--surface-hover)] border-2 border-[var(--border)] rounded-xl text-[var(--foreground)] font-semibold transition-all flex items-center justify-center gap-2 cursor-pointer"
             >
               <svg 
                 className={`w-5 h-5 transition-transform ${showOptionalFields ? 'rotate-180' : ''}`} 
@@ -479,7 +479,7 @@ export default function PurchaseModal({ lots, onClose, onSuccess, onToggleLotSta
                             key={option.value}
                             type="button"
                             onClick={() => setFormData({ ...formData, paymentMethod: option.value })}
-                            className={`flex flex-col items-center justify-center p-3 rounded-lg border-2 transition-all ${
+                            className={`flex flex-col items-center justify-center p-3 rounded-lg border-2 transition-all cursor-pointer ${
                               formData.paymentMethod === option.value
                                 ? 'border-green-500 bg-green-500/20 text-green-600 dark:text-green-400 ring-2 ring-green-500/50 shadow-lg shadow-green-500/20'
                                 : 'border-[var(--border)] bg-[var(--card-bg)] text-[var(--foreground)] hover:border-green-500/50 hover:bg-green-500/5'
@@ -515,7 +515,7 @@ export default function PurchaseModal({ lots, onClose, onSuccess, onToggleLotSta
                           <select
                             value={formData.installments || 1}
                             onChange={(e) => setFormData({ ...formData, installments: parseInt(e.target.value) })}
-                            className="w-full px-4 py-2.5 bg-[var(--card-bg)] border-2 border-[var(--border)] rounded-lg text-[var(--foreground)] focus:ring-2 focus:ring-[var(--primary)] focus:border-[var(--primary)]"
+                            className="w-full px-4 py-2.5 bg-[var(--card-bg)] border-2 border-[var(--border)] rounded-lg text-[var(--foreground)] focus:ring-2 focus:ring-[var(--primary)] focus:border-[var(--primary)] cursor-pointer"
                           >
                             {installmentOptions.map((option) => (
                               <option key={option.value} value={option.value}>

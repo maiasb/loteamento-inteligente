@@ -8,6 +8,7 @@ interface LotPolygonEditorProps {
   lot: Lot;
   mapBoundary?: GeoCoordinate[]; // Área delimitada do loteamento
   blockBoundary?: GeoCoordinate[]; // Área delimitada da quadra
+  otherLotsInBlock?: Lot[]; // Outros lotes da mesma quadra
   onSave: (coordinates: GeoCoordinate[]) => Promise<void>;
   onCancel: () => void;
 }
@@ -33,7 +34,7 @@ function isPointInPolygon(point: GeoCoordinate, polygon: GeoCoordinate[]): boole
   return inside;
 }
 
-export default function LotPolygonEditor({ lot, mapBoundary, blockBoundary, onSave, onCancel }: LotPolygonEditorProps) {
+export default function LotPolygonEditor({ lot, mapBoundary, blockBoundary, otherLotsInBlock = [], onSave, onCancel }: LotPolygonEditorProps) {
   const [polygon, setPolygon] = useState<google.maps.Polygon | null>(null);
   const [coordinates, setCoordinates] = useState<GeoCoordinate[]>(lot.coordinates || []);
   const [isDrawing, setIsDrawing] = useState(!lot.coordinates || lot.coordinates.length === 0);
@@ -853,6 +854,38 @@ export default function LotPolygonEditor({ lot, mapBoundary, blockBoundary, onSa
                 }}
               />
             )}
+
+            {/* Mostrar outros lotes da mesma quadra */}
+            {showReferenceAreas && otherLotsInBlock && otherLotsInBlock.length > 0 && otherLotsInBlock.map((otherLot) => {
+              if (otherLot.id === lot.id || !otherLot.coordinates || otherLot.coordinates.length === 0) {
+                return null;
+              }
+              
+              // Cores baseadas no status do lote
+              const statusColors: Record<string, { fill: string; stroke: string }> = {
+                available: { fill: '#22C55E', stroke: '#16A34A' },  // Verde - Disponível
+                reserved: { fill: '#F59E0B', stroke: '#D97706' },   // Amarelo - Reservado
+                sold: { fill: '#EF4444', stroke: '#DC2626' },       // Vermelho - Vendido
+                blocked: { fill: '#6B7280', stroke: '#4B5563' },    // Cinza - Bloqueado
+              };
+              
+              const color = statusColors[otherLot.status] || statusColors.available;
+              
+              return (
+                <Polygon
+                  key={otherLot.id}
+                  paths={otherLot.coordinates}
+                  options={{
+                    fillColor: color.fill,
+                    fillOpacity: 0.3,
+                    strokeColor: color.stroke,
+                    strokeOpacity: 0.7,
+                    strokeWeight: 2,
+                    clickable: false,
+                  }}
+                />
+              );
+            })}
 
             {/* DrawingManager criado manualmente via useEffect */}
 
