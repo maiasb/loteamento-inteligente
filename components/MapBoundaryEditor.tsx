@@ -793,7 +793,7 @@ export default function MapBoundaryEditor({
                 <button
                   onClick={handleSearchAddress}
                   disabled={!isLoaded || isSearching || !searchAddress.trim()}
-                  className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl transition-colors flex items-center gap-2 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                  className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl transition-colors flex items-center gap-2 disabled:bg-gray-400 disabled:cursor-not-allowed cursor-pointer"
                 >
                   {isSearching ? (
                     <>
@@ -887,7 +887,7 @@ export default function MapBoundaryEditor({
               {(referenceBoundary || existingAreas.length > 0) && (
                 <button
                   onClick={() => setShowReferenceAreas(!showReferenceAreas)}
-                  className="px-4 py-2 bg-[var(--surface)] text-[var(--foreground)] border border-[var(--border)] rounded-lg hover:bg-[var(--foreground)]/5 transition-colors text-sm flex items-center gap-2"
+                  className="px-4 py-2 bg-[var(--surface)] text-[var(--foreground)] border border-[var(--border)] rounded-lg hover:bg-[var(--foreground)]/5 transition-colors text-sm flex items-center gap-2 cursor-pointer"
                   title={showReferenceAreas ? "Ocultar áreas de referência" : "Mostrar áreas de referência"}
                 >
                   {showReferenceAreas ? (
@@ -911,7 +911,7 @@ export default function MapBoundaryEditor({
               {allowAddressChange && (
                 <button
                   onClick={() => setCurrentStep('address')}
-                  className="px-4 py-2 bg-[var(--surface)] text-[var(--foreground)] border border-[var(--border)] rounded-lg hover:bg-[var(--foreground)]/5 transition-colors text-sm"
+                  className="px-4 py-2 bg-[var(--surface)] text-[var(--foreground)] border border-[var(--border)] rounded-lg hover:bg-[var(--foreground)]/5 transition-colors text-sm cursor-pointer"
                 >
                   Alterar Endereço
                 </button>
@@ -920,7 +920,7 @@ export default function MapBoundaryEditor({
                 <>
                   <button
                     onClick={toggleRotationMode}
-                    className={`px-4 py-2 border rounded-lg transition-colors text-sm flex items-center gap-2 ${
+                    className={`px-4 py-2 border rounded-lg transition-colors text-sm flex items-center gap-2 cursor-pointer ${
                       isRotatingMode
                         ? 'bg-purple-600 text-white border-purple-600'
                         : 'bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 border-purple-200 dark:border-purple-800 hover:bg-purple-100 dark:hover:bg-purple-900/30'
@@ -977,7 +977,7 @@ export default function MapBoundaryEditor({
                   {boundary.length > 0 && (
                     <button
                       onClick={handleClearPolygon}
-                      className="px-4 py-2 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors text-sm"
+                      className="px-4 py-2 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors text-sm cursor-pointer"
                     >
                       Limpar Área
                     </button>
@@ -1258,14 +1258,14 @@ export default function MapBoundaryEditor({
         <button
           onClick={onCancel}
           disabled={isSaving}
-          className="flex-1 px-5 py-3 bg-[var(--surface)] text-[var(--foreground)] border border-[var(--border)] rounded-xl hover:bg-[var(--foreground)]/5 font-semibold transition-colors disabled:opacity-50"
+          className="flex-1 px-5 py-3 bg-[var(--surface)] text-[var(--foreground)] border border-[var(--border)] rounded-xl hover:bg-[var(--foreground)]/5 font-semibold transition-colors disabled:opacity-50 cursor-pointer"
         >
           Cancelar
         </button>
         <button
           onClick={handleSave}
           disabled={boundary.length < 3 || isSaving}
-          className="flex-1 px-5 py-3 bg-green-600 hover:bg-green-700 text-white rounded-xl font-semibold transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          className="flex-1 px-5 py-3 bg-green-600 hover:bg-green-700 text-white rounded-xl font-semibold transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center justify-center gap-2 cursor-pointer"
         >
           {isSaving ? (
             <>

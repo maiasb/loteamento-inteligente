@@ -676,7 +676,7 @@ export default function LotPolygonEditor({ lot, mapBoundary, blockBoundary, othe
             {(mapBoundary || blockBoundary) && (
               <button
                 onClick={() => setShowReferenceAreas(!showReferenceAreas)}
-                className="px-4 py-2 bg-[var(--surface)] text-[var(--foreground)] border border-[var(--border)] rounded-lg hover:bg-[var(--foreground)]/5 transition-colors text-sm flex items-center gap-2"
+                className="px-4 py-2 bg-[var(--surface)] text-[var(--foreground)] border border-[var(--border)] rounded-lg hover:bg-[var(--foreground)]/5 transition-colors text-sm flex items-center gap-2 cursor-pointer"
                 title={showReferenceAreas ? "Ocultar áreas de referência" : "Mostrar áreas de referência"}
               >
                 {showReferenceAreas ? (
