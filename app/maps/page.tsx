@@ -329,14 +329,13 @@ export default function AdminMapsLotsPage() {
                   <button
                     key={block.id}
                     onClick={() => {
-                      // Apenas fazer requisição se for uma quadra diferente
                       if (selectedBlock?.id !== block.id) {
                         selectBlock(block.id);
                       }
                       setFocusedBlockId(block.id);
                       setFocusedLotId(null);
                     }}
-                    className={`p-4 rounded-xl font-semibold transition-all border-2 ${
+                    className={`p-4 rounded-xl font-semibold transition-all border-2 cursor-pointer ${
                       selectedBlock?.id === block.id
                         ? 'bg-gradient-to-br from-emerald-600 to-emerald-700 text-white shadow-lg scale-105 border-emerald-500'
                         : 'bg-[var(--surface)] text-[var(--foreground)] hover:bg-[var(--surface-hover)] border-[var(--border)] hover:border-emerald-400 hover:shadow-md'
@@ -547,7 +546,7 @@ export default function AdminMapsLotsPage() {
                     <div className="flex-shrink-0 p-2 bg-[var(--card-bg)] border-b border-[var(--border)] flex justify-end gap-2">
                       <button
                         onClick={() => setShowMapAreas(!showMapAreas)}
-                        className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg flex items-center gap-2 transition-colors text-sm"
+                        className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg flex items-center gap-2 transition-colors text-sm cursor-pointer"
                         title={showMapAreas ? "Ocultar marcações no mapa" : "Exibir marcações no mapa"}
                       >
                         {showMapAreas ? (
@@ -578,7 +577,7 @@ export default function AdminMapsLotsPage() {
                             const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${centerLat},${centerLng}`;
                             window.open(mapsUrl, '_blank');
                           }}
-                          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg flex items-center gap-2 transition-colors text-sm"
+                          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg flex items-center gap-2 transition-colors text-sm cursor-pointer"
                         >
                           <span>📍</span>
                           Abrir no Google Maps

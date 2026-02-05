@@ -1054,7 +1054,7 @@ export default function LotSelector({
                 <>
                   <button
                     onClick={closeModal}
-                    className="flex-1 px-4 sm:px-6 py-3 sm:py-3 text-base bg-gray-700 hover:bg-gray-600 active:bg-gray-500 text-white font-semibold rounded-xl transition-colors touch-manipulation"
+                    className="flex-1 px-4 sm:px-6 py-3 sm:py-3 text-base bg-gray-700 hover:bg-gray-600 active:bg-gray-500 text-white font-semibold rounded-xl transition-colors touch-manipulation cursor-pointer"
                   >
                     Cancelar
                   </button>
@@ -1065,7 +1065,7 @@ export default function LotSelector({
                           onLotEdit(editedLot);
                           closeModal();
                         }}
-                        className="flex-1 px-4 sm:px-6 py-3 text-base bg-[var(--success)] hover:bg-[var(--success)]/90 active:bg-[var(--success)]/80 text-white font-semibold rounded-xl transition-colors touch-manipulation"
+                        className="flex-1 px-4 sm:px-6 py-3 text-base bg-[var(--success)] hover:bg-[var(--success)]/90 active:bg-[var(--success)]/80 text-white font-semibold rounded-xl transition-colors touch-manipulation cursor-pointer"
                       >
                         Salvar Alterações
                       </button>
