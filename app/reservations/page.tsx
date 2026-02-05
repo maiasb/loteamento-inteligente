@@ -6,6 +6,7 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { useRealtimeUpdates } from '@/hooks/useRealtimeUpdates';
 import { useAuth } from '@/contexts/AuthContext';
 import { UserRole } from '@/types';
+import { useCustomAlert } from '@/hooks/useCustomAlert';
 
 const API_URL = '/api';
 
@@ -69,6 +70,7 @@ const formatCPF = (value: string): string => {
 };
 
 export default function ReservationsPage() {
+  const customAlert = useCustomAlert();
   const { user } = useAuth();
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -301,11 +303,11 @@ export default function ReservationsPage() {
   const handleApprove = async (reservationId: number) => {
     // Verificar permissão antes de prosseguir
     if (user?.role !== UserRole.ADMIN && user?.role !== UserRole.DEV) {
-      alert('⚠️ Você não tem permissão para aprovar reservas.');
+      customAlert.warning('Você não tem permissão para aprovar reservas.');
       return;
     }
 
-    if (!confirm('Tem certeza que deseja aprovar esta reserva?\n\nIsso marcará o lote como VENDIDO.')) {
+    if (!await customAlert.confirm('Tem certeza que deseja aprovar esta reserva?\n\nIsso marcará o lote como VENDIDO.')) {
       return;
     }
 
@@ -324,18 +326,18 @@ export default function ReservationsPage() {
       loadStats(); // Recarregar estatísticas
     } catch (error) {
       console.error('[Reservations] ❌ Erro ao aprovar reserva:', error);
-      alert('Erro ao aprovar reserva. Tente novamente.');
+      customAlert.error('Erro ao aprovar reserva. Tente novamente.');
     }
   };
 
   const handleReject = async (reservationId: number) => {
     // Verificar permissão antes de prosseguir
     if (user?.role !== UserRole.ADMIN && user?.role !== UserRole.DEV) {
-      alert('⚠️ Você não tem permissão para rejeitar reservas.');
+      customAlert.warning('Você não tem permissão para rejeitar reservas.');
       return;
     }
 
-    if (!confirm('Tem certeza que deseja rejeitar esta reserva?')) {
+    if (!await customAlert.confirm('Tem certeza que deseja rejeitar esta reserva?')) {
       return;
     }
 
@@ -350,14 +352,14 @@ export default function ReservationsPage() {
       loadStats(); // Recarregar estatísticas
     } catch (error) {
       console.error('[Reservations] ❌ Erro ao rejeitar reserva:', error);
-      alert('Erro ao rejeitar reserva. Tente novamente.');
+      customAlert.error('Erro ao rejeitar reserva. Tente novamente.');
     }
   };
 
   const handleEdit = (reservation: Reservation) => {
     // Verificar permissão: vendedores não podem editar reservas concluídas ou canceladas
     if (user?.role !== UserRole.ADMIN && user?.role !== UserRole.DEV && reservation.status !== 'pending') {
-      alert('⚠️ Você não tem permissão para editar reservas já confirmadas ou canceladas.');
+      customAlert.warning('Você não tem permissão para editar reservas já confirmadas ou canceladas.');
       return;
     }
 
@@ -482,10 +484,10 @@ export default function ReservationsPage() {
       setIsEditModalOpen(false);
       setEditingReservation(null);
       loadData();
-      alert('✅ Reserva editada com sucesso!');
+      customAlert.success('Reserva editada com sucesso!');
     } catch (error) {
       console.error('[Reservations] ❌ Erro ao editar reserva:', error);
-      alert('❌ Erro ao editar reserva. Tente novamente.');
+      customAlert.error('Erro ao editar reserva. Tente novamente.');
     }
   };
 

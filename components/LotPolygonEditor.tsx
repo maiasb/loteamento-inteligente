@@ -3,6 +3,7 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { GoogleMap, useLoadScript, Polygon, Marker, OverlayView } from '@react-google-maps/api';
 import { GeoCoordinate, Lot } from '@/types';
+import { useCustomAlert } from '@/hooks/useCustomAlert';
 
 interface LotPolygonEditorProps {
   lot: Lot;
@@ -35,6 +36,7 @@ function isPointInPolygon(point: GeoCoordinate, polygon: GeoCoordinate[]): boole
 }
 
 export default function LotPolygonEditor({ lot, mapBoundary, blockBoundary, otherLotsInBlock = [], onSave, onCancel }: LotPolygonEditorProps) {
+  const customAlert = useCustomAlert();
   const [polygon, setPolygon] = useState<google.maps.Polygon | null>(null);
   const [coordinates, setCoordinates] = useState<GeoCoordinate[]>(lot.coordinates || []);
   const [isDrawing, setIsDrawing] = useState(!lot.coordinates || lot.coordinates.length === 0);
@@ -541,7 +543,7 @@ export default function LotPolygonEditor({ lot, mapBoundary, blockBoundary, othe
 
   const handleSave = async () => {
     if (coordinates.length < 3) {
-      alert('⚠️ Você precisa desenhar um polígono com pelo menos 3 pontos!');
+      customAlert.warning('Você precisa desenhar um polígono com pelo menos 3 pontos!');
       return;
     }
 
@@ -554,7 +556,7 @@ export default function LotPolygonEditor({ lot, mapBoundary, blockBoundary, othe
   };
 
   const handleClearAndSave = async () => {
-    if (!confirm('Tem certeza que deseja limpar a área marcada e salvar sem coordenadas?')) {
+    if (!await customAlert.confirm('Tem certeza que deseja limpar a área marcada e salvar sem coordenadas?')) {
       return;
     }
 
@@ -575,17 +577,22 @@ export default function LotPolygonEditor({ lot, mapBoundary, blockBoundary, othe
     <div className="flex flex-col gap-4">
       {/* Instruções */}
       <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-4">
-        <h3 className="font-semibold text-blue-900 dark:text-blue-100 mb-2">
-          📍 Como delimitar o lote:
-        </h3>
-        <ol className="text-sm text-blue-800 dark:text-blue-200 space-y-1 list-decimal list-inside">
-          <li>Localize o lote <strong>"{lot.lotNumber}"</strong> na área do mapa</li>
-          <li>Clique em <strong>"Iniciar Desenho"</strong></li>
-          <li>Clique nos cantos do lote para criar o polígono</li>
-          <li>Clique no primeiro ponto novamente para fechar</li>
-          <li>Ajuste os pontos arrastando-os se necessário</li>
-          <li>Clique em <strong>"Salvar Coordenadas"</strong></li>
-        </ol>
+        <div className="flex items-start gap-3">
+          <svg className="w-6 h-6 text-blue-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <div className="flex-1">
+            <p className="font-semibold mb-1">📍 Como delimitar o lote:</p>
+            <ol className="space-y-1 list-decimal list-inside">
+              <li>Localize o lote <strong>"{lot.lotNumber}"</strong> na área do mapa</li>
+              <li>Clique em <strong>"Iniciar Desenho"</strong></li>
+              <li>Clique nos cantos do lote para criar o polígono</li>
+              <li>Clique no primeiro ponto novamente para fechar</li>
+              <li>Ajuste os pontos arrastando-os se necessário</li>
+              <li>Clique em <strong>"Salvar Coordenadas"</strong></li>
+            </ol>
+          </div>
+        </div>
       </div>
 
       {/* Informações do Lote */}

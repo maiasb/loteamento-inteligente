@@ -3,6 +3,7 @@
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { GoogleMap, useLoadScript, DrawingManager, Polygon, Marker } from '@react-google-maps/api';
 import { GeoCoordinate } from '@/types';
+import { useCustomAlert } from '@/hooks/useCustomAlert';
 
 interface MapBoundaryEditorProps {
   initialAddress?: string;
@@ -50,6 +51,7 @@ export default function MapBoundaryEditor({
   onSave,
   onCancel,
 }: MapBoundaryEditorProps) {
+  const customAlert = useCustomAlert();
   const [currentStep, setCurrentStep] = useState<'address' | 'draw'>(initialAddress ? 'draw' : 'address');
   const [searchAddress, setSearchAddress] = useState(initialAddress);
   const [center, setCenter] = useState(defaultCenter);
@@ -432,13 +434,13 @@ export default function MapBoundaryEditor({
 
   const handleSearchAddress = useCallback(async () => {
     if (!searchAddress.trim()) {
-      alert('Por favor, digite um endereço para buscar.');
+      customAlert.error('Por favor, digite um endereço para buscar.');
       return;
     }
 
     // Verificar se o Google Maps está carregado
     if (!isLoaded) {
-      alert('Aguarde o carregamento do Google Maps...');
+      customAlert.info('Aguarde o carregamento do Google Maps...');
       return;
     }
 
@@ -472,13 +474,13 @@ export default function MapBoundaryEditor({
               mapRef.current.setZoom(17);
             }
           } else {
-            alert('Endereço não encontrado. Tente outro termo de busca.');
+            customAlert.warning('Endereço não encontrado. Tente outro termo de busca.');
           }
         }
       );
     } catch (error) {
       console.error('Erro ao buscar endereço:', error);
-      alert('Erro ao buscar endereço. Tente novamente.');
+      customAlert.error('Erro ao buscar endereço. Tente novamente.');
       setIsSearching(false);
     }
   }, [searchAddress, isLoaded]);
@@ -657,12 +659,12 @@ export default function MapBoundaryEditor({
 
   const handleSave = useCallback(async () => {
     if (boundary.length < 3) {
-      alert('❌ Desenhe um polígono com pelo menos 3 pontos para delimitar a área.');
+      customAlert.error('Desenhe um polígono com pelo menos 3 pontos para delimitar a área.');
       return;
     }
 
     if (!searchAddress.trim()) {
-      alert('❌ Informe o endereço do loteamento.');
+      customAlert.error('Informe o endereço do loteamento.');
       return;
     }
 
@@ -678,11 +680,11 @@ export default function MapBoundaryEditor({
 
   const handleClearAndSave = useCallback(async () => {
     if (!searchAddress.trim()) {
-      alert('❌ Informe o endereço mesmo ao salvar sem coordenadas.');
+      customAlert.error('Informe o endereço mesmo ao salvar sem coordenadas.');
       return;
     }
 
-    if (!confirm('Tem certeza que deseja limpar a área marcada e salvar sem coordenadas?')) {
+    if (!await customAlert.confirm('Tem certeza que deseja limpar a área marcada e salvar sem coordenadas?')) {
       return;
     }
 

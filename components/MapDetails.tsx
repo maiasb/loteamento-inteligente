@@ -12,6 +12,7 @@ import PublicMapViewer from '@/components/PublicMapViewer';
 import LotPolygonEditor from '@/components/LotPolygonEditor';
 import { useAuth } from '@/contexts/AuthContext';
 import MapBoundaryEditor from './MapBoundaryEditor';
+import { useCustomAlert } from '@/hooks/useCustomAlert';
 
 const API_URL = '/api';
 
@@ -20,6 +21,7 @@ export default function MapDetails() {
   const router = useRouter();
   const mapId = searchParams.get('mapId') || '';
   const { user } = useAuth();
+  const customAlert = useCustomAlert();
 
   const [map, setMap] = useState<Map | null>(null);
   const [allMaps, setAllMaps] = useState<Map[]>([]);
@@ -491,27 +493,27 @@ export default function MapDetails() {
     if (!editingBlock) return;
 
     if (!editingBlock.name || editingBlock.name.trim() === '') {
-      alert('❌ Nome da quadra é obrigatório');
+      customAlert.error('Nome da quadra é obrigatório');
       return;
     }
 
     try {
       if (editingBlock.id) {
         await updateBlock(editingBlock);
-        alert('✅ Quadra atualizada com sucesso!');
+        customAlert.success('Quadra atualizada com sucesso!');
       } else {
         await createBlock({
           mapId: editingBlock.mapId,
           name: editingBlock.name,
           description: editingBlock.description,
         });
-        alert('✅ Quadra criada com sucesso!');
+        customAlert.success('Quadra criada com sucesso!');
       }
       setIsAddingBlock(false);
       setEditingBlock(null);
     } catch (error) {
       console.error('Erro ao salvar quadra:', error);
-      alert('❌ Erro ao salvar quadra. Tente novamente.');
+      customAlert.error('Erro ao salvar quadra. Tente novamente.');
     }
   };
 
@@ -524,7 +526,7 @@ export default function MapDetails() {
         ? `Esta quadra possui ${lotsInBlock.length} lote(s) cadastrado(s) que serão excluídos.\n\nTem certeza que deseja continuar?`
         : 'Tem certeza que deseja excluir esta quadra?';
 
-      if (confirm(message)) {
+      if (await customAlert.confirm(message)) {
         await deleteBlock(blockId, mapId);
         
         // Recarregar quadras para atualizar o mapa
@@ -539,15 +541,15 @@ export default function MapDetails() {
           setSelectedBlockLots([]);
         }
         
-        alert('✅ Quadra excluída com sucesso!');
+        customAlert.success('Quadra excluída com sucesso!');
       }
     } catch (error: any) {
       console.error('Erro ao deletar quadra:', error);
       
       // Tratar erro de lotes reservados/vendidos
       if (error.error && error.count) {
-        alert(
-          `❌ Não é possível excluir esta quadra\n\n` +
+        customAlert.error(
+          `Não é possível excluir esta quadra\n\n` +
           `Existem ${error.count} lote(s) com reservas ou vendas ativas.\n\n` +
           `📋 O que fazer:\n` +
           `1. Acesse a página de Reservas\n` +
@@ -556,9 +558,9 @@ export default function MapDetails() {
           `💡 Dica: Você pode identificar os lotes pelos status "Reservado" ou "Vendido"`
         );
       } else if (error.error) {
-        alert(`❌ Erro ao excluir quadra\n\n${error.error}`);
+        customAlert.error(`Erro ao excluir quadra\n\n${error.error}`);
       } else {
-        alert('❌ Erro ao deletar quadra. Verifique sua conexão e tente novamente.');
+        customAlert.error('Erro ao deletar quadra. Verifique sua conexão e tente novamente.');
       }
     }
   };
@@ -586,17 +588,17 @@ export default function MapDetails() {
     try {
       
       if (!lot.lotNumber || lot.lotNumber.trim() === '') {
-        alert('❌ Número do lote é obrigatório');
+        customAlert.error('Número do lote é obrigatório');
         return;
       }
 
       if (!lot.size || lot.size <= 0) {
-        alert('❌ Informe o tamanho do lote (m²)');
+        customAlert.error('Informe o tamanho do lote (m²)');
         return;
       }
 
       if (!lot.price || lot.price <= 0) {
-        alert('❌ O preço total do lote deve ser maior que zero');
+        customAlert.error('O preço total do lote deve ser maior que zero');
         return;
       }
 
@@ -632,11 +634,11 @@ export default function MapDetails() {
       setRefreshTrigger(prev => prev + 1);
       setIsAddingLot(false);
       setSelectedBlockForLot('');
-      alert('✅ Lote salvo com sucesso!');
+      customAlert.success('Lote salvo com sucesso!');
     } catch (error: any) {
       console.error('[MapDetails] ❌ Erro ao salvar lote:', error);
       const errorMessage = error.response?.data?.error || 'Erro ao salvar lote. Tente novamente.';
-      alert(`❌ ${errorMessage}`);
+      customAlert.error(errorMessage);
     }
   };
 
@@ -690,8 +692,8 @@ export default function MapDetails() {
 
       // Verificar se o lote está reservado ou vendido
       if (lot.status === LotStatus.RESERVED || lot.status === LotStatus.SOLD) {
-        alert(
-          `❌ Não é possível excluir este lote\n\n` +
+        customAlert.error(
+          `Não é possível excluir este lote\n\n` +
           `O lote está ${lot.status === LotStatus.RESERVED ? 'reservado' : 'vendido'}.\n\n` +
           `📋 O que fazer:\n` +
           `1. Acesse a página de Reservas\n` +
@@ -716,11 +718,11 @@ export default function MapDetails() {
       
       // Força refresh dos cards após excluir lote
       setRefreshTrigger(prev => prev + 1);
-      alert('✅ Lote excluído com sucesso!');
+      customAlert.success('Lote excluído com sucesso!');
     } catch (error: any) {
       console.error('[MapDetails] ❌ Erro ao excluir lote:', error);
       const errorMessage = error.response?.data?.error || 'Erro ao excluir lote. Tente novamente.';
-      alert(`❌ ${errorMessage}`);
+      customAlert.error(errorMessage);
       throw error;
     }
   };
@@ -735,7 +737,7 @@ export default function MapDetails() {
         boundaryCoordinates: coordinates
       });
       
-      alert('✅ Área configurada com sucesso!');
+      customAlert.success('Área configurada com sucesso!');
       setIsConfiguringLocation(false);
       
       // Atualizar o estado local do mapa imediatamente
@@ -752,7 +754,7 @@ export default function MapDetails() {
       await loadMapData(mapId);
     } catch (error) {
       console.error('Erro ao salvar boundary:', error);
-      alert('❌ Erro ao salvar área. Tente novamente.');
+      customAlert.error('Erro ao salvar área. Tente novamente.');
     }
   };
 
@@ -776,7 +778,7 @@ export default function MapDetails() {
         features: lot.features,
       });
       
-      alert('✅ Coordenadas do lote salvas com sucesso!');
+      customAlert.success('Coordenadas do lote salvas com sucesso!');
       setEditingLotPolygon(null);
       setShowLotSelectionModal(false);
       
@@ -789,7 +791,7 @@ export default function MapDetails() {
       await loadAllLotsInMap();
     } catch (error) {
       console.error('Erro ao salvar coordenadas do lote:', error);
-      alert('❌ Erro ao salvar coordenadas. Tente novamente.');
+      customAlert.error('Erro ao salvar coordenadas. Tente novamente.');
     }
   };
 
@@ -805,7 +807,7 @@ export default function MapDetails() {
         coordinates,
       });
       
-      alert('✅ Coordenadas da quadra salvas com sucesso!');
+      customAlert.success('Coordenadas da quadra salvas com sucesso!');
       setIsConfiguringBlockArea(false);
       setEditingBlockArea(null);
       
@@ -813,13 +815,13 @@ export default function MapDetails() {
       await loadBlocks(mapId);
     } catch (error) {
       console.error('Erro ao salvar coordenadas da quadra:', error);
-      alert('❌ Erro ao salvar coordenadas. Tente novamente.');
+      customAlert.error('Erro ao salvar coordenadas. Tente novamente.');
     }
   };
 
   const handleCreateMap = async () => {
     if (!newMapName.trim()) {
-      alert('Por favor, informe o nome do loteamento');
+      customAlert.error('Por favor, informe o nome do loteamento');
       return;
     }
 
@@ -840,7 +842,7 @@ export default function MapDetails() {
 
       const newMapId = response.data.mapId || response.data.id;
       
-      alert('✅ Loteamento criado com sucesso!');
+      customAlert.success('Loteamento criado com sucesso!');
       setIsCreatingMap(false);
       setNewMapName('');
       setNewMapDescription('');
@@ -852,7 +854,7 @@ export default function MapDetails() {
       router.push(`/map-details?mapId=${newMapId}`);
     } catch (error: any) {
       console.error('Erro ao criar mapa:', error);
-      alert(error.response?.data?.error || '❌ Erro ao criar loteamento. Tente novamente.');
+      customAlert.error(error.response?.data?.error || 'Erro ao criar loteamento. Tente novamente.');
     } finally {
       setIsSubmittingMap(false);
     }
@@ -867,7 +869,7 @@ export default function MapDetails() {
         timeout: 15000,
       });
 
-      alert('✅ Loteamento excluído com sucesso!');
+      customAlert.success('Loteamento excluído com sucesso!');
       setShowDeleteConfirm(false);
       
       // Recarregar lista de mapas
@@ -886,8 +888,8 @@ export default function MapDetails() {
       }
     } catch (error: any) {
       console.error('Erro ao deletar mapa:', error);
-      const errorMsg = error.response?.data?.error || '❌ Erro ao excluir loteamento. Tente novamente.';
-      alert(errorMsg);
+      const errorMsg = error.response?.data?.error || 'Erro ao excluir loteamento. Tente novamente.';
+      customAlert.error(errorMsg);
     } finally {
       setIsDeletingMap(false);
     }
@@ -895,7 +897,7 @@ export default function MapDetails() {
 
   const handleEditMap = async () => {
     if (!mapId || !editMapName.trim()) {
-      alert('❌ O nome do loteamento é obrigatório');
+      customAlert.error('O nome do loteamento é obrigatório');
       return;
     }
     
@@ -907,15 +909,15 @@ export default function MapDetails() {
         description: editMapDescription.trim()
       });
 
-      alert('✅ Loteamento atualizado com sucesso!');
+      customAlert.success('Loteamento atualizado com sucesso!');
       setIsEditingMap(false);
       
       // Recarregar dados do mapa
       await loadMapData();
     } catch (error: any) {
       console.error('Erro ao editar mapa:', error);
-      const errorMsg = error.response?.data?.error || '❌ Erro ao atualizar loteamento. Tente novamente.';
-      alert(errorMsg);
+      const errorMsg = error.response?.data?.error || 'Erro ao atualizar loteamento. Tente novamente.';
+      customAlert.error(errorMsg);
     } finally {
       setIsSubmittingMapEdit(false);
     }
@@ -926,18 +928,18 @@ export default function MapDetails() {
     if (selectedLots.length === 0) return;
     
     if (!mapId) {
-      alert('❌ Erro: ID do mapa não encontrado');
+      customAlert.error('Erro: ID do mapa não encontrado');
       return;
     }
     
     const availableLots = selectedLots.filter(lot => lot.status === LotStatus.AVAILABLE);
     
     if (availableLots.length === 0) {
-      alert('❌ Nenhum lote disponível para bloquear');
+      customAlert.warning('Nenhum lote disponível para bloquear');
       return;
     }
 
-    if (!confirm(`Deseja bloquear ${availableLots.length} lote(s)?`)) return;
+    if (!await customAlert.confirm(`Deseja bloquear ${availableLots.length} lote(s)?`)) return;
 
     try {      
       await Promise.all(availableLots.map(lot =>
@@ -954,7 +956,7 @@ export default function MapDetails() {
         })
       ));
 
-      alert(`✅ ${availableLots.length} lote(s) bloqueado(s) com sucesso!`);
+      customAlert.success(`${availableLots.length} lote(s) bloqueado(s) com sucesso!`);
       setSelectedLots([]);
       setMultiSelectMode(false);
       
@@ -968,7 +970,7 @@ export default function MapDetails() {
       loadLotStats();
     } catch (error) {
       console.error('Erro ao bloquear lotes:', error);
-      alert('❌ Erro ao bloquear lotes. Tente novamente.');
+      customAlert.error('Erro ao bloquear lotes. Tente novamente.');
     }
   };
 
@@ -976,18 +978,18 @@ export default function MapDetails() {
     if (selectedLots.length === 0) return;
     
     if (!mapId) {
-      alert('❌ Erro: ID do mapa não encontrado');
+      customAlert.error('Erro: ID do mapa não encontrado');
       return;
     }
     
     const blockedLots = selectedLots.filter(lot => lot.status === LotStatus.BLOCKED);
     
     if (blockedLots.length === 0) {
-      alert('❌ Nenhum lote bloqueado para desbloquear');
+      customAlert.warning('Nenhum lote bloqueado para desbloquear');
       return;
     }
 
-    if (!confirm(`Deseja desbloquear ${blockedLots.length} lote(s)?`)) return;
+    if (!await customAlert.confirm(`Deseja desbloquear ${blockedLots.length} lote(s)?`)) return;
 
     try {
       
@@ -1005,7 +1007,7 @@ export default function MapDetails() {
         })
       ));
 
-      alert(`✅ ${blockedLots.length} lote(s) desbloqueado(s) com sucesso!`);
+      customAlert.success(`${blockedLots.length} lote(s) desbloqueado(s) com sucesso!`);
       setSelectedLots([]);
       setMultiSelectMode(false);
       
@@ -1019,7 +1021,7 @@ export default function MapDetails() {
       loadLotStats();
     } catch (error) {
       console.error('Erro ao desbloquear lotes:', error);
-      alert('❌ Erro ao desbloquear lotes. Tente novamente.');
+      customAlert.error('Erro ao desbloquear lotes. Tente novamente.');
     }
   };
 
@@ -1027,7 +1029,7 @@ export default function MapDetails() {
     if (selectedLots.length === 0) return;
     
     if (!mapId) {
-      alert('❌ Erro: ID do mapa não encontrado');
+      customAlert.error('Erro: ID do mapa não encontrado');
       return;
     }
     
@@ -1036,15 +1038,15 @@ export default function MapDetails() {
     );
     
     if (deletableLots.length === 0) {
-      alert('❌ Nenhum lote pode ser excluído. Lotes reservados ou vendidos não podem ser excluídos.');
+      customAlert.error('Nenhum lote pode ser excluído. Lotes reservados ou vendidos não podem ser excluídos.');
       return;
     }
 
     if (deletableLots.length < selectedLots.length) {
-      alert(`⚠️ ${selectedLots.length - deletableLots.length} lote(s) não pode(m) ser excluído(s) por estar(em) reservado(s) ou vendido(s).`);
+      customAlert.warning(`${selectedLots.length - deletableLots.length} lote(s) não pode(m) ser excluído(s) por estar(em) reservado(s) ou vendido(s).`);
     }
 
-    if (!confirm(`Deseja EXCLUIR ${deletableLots.length} lote(s)? Esta ação não pode ser desfeita!`)) return;
+    if (!await customAlert.confirm(`Deseja EXCLUIR ${deletableLots.length} lote(s)? Esta ação não pode ser desfeita!`)) return;
 
     try {
       await Promise.all(deletableLots.map(lot =>
@@ -1055,7 +1057,7 @@ export default function MapDetails() {
         })
       ));
 
-      alert(`✅ ${deletableLots.length} lote(s) excluído(s) com sucesso!`);
+      customAlert.success(`${deletableLots.length} lote(s) excluído(s) com sucesso!`);
       setSelectedLots([]);
       setMultiSelectMode(false);
       
@@ -1069,7 +1071,7 @@ export default function MapDetails() {
       loadLotStats();
     } catch (error) {
       console.error('Erro ao excluir lotes:', error);
-      alert('❌ Erro ao excluir lotes. Tente novamente.');
+      customAlert.error('Erro ao excluir lotes. Tente novamente.');
     }
   };
 
@@ -1527,7 +1529,7 @@ export default function MapDetails() {
                       onClick={(e) => {
                         e.stopPropagation();
                         if (!map?.boundaryCoordinates || map.boundaryCoordinates.length === 0) {
-                          alert('Por favor, configure a área do loteamento primeiro antes de definir a área da quadra.');
+                          customAlert.warning('Por favor, configure a área do loteamento primeiro antes de definir a área da quadra.');
                           return;
                         }
                         setEditingBlockArea(block);
@@ -1665,7 +1667,7 @@ export default function MapDetails() {
             {map?.address && map?.boundaryCoordinates && map.boundaryCoordinates.length > 0 && (
               <button
                 onClick={async () => {
-                  if (confirm('Tem certeza que deseja limpar o endereço e a área do loteamento? Esta ação não pode ser desfeita.')) {
+                  if (await customAlert.confirm('Tem certeza que deseja limpar o endereço e a área do loteamento? Esta ação não pode ser desfeita.')) {
                     await saveBoundaryCoordinates([], '');
                   }
                 }}
@@ -2444,11 +2446,11 @@ export default function MapDetails() {
                       key={lot.id}
                       onClick={async () => {
                         if (!map?.boundaryCoordinates || map.boundaryCoordinates.length === 0) {
-                          alert('⚠️ O loteamento não tem área definida. Configure a área primeiro.');
+                          customAlert.warning('O loteamento não tem área definida. Configure a área primeiro.');
                           return;
                         }
                         
-                        const confirmLink = confirm(
+                        const confirmLink = await customAlert.confirm(
                           `Confirma vincular o lote ${lot.lotNumber} à área verde do loteamento?\n\n` +
                           `O lote ficará com as mesmas coordenadas da área verde.`
                         );
