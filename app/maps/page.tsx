@@ -231,7 +231,7 @@ export default function AdminMapsLotsPage() {
           <p className="text-[var(--foreground)] text-lg font-semibold mb-2">Nenhum loteamento cadastrado</p>
           <p className="text-[var(--foreground)]/80 text-sm font-medium mb-4">Acesse a página de gerenciamento para criar um novo loteamento</p>
           <button
-            onClick={() => window.location.href = '/admin/map-details'}
+            onClick={() => window.location.href = '/map-details'}
             className="px-6 py-3 bg-[var(--accent)] text-[#1c1c1c] font-semibold rounded-lg hover:bg-[var(--accent-light)] transition-colors inline-flex items-center gap-2"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

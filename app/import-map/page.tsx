@@ -555,7 +555,7 @@ export default function ImportMapPage() {
 
               <div className="flex gap-3 mt-4">
                 <button
-                  onClick={() => router.push(`/admin/map-details?mapId=${success.mapId}`)}
+                  onClick={() => router.push(`/map-details?mapId=${success.mapId}`)}
                   className="px-4 py-2 bg-green-500 hover:bg-green-600 text-[var(--foreground)] rounded-lg font-semibold transition-colors"
                 >
                   Ver Mapa

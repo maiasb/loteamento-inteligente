@@ -285,7 +285,7 @@ export default function BlockManagement() {
                 </div>
                 <div className="flex gap-2">
                   <Link
-                    href={`/admin/lot-management?mapId=${mapId}&blockId=${block.id}`}
+                    href={`/lot-management?mapId=${mapId}&blockId=${block.id}`}
                     className="flex-1 px-4 py-2.5 bg-[var(--success)] text-[var(--foreground)] font-semibold rounded-xl hover:bg-[var(--success-dark)] text-center transition-all shadow-[var(--shadow-md)] hover:shadow-[var(--shadow-lg)] hover:-translate-y-0.5 cursor-pointer"
                   >
                     Ver Lotes

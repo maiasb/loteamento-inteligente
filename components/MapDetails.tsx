@@ -342,7 +342,7 @@ export default function MapDetails() {
         // Se não tem mapId, selecionar o primeiro mapa
         if (formattedMaps.length > 0) {
           const firstMap = formattedMaps[0];
-          router.push(`/admin/map-details?mapId=${firstMap.id}`);
+          router.push(`/map-details?mapId=${firstMap.id}`);
         } else {
           setMap(null);
         }
@@ -849,7 +849,7 @@ export default function MapDetails() {
       await loadMapData();
       
       // Redirecionar para o novo mapa
-      router.push(`/admin/map-details?mapId=${newMapId}`);
+      router.push(`/map-details?mapId=${newMapId}`);
     } catch (error: any) {
       console.error('Erro ao criar mapa:', error);
       alert(error.response?.data?.error || '❌ Erro ao criar loteamento. Tente novamente.');
@@ -877,12 +877,12 @@ export default function MapDetails() {
       if (allMaps.length > 1) {
         const nextMap = allMaps.find(m => m.id !== mapId);
         if (nextMap) {
-          router.push(`/admin/map-details?mapId=${nextMap.id}`);
+          router.push(`/map-details?mapId=${nextMap.id}`);
         } else {
-          router.push('/admin/map-details');
+          router.push('/map-details');
         }
       } else {
-        router.push('/admin/map-details');
+        router.push('/map-details');
       }
     } catch (error: any) {
       console.error('Erro ao deletar mapa:', error);
@@ -1091,7 +1091,7 @@ export default function MapDetails() {
               <p className="text-[var(--foreground)]/80 text-sm font-medium mb-4">Importe ou crie um novo loteamento para começar</p>
               <div className="flex gap-3 justify-center">
                 <button
-                  onClick={() => router.push('/admin/import-map')}
+                  onClick={() => router.push('/import-map')}
                   className="px-6 py-3 bg-[var(--accent)] text-[#1c1c1c] font-semibold rounded-lg hover:bg-[var(--accent-light)] transition-colors inline-flex items-center gap-2"
                 >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1317,7 +1317,7 @@ export default function MapDetails() {
                 </label>
                 <select
                   value={mapId}
-                  onChange={(e) => router.push(`/admin/map-details?mapId=${e.target.value}`)}
+                  onChange={(e) => router.push(`/map-details?mapId=${e.target.value}`)}
                   className="w-full px-4 py-3 bg-[var(--card-bg)] text-[var(--foreground)] rounded-xl border-2 border-[var(--border)] focus:border-[var(--accent)] focus:outline-none transition-colors font-semibold cursor-pointer"
                 >
                   {allMaps.map((m) => (

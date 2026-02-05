@@ -8,7 +8,7 @@ import { UserRole } from '@/types';
 import ThemeToggle from '@/components/ThemeToggle';
 import { useTheme } from '@/contexts/ThemeContext';
 
-export default function AdminLayout({ children }: { children: React.ReactNode }) {
+export default function SharedLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const { user, isAuthenticated, logout, canAccessUsers } = useAuth();
@@ -59,7 +59,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   // Marcar como visitado quando entrar em map-details
   useEffect(() => {
-    if (mounted && pathname === '/admin/map-details' && !showLotManagement) {
+    if (mounted && pathname === '/map-details' && !showLotManagement) {
       localStorage.setItem('hasVisitedMapManagement', 'true');
       setShowLotManagement(true);
     }
@@ -232,9 +232,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 {user.role !== UserRole.VENDEDOR && (
                   <>
                     <Link
-                      href="/admin/map-details"
+                      href="/map-details"
                       className={`flex items-center gap-3 px-4 py-2 rounded-lg text-sm transition-all cursor-pointer ${
-                        isActive('/admin/map-details')
+                        isActive('/map-details')
                           ? 'bg-gradient-to-r from-[var(--primary)] to-[var(--primary-light)] text-white shadow-[var(--shadow-md)]'
                           : 'text-[var(--foreground)] hover:bg-[var(--surface)] hover:shadow-[var(--shadow-sm)]'
                       }`}
@@ -245,9 +245,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                       <span>Gerenciar Loteamentos</span>
                     </Link>
                     <Link
-                      href="/admin/import-map"
+                      href="/import-map"
                       className={`flex items-center gap-3 px-4 py-2 rounded-lg text-sm transition-all cursor-pointer ${
-                        isActive('/admin/import-map')
+                        isActive('/import-map')
                           ? 'bg-gradient-to-r from-[var(--primary)] to-[var(--primary-light)] text-white shadow-[var(--shadow-md)]'
                           : 'text-[var(--foreground)] hover:bg-[var(--surface)] hover:shadow-[var(--shadow-sm)]'
                       }`}
@@ -259,9 +259,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                     </Link>
                     {showLotManagement && (
                       <Link
-                        href="/admin/lot-management"
+                        href="/lot-management"
                         className={`flex items-center gap-3 px-4 py-2 rounded-lg text-sm transition-all cursor-pointer ${
-                          isActive('/admin/lot-management')
+                          isActive('/lot-management')
                             ? 'bg-gradient-to-r from-[var(--primary)] to-[var(--primary-light)] text-white shadow-[var(--shadow-md)]'
                             : 'text-[var(--foreground)] hover:bg-[var(--surface)] hover:shadow-[var(--shadow-sm)]'
                         }`}
@@ -276,9 +276,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 )}
                 {canAccessUsers && (
                   <Link
-                    href="/admin/users"
+                    href="/users"
                     className={`flex items-center gap-3 px-4 py-2 rounded-lg text-sm transition-all cursor-pointer ${
-                      isActive('/admin/users')
+                      isActive('/users')
                         ? 'bg-gradient-to-r from-[var(--primary)] to-[var(--primary-light)] text-white shadow-[var(--shadow-md)]'
                         : 'text-[var(--foreground)] hover:bg-[var(--surface)] hover:shadow-[var(--shadow-sm)]'
                     }`}

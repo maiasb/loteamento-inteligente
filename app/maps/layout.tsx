@@ -1,5 +1,5 @@
-import AdminLayout from '@/app/admin/layout';
+import SharedLayout from '@/components/SharedLayout';
 
 export default function MapsLayout({ children }: { children: React.ReactNode }) {
-  return <AdminLayout>{children}</AdminLayout>;
+  return <SharedLayout>{children}</SharedLayout>;
 }

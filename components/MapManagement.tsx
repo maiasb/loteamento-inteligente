@@ -342,7 +342,7 @@ export default function MapManagement() {
               </div>
               <div className="flex gap-2">
                 <button
-                  onClick={() => router.push(`/admin/map-details?mapId=${map.id}`)}
+                  onClick={() => router.push(`/map-details?mapId=${map.id}`)}
                   className="flex-1 px-4 py-2.5 bg-[var(--primary)] text-white font-semibold rounded-xl hover:bg-[var(--primary-dark)] text-center transition-all shadow-[var(--shadow-md)] hover:shadow-[var(--shadow-lg)] hover:-translate-y-0.5 cursor-pointer"
                 >
                   Gerenciar
