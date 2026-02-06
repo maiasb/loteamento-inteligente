@@ -3,9 +3,8 @@ import type { NextConfig } from "next";
 const isProd = process.env.NODE_ENV === 'production';
 
 const nextConfig: NextConfig = {
-  // Build otimizado standalone para produção (reduz drasticamente uso de memória)
-  output: isProd ? 'standalone' : undefined,
-  
+  // Remover 'output: export' para permitir API Routes dinâmicas
+  // output: 'export', // Desabilitado - incompatível com API Routes
   images: {
     unoptimized: true,
   },
