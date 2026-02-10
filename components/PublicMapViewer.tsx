@@ -307,34 +307,6 @@ export default function PublicMapViewer({
               onMouseOver={() => setHoveredBlockId(block.id)}
               onMouseOut={() => setHoveredBlockId(null)}
             />
-            {/* Label da quadra - esconder quando focada */}
-            {focusedBlockId !== block.id && (() => {
-              const blockCenter = getPolygonCenter(block.coordinates || []);
-              if (!blockCenter) return null;
-              return (
-                <OverlayView
-                  position={blockCenter}
-                  mapPaneName={OverlayView.OVERLAY_MOUSE_TARGET}
-                >
-                  <div
-                    style={{
-                      position: 'absolute',
-                      transform: 'translate(-50%, -50%)',
-                      fontSize: '16px',
-                      fontWeight: 'bold',
-                      color: '#FFFFFF',
-                      textShadow: '2px 2px 4px rgba(0,0,0,0.8)',
-                      opacity: 0.85,
-                      pointerEvents: 'none',
-                      whiteSpace: 'nowrap',
-                      userSelect: 'none'
-                    }}
-                  >
-                    {block.name}
-                  </div>
-                </OverlayView>
-              );
-            })()}
           </React.Fragment>
         ))}
 
@@ -351,36 +323,74 @@ export default function PublicMapViewer({
               onMouseOver={() => setHoveredLotId(lot.id)}
               onMouseOut={() => setHoveredLotId(null)}
             />
-            {/* Label do lote - mostrar apenas quando a quadra estiver focada */}
-            {focusedBlockId === lot.blockId && (() => {
-              const lotCenter = getPolygonCenter(lot.coordinates || []);
-              if (!lotCenter) return null;
-              return (
-                <OverlayView
-                  position={lotCenter}
-                  mapPaneName={OverlayView.OVERLAY_MOUSE_TARGET}
-                >
-                  <div
-                    style={{
-                      position: 'absolute',
-                      transform: 'translate(-50%, -50%)',
-                      fontSize: '14px',
-                      fontWeight: '600',
-                      color: '#FFFFFF',
-                      textShadow: '1px 1px 3px rgba(0,0,0,0.9)',
-                      opacity: 0.9,
-                      pointerEvents: 'none',
-                      whiteSpace: 'nowrap',
-                      userSelect: 'none'
-                    }}
-                  >
-                    {lot.lotNumber}
-                  </div>
-                </OverlayView>
-              );
-            })()}
           </React.Fragment>
         ))}
+
+        {/* Tooltip de hover para quadras */}
+        {hoveredBlockId && (() => {
+          const block = blocksWithCoordinates.find(b => b.id === hoveredBlockId);
+          if (!block) return null;
+          const blockCenter = getPolygonCenter(block.coordinates || []);
+          if (!blockCenter) return null;
+          return (
+            <OverlayView
+              position={blockCenter}
+              mapPaneName={OverlayView.OVERLAY_MOUSE_TARGET}
+            >
+              <div
+                style={{
+                  position: 'absolute',
+                  transform: 'translate(-50%, -50%)',
+                  backgroundColor: 'rgba(0, 0, 0, 0.85)',
+                  color: '#FFFFFF',
+                  padding: '8px 16px',
+                  borderRadius: '8px',
+                  fontSize: '14px',
+                  fontWeight: '600',
+                  whiteSpace: 'nowrap',
+                  pointerEvents: 'none',
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                  border: '2px solid rgba(147, 51, 234, 0.6)'
+                }}
+              >
+                QUADRA {block.name}
+              </div>
+            </OverlayView>
+          );
+        })()}
+
+        {/* Tooltip de hover para lotes */}
+        {hoveredLotId && (() => {
+          const lot = lotsWithCoordinates.find(l => l.id === hoveredLotId);
+          if (!lot) return null;
+          const lotCenter = getPolygonCenter(lot.coordinates || []);
+          if (!lotCenter) return null;
+          return (
+            <OverlayView
+              position={lotCenter}
+              mapPaneName={OverlayView.OVERLAY_MOUSE_TARGET}
+            >
+              <div
+                style={{
+                  position: 'absolute',
+                  transform: 'translate(-50%, -50%)',
+                  backgroundColor: 'rgba(0, 0, 0, 0.85)',
+                  color: '#FFFFFF',
+                  padding: '8px 16px',
+                  borderRadius: '8px',
+                  fontSize: '14px',
+                  fontWeight: '600',
+                  whiteSpace: 'nowrap',
+                  pointerEvents: 'none',
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                  border: '2px solid rgba(147, 51, 234, 0.6)'
+                }}
+              >
+                QUADRA {lot.blockName} &gt; LOTE {lot.lotNumber}
+              </div>
+            </OverlayView>
+          );
+        })()}
       </GoogleMap>
     </div>
   );
