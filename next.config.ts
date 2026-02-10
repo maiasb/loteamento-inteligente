@@ -5,6 +5,13 @@ const isProd = process.env.NODE_ENV === 'production';
 const nextConfig: NextConfig = {
   // Remover 'output: export' para permitir API Routes dinâmicas
   // output: 'export', // Desabilitado - incompatível com API Routes
+  
+  // Configuração importante: desabilitar SSG para rotas dinâmicas durante o build
+  // Isso evita timeouts tentando fazer fetch de APIs que não estão disponíveis durante build
+  generateBuildId: async () => {
+    return 'build-' + Date.now();
+  },
+  
   images: {
     unoptimized: true,
   },

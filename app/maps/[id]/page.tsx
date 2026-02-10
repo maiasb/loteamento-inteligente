@@ -8,6 +8,9 @@ import LotSelector from '@/components/LotSelector';
 import InteractiveLotMap from '@/components/InteractiveLotMap';
 import PurchaseModal from '@/components/PurchaseModal';
 
+// Forçar essa página a ser apenas client-side (sem SSG/SSR)
+export const dynamic = 'force-dynamic';
+
 const API_URL = '/api';
 
 export default function MapViewPage() {

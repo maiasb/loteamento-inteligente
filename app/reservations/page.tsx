@@ -8,6 +8,9 @@ import { useAuth } from '@/contexts/AuthContext';
 import { UserRole } from '@/types';
 import { useCustomAlert } from '@/hooks/useCustomAlert';
 
+// Forçar essa página a ser apenas client-side (sem SSG/SSR)
+export const dynamic = 'force-dynamic';
+
 const API_URL = '/api';
 
 interface Reservation {

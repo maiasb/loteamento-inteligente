@@ -5,6 +5,10 @@ import { useParams, useRouter } from 'next/navigation';
 import ViewOnlyLotMap from '@/components/ViewOnlyLotMap';
 import { Block, Lot, GeoCoordinate } from '@/types';
 
+// Forçar essa página a ser apenas client-side (sem SSG/SSR)
+export const dynamic = 'force-dynamic';
+export const fetchCache = 'force-no-store';
+
 interface MapData {
   id: string;
   name: string;

@@ -6,6 +6,9 @@ import { User, UserRole, UserStatus } from '@/types';
 import { useRouter } from 'next/navigation';
 import axios from 'axios';
 
+// Forçar essa página a ser apenas client-side (sem SSG/SSR)
+export const dynamic = 'force-dynamic';
+
 const API_URL = '/api';
 
 export default function UsersPage() {
