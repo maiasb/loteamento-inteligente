@@ -25,7 +25,10 @@ export const showAlert = ({ title, message, type = 'info' }: AlertOptions) => {
 
   const handleClose = () => {
     root.unmount();
-    document.body.removeChild(container);
+    // Verificar se o container ainda é filho do body antes de remover
+    if (container.parentNode === document.body) {
+      document.body.removeChild(container);
+    }
   };
 
   root.render(
@@ -47,13 +50,19 @@ export const showConfirm = ({ title, message, confirmText, cancelText }: Confirm
 
     const handleClose = () => {
       root.unmount();
-      document.body.removeChild(container);
+      // Verificar se o container ainda é filho do body antes de remover
+      if (container.parentNode === document.body) {
+        document.body.removeChild(container);
+      }
       resolve(false);
     };
 
     const handleConfirm = () => {
       root.unmount();
-      document.body.removeChild(container);
+      // Verificar se o container ainda é filho do body antes de remover
+      if (container.parentNode === document.body) {
+        document.body.removeChild(container);
+      }
       resolve(true);
     };
 
