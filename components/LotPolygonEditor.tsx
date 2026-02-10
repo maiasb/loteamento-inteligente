@@ -345,6 +345,10 @@ export default function LotPolygonEditor({ lot, mapBoundary, blockBoundary, othe
       google.maps.event.addListener(poly.getPath(), 'insert_at', () => {
         updateCoordinatesFromPolygon(poly);
       });
+      // Atualizar coordenadas quando o polígono for arrastado
+      google.maps.event.addListener(poly, 'dragend', () => {
+        updateCoordinatesFromPolygon(poly);
+      });
     });
 
     // Listener para retângulo completo
@@ -385,6 +389,10 @@ export default function LotPolygonEditor({ lot, mapBoundary, blockBoundary, othe
           updateCoordinatesFromPolygon(poly);
         });
         google.maps.event.addListener(poly.getPath(), 'insert_at', () => {
+          updateCoordinatesFromPolygon(poly);
+        });
+        // Atualizar coordenadas quando o polígono for arrastado
+        google.maps.event.addListener(poly, 'dragend', () => {
           updateCoordinatesFromPolygon(poly);
         });
       }
@@ -941,6 +949,10 @@ export default function LotPolygonEditor({ lot, mapBoundary, blockBoundary, othe
                     updateCoordinatesFromPolygon(poly);
                   });
                   google.maps.event.addListener(poly.getPath(), 'insert_at', () => {
+                    updateCoordinatesFromPolygon(poly);
+                  });
+                  // Atualizar coordenadas quando o polígono for arrastado
+                  google.maps.event.addListener(poly, 'dragend', () => {
                     updateCoordinatesFromPolygon(poly);
                   });
                 }}
