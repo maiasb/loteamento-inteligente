@@ -43,8 +43,6 @@ const nextConfig: NextConfig = {
     resolveAlias: {
       canvas: './lib/canvas-mock.ts',
     },
-    // Especificar explicitamente o diretório raiz do projeto
-    root: process.cwd(),
   },
   
   // Otimizações de webpack para produção
