@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
     if (minimal) {
       // Retornar apenas campos essenciais para tooltip em /maps/
       let query = 'SELECT id, customer_name, seller_name, status, created_at FROM purchase_requests';
-      let params: any[] = [];
+      const params: any[] = [];
 
       // Filtrar por quadra (mais específico) ou por mapa
       if (blockId) {
@@ -65,7 +65,7 @@ export async function GET(request: NextRequest) {
           try {
             // Filtrar lotes por quadra ou mapa
             let lotQuery = 'SELECT lot_id as id, agreed_price FROM purchase_request_lots WHERE purchase_request_id = ?';
-            let lotParams: any[] = [reservation.id];
+            const lotParams: any[] = [reservation.id];
 
             if (blockId) {
               lotQuery = `SELECT prl.lot_id as id, prl.agreed_price 
@@ -111,8 +111,8 @@ export async function GET(request: NextRequest) {
     // Buscar todas as reservas (modo completo) com paginação
     let query = 'SELECT * FROM purchase_requests';
     let countQuery = 'SELECT COUNT(*) as total FROM purchase_requests';
-    let whereConditions: string[] = [];
-    let filterParams: any[] = [];
+    const whereConditions: string[] = [];
+    const filterParams: any[] = [];
 
     // Aplicar filtros (verificar se não é null/undefined)
     if (status && status !== 'all' && status !== 'undefined' && status !== 'null') {

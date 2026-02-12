@@ -73,7 +73,7 @@ export default function DashboardPage() {
       hasLoadedRef.current = true;
       loadDashboardData();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [user?.role]);
 
   // Não renderizar para vendedores

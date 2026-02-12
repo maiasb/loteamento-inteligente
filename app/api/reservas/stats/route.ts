@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
     const userId = searchParams.get('userId');
 
     let baseQuery = 'SELECT COUNT(*) as count, status FROM purchase_requests';
-    let params: any[] = [];
+    const params: any[] = [];
 
     // Aplicar filtro de usuário se necessário
     if (userId && userId !== 'undefined' && userId !== 'null') {

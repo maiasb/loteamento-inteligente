@@ -31,8 +31,8 @@ export async function GET(request: NextRequest) {
       WHERE created_at >= (SELECT created_at FROM purchase_requests WHERE id = ?)
     `;
     
-    let whereConditions: string[] = [];
-    let filterParams: any[] = [reservationId];
+    const whereConditions: string[] = [];
+    const filterParams: any[] = [reservationId];
 
     // Aplicar os mesmos filtros que a listagem principal
     if (status && status !== 'all' && status !== 'undefined' && status !== 'null') {

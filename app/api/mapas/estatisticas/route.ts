@@ -68,7 +68,7 @@ export async function GET(request: NextRequest) {
     console.error('[API /mapas/estatisticas GET] Mensagem:', error.message);
     
     let errorMessage = 'Erro ao buscar estatísticas do mapa';
-    let statusCode = 500;
+    const statusCode = 500;
     
     if (error.code === 'ECONNREFUSED') {
       errorMessage = 'Não foi possível conectar ao banco de dados';

@@ -533,7 +533,7 @@ export function useInteractiveMap({
     if (isPanning && (Math.abs(touchVelocity.x) > 0.1 || Math.abs(touchVelocity.y) > 0.1)) {
       let currentVelocityX = touchVelocity.x;
       let currentVelocityY = touchVelocity.y;
-      let currentOffset = { ...offset };
+      const currentOffset = { ...offset };
       
       const applyMomentum = () => {
         // Reduz a velocidade gradualmente (friction)
