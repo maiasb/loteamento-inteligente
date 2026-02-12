@@ -4,24 +4,9 @@
   "private": true,
   "scripts": {
     "dev": "next dev -H 0.0.0.0",
-    "build": "TURBOPACK=0 next build",
+    "build": "next build",
     "start": "next start",
-    "lint": "eslint",
-    "deploy": "next build && gh-pages -d out -t",
-    "pm2:start": "pm2 start ecosystem.config.js",
-    "pm2:restart": "pm2 restart vale-dos-carajas",
-    "pm2:stop": "pm2 stop vale-dos-carajas",
-    "pm2:delete": "pm2 delete vale-dos-carajas",
-    "pm2:logs": "pm2 logs vale-dos-carajas --lines 100",
-    "pm2:monit": "pm2 monit",
-    "pm2:status": "pm2 status",
-    "hostgator:deploy": "npm run build && pm2 restart vale-dos-carajas || pm2 start ecosystem.config.js",
-    "generate:excel": "node scripts/generate-excel-template.js",
-    "migrate": "node scripts/migrate.js run",
-    "migrate:prod": "node scripts/migrate-prod.js run",
-    "migrate:status": "node scripts/migrate.js status",
-    "migrate:status:prod": "node scripts/migrate-prod.js status",
-    "migrate:create": "node scripts/migrate.js create"
+    "lint": "eslint"
   },
   "dependencies": {
     "@react-google-maps/api": "^2.19.3",

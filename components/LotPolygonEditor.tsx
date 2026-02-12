@@ -54,6 +54,7 @@ export default function LotPolygonEditor({ lot, mapBoundary, blockBoundary, othe
   const [mapLoaded, setMapLoaded] = useState(false);
   const rotationStartPoint = useRef<GeoCoordinate | null>(null);
   const originalCoordinates = useRef<GeoCoordinate[]>([]);
+  const coordinatesRef = useRef<GeoCoordinate[]>(lot.coordinates || []);
   const mapRef = useRef<google.maps.Map | null>(null);
   const drawingManagerRef = useRef<google.maps.drawing.DrawingManager | null>(null);
   const distanceLabelRef = useRef<google.maps.Marker | null>(null);
@@ -378,6 +379,7 @@ export default function LotPolygonEditor({ lot, mapBoundary, blockBoundary, othe
         });
 
         setCoordinates(rectangleCoords);
+        coordinatesRef.current = rectangleCoords;
         setPolygon(poly);
         drawnOverlaysRef.current.push(poly);
         setIsDrawing(false);
@@ -445,6 +447,7 @@ export default function LotPolygonEditor({ lot, mapBoundary, blockBoundary, othe
     }
 
     setCoordinates(coords);
+    coordinatesRef.current = coords;
     setPolygon(poly);
     setIsDrawing(false);
 
@@ -479,6 +482,7 @@ export default function LotPolygonEditor({ lot, mapBoundary, blockBoundary, othe
     }
     
     setCoordinates(coords);
+    coordinatesRef.current = coords;
     updateLineDistances(coords);
   };
 
@@ -500,6 +504,7 @@ export default function LotPolygonEditor({ lot, mapBoundary, blockBoundary, othe
       drawingManagerRef.current = null;
     }
     setCoordinates([]);
+    coordinatesRef.current = [];
     setIsDrawing(true);
   };
 
@@ -542,6 +547,7 @@ export default function LotPolygonEditor({ lot, mapBoundary, blockBoundary, othe
     if (!center) return;
     const rotated = coordinates.map(point => rotatePoint(point, center, angle));
     setCoordinates(rotated);
+    coordinatesRef.current = rotated;
     
     // Se há um polígono renderizado, atualizar suas coordenadas
     if (polygon) {
@@ -550,14 +556,16 @@ export default function LotPolygonEditor({ lot, mapBoundary, blockBoundary, othe
   }, [coordinates, polygon, getPolygonCenter, rotatePoint]);
 
   const handleSave = async () => {
-    if (coordinates.length < 3) {
+    const currentCoords = coordinatesRef.current;
+    console.log('[LotPolygonEditor] Salvando coordenadas:', currentCoords.length, 'pontos');
+    if (currentCoords.length < 3) {
       customAlert.warning('Você precisa desenhar um polígono com pelo menos 3 pontos!');
       return;
     }
 
     setIsSaving(true);
     try {
-      await onSave(coordinates);
+      await onSave(currentCoords);
     } finally {
       setIsSaving(false);
     }
@@ -572,6 +580,7 @@ export default function LotPolygonEditor({ lot, mapBoundary, blockBoundary, othe
     try {
       await onSave([]);
       setCoordinates([]);
+      coordinatesRef.current = [];
       if (polygon) {
         polygon.setMap(null);
         setPolygon(null);

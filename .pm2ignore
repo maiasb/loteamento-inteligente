@@ -1,8 +1,0 @@
-node_modules
-.next
-logs
-.git
-.env*
-*.log
-tmp
-public/uploads
