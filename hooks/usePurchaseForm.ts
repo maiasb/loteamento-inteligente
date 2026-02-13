@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import axios from 'axios';
 import { Lot } from '@/types';
+import { validateCPF } from '@/utils/formatters';
 
 const API_URL = '/api';
 
@@ -48,35 +49,6 @@ export function usePurchaseForm(
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  // Função para validar CPF
-  const validateCPF = (cpf: string): boolean => {
-    const numbers = cpf.replace(/\D/g, '');
-
-    // CPF de desenvolvimento
-    if (numbers === '99999999998') return true;
-
-    if (numbers.length !== 11) return false;
-    if (/^(\d)\1{10}$/.test(numbers)) return false;
-
-    let sum = 0;
-    for (let i = 0; i < 9; i++) {
-      sum += parseInt(numbers.charAt(i)) * (10 - i);
-    }
-    let digit = 11 - (sum % 11);
-    if (digit >= 10) digit = 0;
-    if (digit !== parseInt(numbers.charAt(9))) return false;
-
-    sum = 0;
-    for (let i = 0; i < 10; i++) {
-      sum += parseInt(numbers.charAt(i)) * (11 - i);
-    }
-    digit = 11 - (sum % 11);
-    if (digit >= 10) digit = 0;
-    if (digit !== parseInt(numbers.charAt(10))) return false;
-
-    return true;
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

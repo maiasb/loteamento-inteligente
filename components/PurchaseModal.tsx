@@ -4,6 +4,7 @@ import React from 'react';
 import { Lot, LotStatus } from '@/types';
 import { usePurchaseForm } from '@/hooks/usePurchaseForm';
 import { useAuth } from '@/contexts/AuthContext';
+import { formatCPF, validateCPF, formatCurrency, parseCurrency, formatPhone } from '@/utils/formatters';
 
 interface PurchaseModalProps {
   lots: Lot[]; // Mudado de lot: Lot para lots: Lot[]
@@ -11,70 +12,6 @@ interface PurchaseModalProps {
   onSuccess: (reservationId?: string) => void;
   onToggleLotStatus?: (lotId: string, currentStatus: LotStatus) => Promise<void>;
 }
-
-// Funções auxiliares para validação e máscara de CPF
-const formatCPF = (value: string): string => {
-  const numbers = value.replace(/\D/g, '');
-  if (numbers.length <= 3) return numbers;
-  if (numbers.length <= 6) return `${numbers.slice(0, 3)}.${numbers.slice(3)}`;
-  if (numbers.length <= 9) return `${numbers.slice(0, 3)}.${numbers.slice(3, 6)}.${numbers.slice(6)}`;
-  return `${numbers.slice(0, 3)}.${numbers.slice(3, 6)}.${numbers.slice(6, 9)}-${numbers.slice(9, 11)}`;
-};
-
-const validateCPF = (cpf: string): boolean => {
-  const numbers = cpf.replace(/\D/g, '');
-
-  // CPF de desenvolvimento
-  if (numbers === '99999999998') return true;
-
-  if (numbers.length !== 11) return false;
-  if (/^(\d)\1{10}$/.test(numbers)) return false; // Todos os dígitos iguais
-
-  // Validação do primeiro dígito verificador
-  let sum = 0;
-  for (let i = 0; i < 9; i++) {
-    sum += parseInt(numbers.charAt(i)) * (10 - i);
-  }
-  let digit = 11 - (sum % 11);
-  if (digit >= 10) digit = 0;
-  if (digit !== parseInt(numbers.charAt(9))) return false;
-
-  // Validação do segundo dígito verificador
-  sum = 0;
-  for (let i = 0; i < 10; i++) {
-    sum += parseInt(numbers.charAt(i)) * (11 - i);
-  }
-  digit = 11 - (sum % 11);
-  if (digit >= 10) digit = 0;
-  if (digit !== parseInt(numbers.charAt(10))) return false;
-
-  return true;
-};
-
-// Funções auxiliares para formatação de moeda
-const formatCurrency = (value: number | string): string => {
-  const numValue = typeof value === 'string' ? parseFloat(value) : value;
-  if (isNaN(numValue)) return '';
-  
-  return numValue.toLocaleString('pt-BR', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
-  });
-};
-
-const parseCurrency = (value: string): number => {
-  const cleaned = value.replace(/\./g, '').replace(',', '.');
-  return parseFloat(cleaned) || 0;
-};
-
-// Função de máscara para telefone
-const formatPhone = (value: string): string => {
-  const cleaned = value.replace(/\D/g, '');
-  if (cleaned.length <= 10) {
-    return cleaned.replace(/(\d{2})(\d{4})(\d{0,4})/, '($1) $2-$3');
-  }
-  return cleaned.replace(/(\d{2})(\d{5})(\d{0,4})/, '($1) $2-$3');
-};
 
 const paymentOptions = [
   { label: 'Dinheiro', value: 'dinheiro', icon: (

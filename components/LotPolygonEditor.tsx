@@ -1,9 +1,13 @@
 'use client';
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { GoogleMap, useLoadScript, Polygon, Marker, OverlayView } from '@react-google-maps/api';
+import { GoogleMap, useLoadScript, Polygon, OverlayView } from '@react-google-maps/api';
 import { GeoCoordinate, Lot } from '@/types';
 import { useCustomAlert } from '@/hooks/useCustomAlert';
+import { getPolygonCenter } from '@/utils/geoCalculations';
+import { useDragRotation } from '@/hooks/useDragRotation';
+import { useDrawingCursor } from '@/hooks/useDrawingCursor';
+import { usePolygonEditor } from '@/hooks/usePolygonEditor';
 
 interface LotPolygonEditorProps {
   lot: Lot;
@@ -21,49 +25,17 @@ const containerStyle = {
 
 const libraries: ("drawing" | "places")[] = ["drawing", "places"];
 
-// Função helper para verificar se um ponto está dentro de um polígono
-function isPointInPolygon(point: GeoCoordinate, polygon: GeoCoordinate[]): boolean {
-  let inside = false;
-  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-    const xi = polygon[i].lat, yi = polygon[i].lng;
-    const xj = polygon[j].lat, yj = polygon[j].lng;
-    
-    const intersect = ((yi > point.lng) !== (yj > point.lng))
-        && (point.lat < (xj - xi) * (point.lng - yi) / (yj - yi) + xi);
-    if (intersect) inside = !inside;
-  }
-  return inside;
-}
-
 export default function LotPolygonEditor({ lot, mapBoundary, blockBoundary, otherLotsInBlock = [], onSave, onCancel }: LotPolygonEditorProps) {
   const customAlert = useCustomAlert();
   const [polygon, setPolygon] = useState<google.maps.Polygon | null>(null);
   const [coordinates, setCoordinates] = useState<GeoCoordinate[]>(lot.coordinates || []);
   const [isDrawing, setIsDrawing] = useState(!lot.coordinates || lot.coordinates.length === 0);
   const [isSaving, setIsSaving] = useState(false);
-  const [lineDistances, setLineDistances] = useState<number[]>([]);
-  const [cursorDistance, setCursorDistance] = useState<number | null>(null);
-  const [cursorPosition, setCursorPosition] = useState<GeoCoordinate | null>(null);
-  const [drawingPoints, setDrawingPoints] = useState<GeoCoordinate[]>([]);
   const [showReferenceAreas, setShowReferenceAreas] = useState(true);
-  const [isRotatingMode, setIsRotatingMode] = useState(false);
-  const [isDraggingRotation, setIsDraggingRotation] = useState(false);
-  const [currentRotationAngle, setCurrentRotationAngle] = useState(0);
-  const [dragRotationAngle, setDragRotationAngle] = useState<number | null>(null);
-  const [showSnapGuides, setShowSnapGuides] = useState(false);
-  const [snapAngle, setSnapAngle] = useState<number | null>(null);
   const [mapLoaded, setMapLoaded] = useState(false);
-  const rotationStartPoint = useRef<GeoCoordinate | null>(null);
-  const rotationStartAngleRef = useRef<number>(0);
-  const isDraggingRotationRef = useRef(false);
-  const rotationBaseCoords = useRef<GeoCoordinate[]>([]);
-  const rotationCenterRef = useRef<GeoCoordinate | null>(null);
-  const originalCoordinates = useRef<GeoCoordinate[]>([]);
   const coordinatesRef = useRef<GeoCoordinate[]>(lot.coordinates || []);
   const mapRef = useRef<google.maps.Map | null>(null);
   const drawingManagerRef = useRef<google.maps.drawing.DrawingManager | null>(null);
-  const distanceLabelRef = useRef<google.maps.Marker | null>(null);
-  const tempLineRef = useRef<google.maps.Polyline | null>(null);
   const drawnOverlaysRef = useRef<google.maps.MVCObject[]>([]);
 
   const { isLoaded, loadError } = useLoadScript({
@@ -71,217 +43,40 @@ export default function LotPolygonEditor({ lot, mapBoundary, blockBoundary, othe
     libraries: libraries as any,
   });
 
-  // Função para calcular distância entre dois pontos em metros
-  const calculateDistance = useCallback((point1: GeoCoordinate, point2: GeoCoordinate): number => {
-    const R = 6371e3; // Raio da Terra em metros
-    const φ1 = point1.lat * Math.PI / 180;
-    const φ2 = point2.lat * Math.PI / 180;
-    const Δφ = (point2.lat - point1.lat) * Math.PI / 180;
-    const Δλ = (point2.lng - point1.lng) * Math.PI / 180;
+  // --- Custom Hooks ---
+  const { lineDistances, handleLineDistanceChange } = usePolygonEditor({
+    coordinates,
+    coordinatesRef,
+    setCoordinates,
+  });
 
-    const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
-              Math.cos(φ1) * Math.cos(φ2) *
-              Math.sin(Δλ/2) * Math.sin(Δλ/2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  const {
+    isDraggingRotation,
+    currentRotationAngle,
+    dragRotationAngle,
+    rotationCenterRef,
+    handleRotatePolygon,
+    resetRotationAngle,
+    setCurrentRotationAngle,
+  } = useDragRotation({
+    mapRef,
+    polygonRef: polygon,
+    coordinates,
+    coordinatesRef,
+    setCoordinates,
+    disabled: isDrawing,
+  });
 
-    return R * c; // Distância em metros
-  }, []);
+  useDrawingCursor({
+    mapRef,
+    isLoaded,
+    isDrawing,
+  });
 
-  // Calcular distâncias das linhas
-  const updateLineDistances = useCallback((coords: GeoCoordinate[]) => {
-    if (coords.length < 2) {
-      setLineDistances([]);
-      return;
-    }
-
-    const distances: number[] = [];
-    for (let i = 0; i < coords.length; i++) {
-      const nextIndex = (i + 1) % coords.length;
-      const distance = calculateDistance(coords[i], coords[nextIndex]);
-      distances.push(distance);
-    }
-    setLineDistances(distances);
-  }, [calculateDistance]);
-
-  // Função para calcular novo ponto baseado em distância e bearing
-  const calculateNewPoint = useCallback((startPoint: GeoCoordinate, bearing: number, distance: number): GeoCoordinate => {
-    const R = 6371e3; // Raio da Terra em metros
-    const φ1 = startPoint.lat * Math.PI / 180;
-    const λ1 = startPoint.lng * Math.PI / 180;
-    const brng = bearing * Math.PI / 180;
-
-    const φ2 = Math.asin(Math.sin(φ1) * Math.cos(distance / R) +
-                        Math.cos(φ1) * Math.sin(distance / R) * Math.cos(brng));
-    const λ2 = λ1 + Math.atan2(Math.sin(brng) * Math.sin(distance / R) * Math.cos(φ1),
-                               Math.cos(distance / R) - Math.sin(φ1) * Math.sin(φ2));
-
-    return {
-      lat: φ2 * 180 / Math.PI,
-      lng: λ2 * 180 / Math.PI,
-    };
-  }, []);
-
-  // Função para calcular o bearing (ângulo) entre dois pontos
-  const calculateBearing = useCallback((point1: GeoCoordinate, point2: GeoCoordinate): number => {
-    const φ1 = point1.lat * Math.PI / 180;
-    const φ2 = point2.lat * Math.PI / 180;
-    const Δλ = (point2.lng - point1.lng) * Math.PI / 180;
-
-    const y = Math.sin(Δλ) * Math.cos(φ2);
-    const x = Math.cos(φ1) * Math.sin(φ2) -
-              Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
-    const θ = Math.atan2(y, x);
-
-    return (θ * 180 / Math.PI + 360) % 360; // Normalizar para 0-360
-  }, []);
-
-  // Função para ajustar o comprimento de uma linha específica
-  const handleLineDistanceChange = useCallback((lineIndex: number, newDistance: number) => {
-    if (coordinates.length < 2 || newDistance <= 0) return;
-
-    const startIndex = lineIndex;
-    const endIndex = (lineIndex + 1) % coordinates.length;
-
-    const startPoint = coordinates[startIndex];
-    const endPoint = coordinates[endIndex];
-
-    // Calcular o bearing (direção) da linha original
-    const bearing = calculateBearing(startPoint, endPoint);
-
-    // Calcular o novo ponto final mantendo a mesma direção
-    const newEndPoint = calculateNewPoint(startPoint, bearing, newDistance);
-
-    // Criar novo array de coordenadas com o ponto ajustado
-    const newCoordinates = [...coordinates];
-    newCoordinates[endIndex] = newEndPoint;
-
-    setCoordinates(newCoordinates);
-    coordinatesRef.current = newCoordinates;
-  }, [coordinates, calculateBearing, calculateNewPoint]);
-
-  // Atualizar distâncias quando coordenadas mudarem
+  // Manter coordinatesRef sincronizado com o state coordinates
   useEffect(() => {
-    updateLineDistances(coordinates);
-  }, [coordinates, updateLineDistances]);
-
-  // Listener para o movimento do mouse durante o desenho
-  useEffect(() => {
-    if (!mapRef.current || !isLoaded || !isDrawing) {
-      // Limpar label e linha temporária quando não está desenhando
-      if (distanceLabelRef.current) {
-        distanceLabelRef.current.setMap(null);
-        distanceLabelRef.current = null;
-      }
-      if (tempLineRef.current) {
-        tempLineRef.current.setMap(null);
-        tempLineRef.current = null;
-      }
-      setCursorDistance(null);
-      setCursorPosition(null);
-      setDrawingPoints([]);
-      return;
-    }
-
-    const mouseMoveListener = google.maps.event.addListener(
-      mapRef.current,
-      'mousemove',
-      (e: google.maps.MapMouseEvent) => {
-        if (!e.latLng) return;
-
-        const currentPos: GeoCoordinate = {
-          lat: e.latLng.lat(),
-          lng: e.latLng.lng(),
-        };
-
-        setCursorPosition(currentPos);
-
-        // Se já existem pontos desenhados, calcular distância do último ponto
-        setDrawingPoints((prevPoints) => {
-          if (prevPoints.length > 0) {
-            const lastPoint = prevPoints[prevPoints.length - 1];
-            const distance = calculateDistance(lastPoint, currentPos);
-            setCursorDistance(distance);
-
-            // Criar ou atualizar linha temporária
-            if (tempLineRef.current) {
-              tempLineRef.current.setPath([lastPoint, currentPos]);
-            } else {
-              tempLineRef.current = new google.maps.Polyline({
-                path: [lastPoint, currentPos],
-                strokeColor: '#FF0000',
-                strokeOpacity: 0.6,
-                strokeWeight: 2,
-                map: mapRef.current!,
-                zIndex: 1000,
-              });
-            }
-
-            // Criar ou atualizar marcador com a distância
-            const midPoint = {
-              lat: (lastPoint.lat + currentPos.lat) / 2,
-              lng: (lastPoint.lng + currentPos.lng) / 2,
-            };
-
-            if (distanceLabelRef.current) {
-              distanceLabelRef.current.setPosition(midPoint);
-              distanceLabelRef.current.setLabel({
-                text: `${distance.toFixed(2)} m`,
-                color: '#FFFFFF',
-                fontSize: '14px',
-                fontWeight: 'bold',
-              });
-            } else {
-              distanceLabelRef.current = new google.maps.Marker({
-                position: midPoint,
-                map: mapRef.current!,
-                icon: {
-                  path: google.maps.SymbolPath.CIRCLE,
-                  scale: 0,
-                },
-                label: {
-                  text: `${distance.toFixed(2)} m`,
-                  color: '#FFFFFF',
-                  fontSize: '14px',
-                  fontWeight: 'bold',
-                },
-                zIndex: 1001,
-              });
-            }
-          }
-          return prevPoints; // Retornar o mesmo array para não causar re-render
-        });
-      }
-    );
-
-    // Listener para cliques (adicionar pontos)
-    const clickListener = google.maps.event.addListener(
-      mapRef.current,
-      'click',
-      (e: google.maps.MapMouseEvent) => {
-        if (!e.latLng) return;
-
-        const newPoint: GeoCoordinate = {
-          lat: e.latLng.lat(),
-          lng: e.latLng.lng(),
-        };
-
-        setDrawingPoints((prev) => [...prev, newPoint]);
-      }
-    );
-
-    return () => {
-      google.maps.event.removeListener(mouseMoveListener);
-      google.maps.event.removeListener(clickListener);
-      if (distanceLabelRef.current) {
-        distanceLabelRef.current.setMap(null);
-        distanceLabelRef.current = null;
-      }
-      if (tempLineRef.current) {
-        tempLineRef.current.setMap(null);
-        tempLineRef.current = null;
-      }
-    };
-  }, [isDrawing, isLoaded, calculateDistance]);
+    coordinatesRef.current = coordinates;
+  }, [coordinates]);
 
   // Criar DrawingManager manualmente para evitar duplicação
   useEffect(() => {
@@ -413,35 +208,6 @@ export default function LotPolygonEditor({ lot, mapBoundary, blockBoundary, othe
 
   const center = getCenter();
 
-  const onPolygonComplete = useCallback((poly: google.maps.Polygon) => {
-    const path = poly.getPath();
-    const coords: GeoCoordinate[] = [];
-    
-    for (let i = 0; i < path.getLength(); i++) {
-      const point = path.getAt(i);
-      coords.push({
-        lat: point.lat(),
-        lng: point.lng(),
-      });
-    }
-
-    setCoordinates(coords);
-    coordinatesRef.current = coords;
-    setPolygon(poly);
-    setIsDrawing(false);
-
-    // Fazer o polígono editável
-    poly.setEditable(true);
-    poly.setOptions({
-      fillColor: '#4CAF50',
-      fillOpacity: 0.4,
-      strokeColor: '#2E7D32',
-      strokeWeight: 2,
-    });
-
-    // Listeners de edição são gerenciados pelo useEffect centralizado
-  }, []);
-
   const updateCoordinatesFromPolygon = useCallback((poly: google.maps.Polygon) => {
     const path = poly.getPath();
     const coords: GeoCoordinate[] = [];
@@ -456,8 +222,7 @@ export default function LotPolygonEditor({ lot, mapBoundary, blockBoundary, othe
     
     setCoordinates(coords);
     coordinatesRef.current = coords;
-    updateLineDistances(coords);
-  }, [updateLineDistances]);
+  }, []);
 
   // Re-attach path listeners whenever polygon or coordinates change
   // When setPath() is called (by React <Polygon> or directly), the old MVCArray
@@ -505,167 +270,9 @@ export default function LotPolygonEditor({ lot, mapBoundary, blockBoundary, othe
     }
     setCoordinates([]);
     coordinatesRef.current = [];
-    setCurrentRotationAngle(0);
+    resetRotationAngle();
     setIsDrawing(true);
   };
-
-  // Função para calcular o centro do polígono
-  const getPolygonCenter = useCallback((coords: GeoCoordinate[]) => {
-    if (coords.length === 0) return null;
-    const latSum = coords.reduce((sum, coord) => sum + coord.lat, 0);
-    const lngSum = coords.reduce((sum, coord) => sum + coord.lng, 0);
-    return {
-      lat: latSum / coords.length,
-      lng: lngSum / coords.length,
-    };
-  }, []);
-
-  // Função para rotacionar um ponto em torno de um centro
-  const rotatePoint = useCallback((point: GeoCoordinate, center: GeoCoordinate, angle: number) => {
-    const radians = (angle * Math.PI) / 180;
-    const cos = Math.cos(radians);
-    const sin = Math.sin(radians);
-    const dx = point.lat - center.lat;
-    const dy = point.lng - center.lng;
-    return {
-      lat: center.lat + (dx * cos - dy * sin),
-      lng: center.lng + (dx * sin + dy * cos),
-    };
-  }, []);
-
-  // Função para alternar modo de rotação
-  const toggleRotationMode = useCallback(() => {
-    setIsRotatingMode(!isRotatingMode);
-    if (!isRotatingMode) {
-      originalCoordinates.current = [...coordinates];
-    }
-  }, [isRotatingMode, coordinates]);
-
-  // Função para rotacionar o polígono (usa ref para sempre ler coordenadas atuais, sem stale closure)
-  const handleRotatePolygon = useCallback((angle: number) => {
-    const currentCoords = coordinatesRef.current;
-    if (currentCoords.length === 0) return;
-    const center = getPolygonCenter(currentCoords);
-    if (!center) return;
-    const rotated = currentCoords.map(point => rotatePoint(point, center, angle));
-    setCoordinates(rotated);
-    coordinatesRef.current = rotated;
-    setCurrentRotationAngle(prev => {
-      const next = (prev + angle) % 360;
-      return next < 0 ? next + 360 : next;
-    });
-  }, [getPolygonCenter, rotatePoint]);
-
-  // Drag-to-rotate: Alt+click and drag on the polygon to rotate
-  useEffect(() => {
-    if (!polygon || !mapRef.current || isDrawing) return;
-
-    const map = mapRef.current;
-
-    // Calculate angle from center to a point (in degrees)
-    const angleTo = (center: GeoCoordinate, point: GeoCoordinate): number => {
-      return Math.atan2(point.lng - center.lng, point.lat - center.lat) * (180 / Math.PI);
-    };
-
-    // Start rotation on Alt+click on polygon
-    const onMouseDown = (e: google.maps.PolyMouseEvent) => {
-      const domEvent = e.domEvent as MouseEvent;
-      if (!domEvent.altKey) return;
-
-      e.domEvent.preventDefault();
-      e.domEvent.stopPropagation();
-
-      const currentCoords = coordinatesRef.current;
-      if (currentCoords.length < 3) return;
-
-      const center = getPolygonCenter(currentCoords);
-      if (!center || !e.latLng) return;
-
-      // Disable map drag and polygon edit/drag during rotation
-      map.setOptions({ draggable: false });
-      polygon.setEditable(false);
-      polygon.setDraggable(false);
-
-      const startPoint = { lat: e.latLng.lat(), lng: e.latLng.lng() };
-      rotationCenterRef.current = center;
-      rotationBaseCoords.current = [...currentCoords];
-      rotationStartAngleRef.current = angleTo(center, startPoint);
-      isDraggingRotationRef.current = true;
-      setIsDraggingRotation(true);
-      setDragRotationAngle(0);
-    };
-
-    // Track rotation while mouse moves
-    const onMouseMove = (e: google.maps.MapMouseEvent) => {
-      if (!isDraggingRotationRef.current || !e.latLng) return;
-
-      const center = rotationCenterRef.current!;
-      const currentPoint = { lat: e.latLng.lat(), lng: e.latLng.lng() };
-      const currentAngle = angleTo(center, currentPoint);
-      let deltaAngle = currentAngle - rotationStartAngleRef.current;
-
-      // Normalizar para -180..180
-      if (deltaAngle > 180) deltaAngle -= 360;
-      if (deltaAngle < -180) deltaAngle += 360;
-
-      // Rotacionar a partir das coordenadas base (não acumulativo)
-      const rotated = rotationBaseCoords.current.map(point => rotatePoint(point, center, deltaAngle));
-      setCoordinates(rotated);
-      coordinatesRef.current = rotated;
-      setDragRotationAngle(Math.round(deltaAngle * 10) / 10);
-    };
-
-    // End rotation
-    const onMouseUp = () => {
-      if (!isDraggingRotationRef.current) return;
-
-      isDraggingRotationRef.current = false;
-      setIsDraggingRotation(false);
-
-      // Calcular ângulo total dessa operação de drag
-      const baseCoords = rotationBaseCoords.current;
-      const finalCoords = coordinatesRef.current;
-      if (baseCoords.length > 0 && finalCoords.length > 0 && rotationCenterRef.current) {
-        const center = rotationCenterRef.current;
-        const beforeAngle = angleTo(center, baseCoords[0]);
-        const afterAngle = angleTo(center, finalCoords[0]);
-        let appliedAngle = afterAngle - beforeAngle;
-        if (appliedAngle > 180) appliedAngle -= 360;
-        if (appliedAngle < -180) appliedAngle += 360;
-        setCurrentRotationAngle(prev => {
-          const next = (prev + appliedAngle) % 360;
-          return Math.round((next < 0 ? next + 360 : next) * 10) / 10;
-        });
-      }
-
-      // Restaurar interações do mapa e polígono
-      map.setOptions({ draggable: true });
-      polygon.setEditable(true);
-      polygon.setDraggable(true);
-
-      setDragRotationAngle(null);
-      rotationCenterRef.current = null;
-    };
-
-    const mouseDownListener = google.maps.event.addListener(polygon, 'mousedown', onMouseDown);
-    const mouseMoveListener = google.maps.event.addListener(map, 'mousemove', onMouseMove);
-    const mouseUpListener = google.maps.event.addListener(map, 'mouseup', onMouseUp);
-    const docMouseUp = () => onMouseUp();
-    document.addEventListener('mouseup', docMouseUp);
-
-    return () => {
-      google.maps.event.removeListener(mouseDownListener);
-      google.maps.event.removeListener(mouseMoveListener);
-      google.maps.event.removeListener(mouseUpListener);
-      document.removeEventListener('mouseup', docMouseUp);
-      if (isDraggingRotationRef.current) {
-        isDraggingRotationRef.current = false;
-        map.setOptions({ draggable: true });
-        polygon.setEditable(true);
-        polygon.setDraggable(true);
-      }
-    };
-  }, [polygon, isDrawing, getPolygonCenter, rotatePoint]);
 
   const handleSave = async () => {
     const currentCoords = coordinatesRef.current;
