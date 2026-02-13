@@ -151,12 +151,8 @@ export default function LotPolygonEditor({ lot, mapBoundary, blockBoundary, othe
     newCoordinates[endIndex] = newEndPoint;
 
     setCoordinates(newCoordinates);
-
-    // Se há um polígono renderizado, atualizar suas coordenadas
-    if (polygon) {
-      polygon.setPath(newCoordinates);
-    }
-  }, [coordinates, polygon, calculateBearing, calculateNewPoint]);
+    coordinatesRef.current = newCoordinates;
+  }, [coordinates, calculateBearing, calculateNewPoint]);
 
   // Atualizar distâncias quando coordenadas mudarem
   useEffect(() => {
@@ -338,18 +334,7 @@ export default function LotPolygonEditor({ lot, mapBoundary, blockBoundary, othe
       // Fazer o polígono editável e arrastável
       poly.setEditable(true);
       poly.setDraggable(true);
-
-      // Atualizar coordenadas quando o polígono for editado
-      google.maps.event.addListener(poly.getPath(), 'set_at', () => {
-        updateCoordinatesFromPolygon(poly);
-      });
-      google.maps.event.addListener(poly.getPath(), 'insert_at', () => {
-        updateCoordinatesFromPolygon(poly);
-      });
-      // Atualizar coordenadas quando o polígono for arrastado
-      google.maps.event.addListener(poly, 'dragend', () => {
-        updateCoordinatesFromPolygon(poly);
-      });
+      // Listeners de edição são gerenciados pelo useEffect centralizado
     });
 
     // Listener para retângulo completo
@@ -385,18 +370,7 @@ export default function LotPolygonEditor({ lot, mapBoundary, blockBoundary, othe
         setIsDrawing(false);
         rectangle.setMap(null);
         drawingManager.setDrawingMode(null);
-
-        // Atualizar coordenadas quando o polígono for editado
-        google.maps.event.addListener(poly.getPath(), 'set_at', () => {
-          updateCoordinatesFromPolygon(poly);
-        });
-        google.maps.event.addListener(poly.getPath(), 'insert_at', () => {
-          updateCoordinatesFromPolygon(poly);
-        });
-        // Atualizar coordenadas quando o polígono for arrastado
-        google.maps.event.addListener(poly, 'dragend', () => {
-          updateCoordinatesFromPolygon(poly);
-        });
+        // Listeners de edição são gerenciados pelo useEffect centralizado
       }
     });
 
@@ -460,16 +434,10 @@ export default function LotPolygonEditor({ lot, mapBoundary, blockBoundary, othe
       strokeWeight: 2,
     });
 
-    // Atualizar coordenadas quando o polígono for editado
-    google.maps.event.addListener(poly.getPath(), 'set_at', () => {
-      updateCoordinatesFromPolygon(poly);
-    });
-    google.maps.event.addListener(poly.getPath(), 'insert_at', () => {
-      updateCoordinatesFromPolygon(poly);
-    });
+    // Listeners de edição são gerenciados pelo useEffect centralizado
   }, []);
 
-  const updateCoordinatesFromPolygon = (poly: google.maps.Polygon) => {
+  const updateCoordinatesFromPolygon = useCallback((poly: google.maps.Polygon) => {
     const path = poly.getPath();
     const coords: GeoCoordinate[] = [];
     
@@ -484,7 +452,34 @@ export default function LotPolygonEditor({ lot, mapBoundary, blockBoundary, othe
     setCoordinates(coords);
     coordinatesRef.current = coords;
     updateLineDistances(coords);
-  };
+  }, [updateLineDistances]);
+
+  // Re-attach path listeners whenever polygon or coordinates change
+  // When setPath() is called (by React <Polygon> or directly), the old MVCArray
+  // and its listeners are discarded. This effect ensures listeners are always
+  // attached to the current path.
+  useEffect(() => {
+    if (!polygon) return;
+
+    const path = polygon.getPath();
+    if (!path) return;
+
+    const setAtListener = google.maps.event.addListener(path, 'set_at', () => {
+      updateCoordinatesFromPolygon(polygon);
+    });
+    const insertAtListener = google.maps.event.addListener(path, 'insert_at', () => {
+      updateCoordinatesFromPolygon(polygon);
+    });
+    const dragEndListener = google.maps.event.addListener(polygon, 'dragend', () => {
+      updateCoordinatesFromPolygon(polygon);
+    });
+
+    return () => {
+      google.maps.event.removeListener(setAtListener);
+      google.maps.event.removeListener(insertAtListener);
+      google.maps.event.removeListener(dragEndListener);
+    };
+  }, [polygon, coordinates, updateCoordinatesFromPolygon]);
 
   const handleClearDrawing = () => {
     if (polygon) {
@@ -548,12 +543,7 @@ export default function LotPolygonEditor({ lot, mapBoundary, blockBoundary, othe
     const rotated = coordinates.map(point => rotatePoint(point, center, angle));
     setCoordinates(rotated);
     coordinatesRef.current = rotated;
-    
-    // Se há um polígono renderizado, atualizar suas coordenadas
-    if (polygon) {
-      polygon.setPath(rotated);
-    }
-  }, [coordinates, polygon, getPolygonCenter, rotatePoint]);
+  }, [coordinates, getPolygonCenter, rotatePoint]);
 
   const handleSave = async () => {
     const currentCoords = coordinatesRef.current;
@@ -953,17 +943,6 @@ export default function LotPolygonEditor({ lot, mapBoundary, blockBoundary, othe
                 }}
                 onLoad={(poly) => {
                   setPolygon(poly);
-                  // Atualizar coordenadas quando o polígono for editado
-                  google.maps.event.addListener(poly.getPath(), 'set_at', () => {
-                    updateCoordinatesFromPolygon(poly);
-                  });
-                  google.maps.event.addListener(poly.getPath(), 'insert_at', () => {
-                    updateCoordinatesFromPolygon(poly);
-                  });
-                  // Atualizar coordenadas quando o polígono for arrastado
-                  google.maps.event.addListener(poly, 'dragend', () => {
-                    updateCoordinatesFromPolygon(poly);
-                  });
                 }}
                 onUnmount={(poly) => {
                   google.maps.event.clearInstanceListeners(poly);
