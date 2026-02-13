@@ -12,6 +12,12 @@ const nextConfig: NextConfig = {
     return 'build-' + Date.now();
   },
   
+  // Permitir requisições de origens externas no dev
+  allowedDevOrigins: [
+    'imobiliariavaledoscarajas.com.br',
+    'www.imobiliariavaledoscarajas.com.br',
+  ],
+
   images: {
     unoptimized: true,
   },
