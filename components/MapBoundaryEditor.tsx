@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
-import { GoogleMap, useLoadScript, DrawingManager, Polygon, Marker } from '@react-google-maps/api';
+import { GoogleMap, useLoadScript, Polygon, Marker, OverlayView } from '@react-google-maps/api';
 import { GeoCoordinate } from '@/types';
 import { useCustomAlert } from '@/hooks/useCustomAlert';
 
@@ -61,18 +61,18 @@ export default function MapBoundaryEditor({
   const [isSaving, setIsSaving] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
   const [showReferenceAreas, setShowReferenceAreas] = useState(true); // Controla visibilidade das áreas de referência
-  const [isRotatingMode, setIsRotatingMode] = useState(false);
   const [isDraggingRotation, setIsDraggingRotation] = useState(false);
   const [currentRotationAngle, setCurrentRotationAngle] = useState(0);
-  const [showSnapGuides, setShowSnapGuides] = useState(false);
-  const [snapAngle, setSnapAngle] = useState<number | null>(null);
+  const [dragRotationAngle, setDragRotationAngle] = useState<number | null>(null);
   const [lineDistances, setLineDistances] = useState<number[]>([]);
   const [cursorDistance, setCursorDistance] = useState<number | null>(null);
   const [cursorPosition, setCursorPosition] = useState<GeoCoordinate | null>(null);
   const [drawingPoints, setDrawingPoints] = useState<GeoCoordinate[]>([]);
-  const rotationStartPoint = useRef<GeoCoordinate | null>(null);
-  const originalBoundary = useRef<GeoCoordinate[]>([]);
-  const draggedMarkerIndex = useRef<number>(-1);
+  const boundaryRef = useRef<GeoCoordinate[]>(initialBoundary);
+  const rotationStartAngleRef = useRef<number>(0);
+  const isDraggingRotationRef = useRef(false);
+  const rotationBaseCoords = useRef<GeoCoordinate[]>([]);
+  const rotationCenterRef = useRef<GeoCoordinate | null>(null);
   const distanceLabelRef = useRef<google.maps.Marker | null>(null);
   const tempLineRef = useRef<google.maps.Polyline | null>(null);
   
@@ -156,31 +156,27 @@ export default function MapBoundaryEditor({
 
   // Função para ajustar o comprimento de uma linha específica
   const handleLineDistanceChange = useCallback((lineIndex: number, newDistance: number) => {
-    if (boundary.length < 2 || newDistance <= 0) return;
+    const currentBoundary = boundaryRef.current;
+    if (currentBoundary.length < 2 || newDistance <= 0) return;
 
     const startIndex = lineIndex;
-    const endIndex = (lineIndex + 1) % boundary.length;
+    const endIndex = (lineIndex + 1) % currentBoundary.length;
 
-    const startPoint = boundary[startIndex];
-    const endPoint = boundary[endIndex];
+    const startPoint = currentBoundary[startIndex];
 
     // Calcular o bearing (direção) da linha original
-    const bearing = calculateBearing(startPoint, endPoint);
+    const bearing = calculateBearing(startPoint, currentBoundary[endIndex]);
 
     // Calcular o novo ponto final mantendo a mesma direção
     const newEndPoint = calculateNewPoint(startPoint, bearing, newDistance);
 
     // Criar novo array de coordenadas com o ponto ajustado
-    const newBoundary = [...boundary];
+    const newBoundary = [...currentBoundary];
     newBoundary[endIndex] = newEndPoint;
 
     setBoundary(newBoundary);
-
-    // Se há um polígono renderizado, atualizar suas coordenadas
-    if (polygonRef.current) {
-      polygonRef.current.setPath(newBoundary);
-    }
-  }, [boundary, calculateBearing, calculateNewPoint]);
+    boundaryRef.current = newBoundary;
+  }, [calculateBearing, calculateNewPoint]);
 
   // Atualizar distâncias quando boundary mudar
   useEffect(() => {
@@ -510,6 +506,8 @@ export default function MapBoundaryEditor({
 
   const handleClearPolygon = useCallback(() => {
     setBoundary([]);
+    boundaryRef.current = [];
+    setCurrentRotationAngle(0);
     if (polygonRef.current) {
       polygonRef.current.setMap(null);
       polygonRef.current = null;
@@ -540,14 +538,20 @@ export default function MapBoundaryEditor({
     };
   }, []);
 
-  // Função para rotacionar o polígono
+  // Função para rotacionar o polígono (usa ref para sempre ler coordenadas atuais, sem stale closure)
   const handleRotatePolygon = useCallback((angle: number) => {
-    if (boundary.length === 0) return;
-    const center = getPolygonCenter(boundary);
+    const currentCoords = boundaryRef.current;
+    if (currentCoords.length === 0) return;
+    const center = getPolygonCenter(currentCoords);
     if (!center) return;
-    const rotated = boundary.map(point => rotatePoint(point, center, angle));
+    const rotated = currentCoords.map(point => rotatePoint(point, center, angle));
     setBoundary(rotated);
-  }, [boundary, getPolygonCenter, rotatePoint]);
+    boundaryRef.current = rotated;
+    setCurrentRotationAngle(prev => {
+      const next = (prev + angle) % 360;
+      return next < 0 ? next + 360 : next;
+    });
+  }, [getPolygonCenter, rotatePoint]);
 
   // Função para calcular ângulo entre dois pontos
   const calculateAngle = useCallback((center: GeoCoordinate, point: GeoCoordinate) => {
@@ -556,106 +560,122 @@ export default function MapBoundaryEditor({
     return Math.atan2(dy, dx) * (180 / Math.PI);
   }, []);
 
-  // Função para normalizar ângulo entre 0 e 360
-  const normalizeAngle = (angle: number): number => {
-    let normalized = angle % 360;
-    if (normalized < 0) normalized += 360;
-    return normalized;
-  };
-
-  // Função para encontrar o ângulo snap mais próximo (0°, 90°, 180°, 270°)
-  const findSnapAngle = (angle: number, threshold: number = 5): number | null => {
-    const normalized = normalizeAngle(angle);
-    const snapAngles = [0, 90, 180, 270];
-    
-    for (const snapAngle of snapAngles) {
-      const diff = Math.abs(normalized - snapAngle);
-      if (diff <= threshold || diff >= (360 - threshold)) {
-        return snapAngle;
-      }
-    }
-    return null;
-  };
-
-  // Ativar modo de rotação
-  const toggleRotationMode = useCallback(() => {
-    if (!isRotatingMode && boundary.length > 0) {
-      originalBoundary.current = [...boundary];
-    }
-    setIsRotatingMode(!isRotatingMode);
-  }, [isRotatingMode, boundary]);
-
-  // Aplicar rotação ao arrastar
-  const handleRotationDrag = useCallback((currentPoint: GeoCoordinate) => {
-    if (!isDraggingRotation || originalBoundary.current.length === 0 || !rotationStartPoint.current) return;
-    
-    const center = getPolygonCenter(originalBoundary.current);
-    if (!center) return;
-
-    const startAngle = calculateAngle(center, rotationStartPoint.current);
-    const currentAngle = calculateAngle(center, currentPoint);
-    let angleDiff = startAngle - currentAngle;
-
-    // Detectar snap angle
-    const snapResult = findSnapAngle(angleDiff, 5);
-    
-    if (snapResult !== null) {
-      // Aplicar snap
-      angleDiff = snapResult;
-      setShowSnapGuides(true);
-      setSnapAngle(snapResult);
-    } else {
-      setShowSnapGuides(false);
-      setSnapAngle(null);
-    }
-
-    setCurrentRotationAngle(normalizeAngle(angleDiff));
-
-    const rotated = originalBoundary.current.map(p => rotatePoint(p, center, angleDiff));
-    setBoundary(rotated);
-  }, [isDraggingRotation, getPolygonCenter, calculateAngle, rotatePoint]);
-
-  // Adicionar listeners de mouse para rotação
+  // Manter boundaryRef sincronizado com o state boundary
   useEffect(() => {
-    if (!mapRef.current || !isDraggingRotation) return;
+    boundaryRef.current = boundary;
+  }, [boundary]);
 
-    const handleMouseMove = (e: google.maps.MapMouseEvent) => {
-      if (e.latLng && isDraggingRotation) {
-        handleRotationDrag({
-          lat: e.latLng.lat(),
-          lng: e.latLng.lng(),
+  // Drag-to-rotate: Alt+click and drag on the polygon to rotate
+  useEffect(() => {
+    if (!polygonRef.current || !mapRef.current || boundary.length === 0) return;
+
+    const poly = polygonRef.current;
+    const map = mapRef.current;
+
+    // Calculate angle from center to a point (in degrees)
+    const angleTo = (center: GeoCoordinate, point: GeoCoordinate): number => {
+      return Math.atan2(point.lng - center.lng, point.lat - center.lat) * (180 / Math.PI);
+    };
+
+    // Start rotation on Alt+click on polygon
+    const onMouseDown = (e: google.maps.PolyMouseEvent) => {
+      const domEvent = e.domEvent as MouseEvent;
+      if (!domEvent.altKey) return;
+
+      e.domEvent.preventDefault();
+      e.domEvent.stopPropagation();
+
+      const currentCoords = boundaryRef.current;
+      if (currentCoords.length < 3) return;
+
+      const center = getPolygonCenter(currentCoords);
+      if (!center || !e.latLng) return;
+
+      // Disable map drag and polygon edit/drag during rotation
+      map.setOptions({ draggable: false });
+      poly.setEditable(false);
+      poly.setDraggable(false);
+
+      const startPoint = { lat: e.latLng.lat(), lng: e.latLng.lng() };
+      rotationCenterRef.current = center;
+      rotationBaseCoords.current = [...currentCoords];
+      rotationStartAngleRef.current = angleTo(center, startPoint);
+      isDraggingRotationRef.current = true;
+      setIsDraggingRotation(true);
+      setDragRotationAngle(0);
+    };
+
+    // Track rotation while mouse moves
+    const onMouseMove = (e: google.maps.MapMouseEvent) => {
+      if (!isDraggingRotationRef.current || !e.latLng) return;
+
+      const center = rotationCenterRef.current!;
+      const currentPoint = { lat: e.latLng.lat(), lng: e.latLng.lng() };
+      const currentAngle = angleTo(center, currentPoint);
+      let deltaAngle = currentAngle - rotationStartAngleRef.current;
+
+      // Normalizar para -180..180
+      if (deltaAngle > 180) deltaAngle -= 360;
+      if (deltaAngle < -180) deltaAngle += 360;
+
+      // Rotacionar a partir das coordenadas base (não acumulativo)
+      const rotated = rotationBaseCoords.current.map(point => rotatePoint(point, center, deltaAngle));
+      setBoundary(rotated);
+      boundaryRef.current = rotated;
+      setDragRotationAngle(Math.round(deltaAngle * 10) / 10);
+    };
+
+    // End rotation
+    const onMouseUp = () => {
+      if (!isDraggingRotationRef.current) return;
+
+      isDraggingRotationRef.current = false;
+      setIsDraggingRotation(false);
+
+      // Calcular ângulo total dessa operação de drag
+      const baseCoords = rotationBaseCoords.current;
+      const finalCoords = boundaryRef.current;
+      if (baseCoords.length > 0 && finalCoords.length > 0 && rotationCenterRef.current) {
+        const center = rotationCenterRef.current;
+        const beforeAngle = angleTo(center, baseCoords[0]);
+        const afterAngle = angleTo(center, finalCoords[0]);
+        let appliedAngle = afterAngle - beforeAngle;
+        if (appliedAngle > 180) appliedAngle -= 360;
+        if (appliedAngle < -180) appliedAngle += 360;
+        setCurrentRotationAngle(prev => {
+          const next = (prev + appliedAngle) % 360;
+          return Math.round((next < 0 ? next + 360 : next) * 10) / 10;
         });
       }
+
+      // Restaurar interações do mapa e polígono
+      map.setOptions({ draggable: true });
+      poly.setEditable(true);
+      poly.setDraggable(true);
+
+      setDragRotationAngle(null);
+      rotationCenterRef.current = null;
     };
 
-    const listener = mapRef.current.addListener('mousemove', handleMouseMove);
+    const mouseDownListener = google.maps.event.addListener(poly, 'mousedown', onMouseDown);
+    const mouseMoveListener = google.maps.event.addListener(map, 'mousemove', onMouseMove);
+    const mouseUpListener = google.maps.event.addListener(map, 'mouseup', onMouseUp);
+    const docMouseUp = () => onMouseUp();
+    document.addEventListener('mouseup', docMouseUp);
 
     return () => {
-      if (listener) {
-        google.maps.event.removeListener(listener);
+      google.maps.event.removeListener(mouseDownListener);
+      google.maps.event.removeListener(mouseMoveListener);
+      google.maps.event.removeListener(mouseUpListener);
+      document.removeEventListener('mouseup', docMouseUp);
+      if (isDraggingRotationRef.current) {
+        isDraggingRotationRef.current = false;
+        map.setOptions({ draggable: true });
+        poly.setEditable(true);
+        poly.setDraggable(true);
       }
     };
-  }, [isDraggingRotation, handleRotationDrag]);
-
-  // Listener separado para mouseup (finalizar rotação) - global para capturar em qualquer lugar
-  useEffect(() => {
-    if (!isDraggingRotation) return;
-
-    const handleMouseUp = () => {
-      setIsDraggingRotation(false);
-      rotationStartPoint.current = null;
-      draggedMarkerIndex.current = -1;
-      setShowSnapGuides(false);
-      setSnapAngle(null);
-    };
-
-    // Adicionar listener no document para capturar mouseup em qualquer lugar
-    document.addEventListener('mouseup', handleMouseUp);
-
-    return () => {
-      document.removeEventListener('mouseup', handleMouseUp);
-    };
-  }, [isDraggingRotation]);
+  }, [polygonRef.current, boundary.length, getPolygonCenter, rotatePoint]);
 
   const handleSave = useCallback(async () => {
     if (boundary.length < 3) {
@@ -872,18 +892,6 @@ export default function MapBoundaryEditor({
               {boundary.length > 0 && (
                 <p className="text-sm text-green-600 dark:text-green-400">✓ Área delimitada com {boundary.length} pontos</p>
               )}
-              {isRotatingMode && isDraggingRotation && (
-                <div className="flex items-center gap-2 mt-1">
-                  <p className="text-sm text-purple-600 dark:text-purple-400">
-                    Ângulo: {Math.round(currentRotationAngle)}°
-                  </p>
-                  {showSnapGuides && (
-                    <span className="text-xs bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 px-2 py-0.5 rounded-full font-semibold">
-                      SNAP {snapAngle}°
-                    </span>
-                  )}
-                </div>
-              )}
             </div>
             <div className="flex gap-2">
               {(referenceBoundary || existingAreas.length > 0) && (
@@ -920,92 +928,62 @@ export default function MapBoundaryEditor({
               )}
               {boundary.length > 0 && (
                 <>
-                  <button
-                    onClick={toggleRotationMode}
-                    className={`px-4 py-2 border rounded-lg transition-colors text-sm flex items-center gap-2 cursor-pointer ${
-                      isRotatingMode
-                        ? 'bg-purple-600 text-white border-purple-600'
-                        : 'bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 border-purple-200 dark:border-purple-800 hover:bg-purple-100 dark:hover:bg-purple-900/30'
-                    }`}
-                    title="Ativar modo de rotação"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  {/* Controle de Rotação — sempre visível */}
+                  <div className="flex items-center gap-1 px-2 py-1.5 bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-lg">
+                    <svg className="w-4 h-4 text-purple-500 dark:text-purple-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                     </svg>
-                    {isRotatingMode ? 'Modo Rotação Ativo' : 'Rotacionar'}
+                    {[{ a: -90, l: '-90°' }, { a: -45, l: '-45°' }, { a: -1, l: '-1°' }, { a: 1, l: '+1°' }, { a: 45, l: '+45°' }, { a: 90, l: '+90°' }].map(({ a, l }) => (
+                      <button
+                        key={a}
+                        onClick={() => handleRotatePolygon(a)}
+                        className="px-1.5 py-1 text-xs font-semibold text-purple-700 dark:text-purple-300 hover:bg-purple-200 dark:hover:bg-purple-800/50 rounded transition-colors cursor-pointer"
+                        title={`Rotacionar ${l}`}
+                      >
+                        {l}
+                      </button>
+                    ))}
+                    <div className="w-px h-5 bg-purple-300 dark:bg-purple-600 mx-0.5" />
+                    <input
+                      type="number"
+                      step="1"
+                      placeholder="°"
+                      className="w-14 px-1 py-0.5 text-xs text-center font-semibold text-purple-700 dark:text-purple-300 bg-white dark:bg-gray-800 border border-purple-300 dark:border-purple-700 rounded focus:ring-1 focus:ring-purple-500 focus:border-purple-500"
+                      title="Digite um ângulo personalizado e pressione Enter"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          const val = parseFloat(e.currentTarget.value);
+                          if (!isNaN(val) && val !== 0) {
+                            handleRotatePolygon(val);
+                            e.currentTarget.value = '';
+                          }
+                        }
+                      }}
+                    />
+                    {currentRotationAngle !== 0 && (
+                      <button
+                        onClick={() => {
+                          handleRotatePolygon(-currentRotationAngle);
+                          setCurrentRotationAngle(0);
+                        }}
+                        className="text-[10px] font-medium text-purple-500 dark:text-purple-400 hover:text-purple-700 dark:hover:text-purple-200 whitespace-nowrap ml-0.5 underline cursor-pointer"
+                        title="Clique para desfazer toda a rotação acumulada"
+                      >
+                        {currentRotationAngle.toFixed(0)}° ↺
+                      </button>
+                    )}
+                  </div>
+
+                  <button
+                    onClick={handleClearPolygon}
+                    className="px-4 py-2 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors text-sm cursor-pointer"
+                  >
+                    Limpar Área
                   </button>
-                  
-                  {isRotatingMode && (
-                    <div className="flex gap-1 px-2 py-1 bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-lg">
-                      <button
-                        onClick={() => handleRotatePolygon(90)}
-                        className="p-1.5 hover:bg-purple-100 dark:hover:bg-purple-900/40 rounded transition-colors"
-                        title="Rotacionar 90° (Horizontal)"
-                      >
-                        <svg className="w-5 h-5 text-purple-600 dark:text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
-                        </svg>
-                      </button>
-                      <button
-                        onClick={() => handleRotatePolygon(-90)}
-                        className="p-1.5 hover:bg-purple-100 dark:hover:bg-purple-900/40 rounded transition-colors"
-                        title="Rotacionar -90° (Vertical)"
-                      >
-                        <svg className="w-5 h-5 text-purple-600 dark:text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
-                        </svg>
-                      </button>
-                      <button
-                        onClick={() => handleRotatePolygon(45)}
-                        className="p-1.5 hover:bg-purple-100 dark:hover:bg-purple-900/40 rounded transition-colors"
-                        title="Rotacionar 45°"
-                      >
-                        <svg className="w-5 h-5 text-purple-600 dark:text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9" />
-                        </svg>
-                      </button>
-                      <button
-                        onClick={() => handleRotatePolygon(-45)}
-                        className="p-1.5 hover:bg-purple-100 dark:hover:bg-purple-900/40 rounded transition-colors"
-                        title="Rotacionar -45°"
-                      >
-                        <svg className="w-5 h-5 text-purple-600 dark:text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 20v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                        </svg>
-                      </button>
-                    </div>
-                  )}
-                  
-                  {boundary.length > 0 && (
-                    <button
-                      onClick={handleClearPolygon}
-                      className="px-4 py-2 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors text-sm cursor-pointer"
-                    >
-                      Limpar Área
-                    </button>
-                  )}
                 </>
               )}
             </div>
           </div>
-
-          {isRotatingMode && (
-            <div className="mb-3 p-3 bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-lg">
-              <div className="flex items-start gap-2">
-                <svg className="w-5 h-5 text-purple-600 dark:text-purple-400 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <div className="text-sm text-purple-700 dark:text-purple-300">
-                  <p className="font-semibold mb-1">Modo de Rotação Ativo</p>
-                  <ul className="list-disc list-inside space-y-1 text-xs">
-                    <li>Clique em qualquer ponto da área e arraste para rotacionar</li>
-                    <li>Linhas verdes aparecem quando próximo a 0°, 90°, 180° ou 270° (snap automático)</li>
-                    <li>Use os botões acima para rotações rápidas (90°, 45°, etc)</li>
-                  </ul>
-                </div>
-              </div>
-            </div>
-          )}
 
           {/* Metragem das Linhas */}
           {boundary.length >= 2 && lineDistances.length > 0 && (
@@ -1064,6 +1042,9 @@ export default function MapBoundaryEditor({
               <p className="mt-2 text-xs text-[var(--foreground)] opacity-60 italic">
                 💡 Dica: Digite o valor desejado para ajustar o comprimento da linha mantendo sua direção
               </p>
+              <p className="text-xs text-[var(--foreground)] opacity-60 italic">
+                🔄 Segure <strong>Alt</strong> e arraste sobre o polígono no mapa para rotacionar livremente
+              </p>
             </div>
           )}
 
@@ -1091,7 +1072,6 @@ export default function MapBoundaryEditor({
                 mapTypeControl: true,
                 fullscreenControl: true,
                 zoomControl: true,
-                draggable: !isRotatingMode, // Desabilitar arrastar o mapa quando em modo de rotação
                 gestureHandling: 'cooperative', // Requer Ctrl+scroll para zoom
               }}
             >
@@ -1132,64 +1112,15 @@ export default function MapBoundaryEditor({
 
               {mapLoaded && boundary.length > 0 && (
                 <>
-                  {/* Linhas guia de snap quando rotacionando */}
-                  {showSnapGuides && snapAngle !== null && mapRef.current && (() => {
-                    const center = getPolygonCenter(boundary);
-                    if (!center) return null;
-                    
-                    const bounds = mapRef.current.getBounds();
-                    if (!bounds) return null;
-                    
-                    const ne = bounds.getNorthEast();
-                    const sw = bounds.getSouthWest();
-                    const latSpan = ne.lat() - sw.lat();
-                    const lngSpan = ne.lng() - sw.lng();
-                    const extension = Math.max(latSpan, lngSpan) * 0.5;
-                    
-                    // Calcular linhas baseadas no ângulo snap
-                    const lines: GeoCoordinate[][] = [];
-                    
-                    if (snapAngle === 0 || snapAngle === 180) {
-                      // Linha horizontal
-                      lines.push([
-                        { lat: center.lat, lng: center.lng - extension },
-                        { lat: center.lat, lng: center.lng + extension }
-                      ]);
-                    }
-                    
-                    if (snapAngle === 90 || snapAngle === 270) {
-                      // Linha vertical
-                      lines.push([
-                        { lat: center.lat - extension, lng: center.lng },
-                        { lat: center.lat + extension, lng: center.lng }
-                      ]);
-                    }
-                    
-                    return lines.map((line, idx) => (
-                      <Polygon
-                        key={`snap-guide-${idx}`}
-                        paths={line}
-                        options={{
-                          strokeColor: '#00FF00',
-                          strokeOpacity: 0.8,
-                          strokeWeight: 2,
-                          fillColor: 'transparent',
-                          clickable: false,
-                          zIndex: 999,
-                        }}
-                      />
-                    ));
-                  })()}
-                  
                   <Polygon
                     paths={boundary}
                     options={{
                       ...polygonOptions,
-                      editable: !isRotatingMode,
-                      draggable: !isRotatingMode,
+                      editable: true,
+                      draggable: true,
                     }}
                     onMouseUp={() => {
-                      if (!isRotatingMode && polygonRef.current) {
+                      if (polygonRef.current) {
                         const path = polygonRef.current.getPath();
                         const newCoordinates: GeoCoordinate[] = [];
                         for (let i = 0; i < path.getLength(); i++) {
@@ -1203,7 +1134,7 @@ export default function MapBoundaryEditor({
                       }
                     }}
                     onDragEnd={() => {
-                      if (!isRotatingMode && polygonRef.current) {
+                      if (polygonRef.current) {
                         const path = polygonRef.current.getPath();
                         const newCoordinates: GeoCoordinate[] = [];
                         for (let i = 0; i < path.getLength(); i++) {
@@ -1220,34 +1151,33 @@ export default function MapBoundaryEditor({
                       polygonRef.current = poly;
                     }}
                   />
-                  
-                  {/* Marcadores de rotação nos cantos */}
-                  {isRotatingMode && boundary.map((point, index) => (
-                    <Marker
-                      key={`rotation-marker-${index}`}
-                      position={point}
-                      draggable={false}
-                      onMouseDown={() => {
-                        if (!isDraggingRotation) {
-                          setIsDraggingRotation(true);
-                          originalBoundary.current = [...boundary];
-                          rotationStartPoint.current = { ...boundary[index] };
-                          draggedMarkerIndex.current = index;
-                        }
-                      }}
-                      icon={{
-                        path: window.google.maps.SymbolPath.CIRCLE,
-                        scale: 8,
-                        fillColor: '#9333EA',
-                        fillOpacity: 1,
-                        strokeColor: '#ffffff',
-                        strokeWeight: 2,
-                      }}
-                      options={{
-                        cursor: 'grab'
-                      }}
-                    />
-                  ))}
+
+                  {/* Indicador visual de rotação durante drag */}
+                  {isDraggingRotation && dragRotationAngle !== null && rotationCenterRef.current && (
+                    <OverlayView
+                      position={rotationCenterRef.current}
+                      mapPaneName={OverlayView.OVERLAY_MOUSE_TARGET}
+                    >
+                      <div
+                        style={{
+                          position: 'absolute',
+                          transform: 'translate(-50%, -50%)',
+                          fontSize: '16px',
+                          fontWeight: '700',
+                          color: '#FFFFFF',
+                          background: 'rgba(147, 51, 234, 0.85)',
+                          padding: '4px 10px',
+                          borderRadius: '8px',
+                          pointerEvents: 'none',
+                          whiteSpace: 'nowrap',
+                          userSelect: 'none',
+                          boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+                        }}
+                      >
+                        {dragRotationAngle > 0 ? '+' : ''}{dragRotationAngle}°
+                      </div>
+                    </OverlayView>
+                  )}
                 </>
               )}
             </GoogleMap>
