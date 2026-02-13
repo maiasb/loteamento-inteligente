@@ -77,7 +77,6 @@ export async function POST(request: NextRequest) {
         `ALTER TABLE maps 
          ADD COLUMN address VARCHAR(500) AFTER location`
       );
-      console.log('✅ Coluna address criada com sucesso');
     }
 
     // Criar coluna boundary_coordinates se não existir
@@ -86,7 +85,6 @@ export async function POST(request: NextRequest) {
         `ALTER TABLE maps 
          ADD COLUMN boundary_coordinates JSON AFTER address`
       );
-      console.log('✅ Coluna boundary_coordinates criada com sucesso');
     }
 
     // Atualizar endereço e coordenadas do boundary

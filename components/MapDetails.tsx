@@ -1763,7 +1763,6 @@ export default function MapDetails() {
                   focusedLotId={focusedLotId}
                   showAreas={showMapAreas}
                   onBlockClick={(block) => {
-                    console.log('[MapDetails] Quadra clicada no mapa:', block.name);
                     // Apenas fazer requisição se for uma quadra diferente
                     if (selectedBlockId !== block.id) {
                       setSelectedBlockId(block.id);

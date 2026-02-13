@@ -611,7 +611,6 @@ export default function AdminMapsLotsPage() {
                       focusedLotId={focusedLotId}
                       showAreas={showMapAreas}
                       onBlockClick={(block) => {
-                        console.log('[Maps Page] Quadra clicada no mapa:', block.name);
                         // Apenas fazer requisição se for uma quadra diferente
                         if (selectedBlock?.id !== block.id) {
                           selectBlock(block.id);
@@ -620,8 +619,6 @@ export default function AdminMapsLotsPage() {
                         setFocusedLotId(null);
                       }}
                       onLotClick={(lot) => {
-                        console.log('[Maps Page] onLotClick chamado:', lot.lotNumber, 'multiSelectMode:', multiSelectMode);
-                        
                         if (multiSelectMode) {
                           // Em modo de seleção múltipla, adiciona/remove da seleção
                           handleToggleLotSelection(lot);

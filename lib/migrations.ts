@@ -23,7 +23,6 @@ export async function createMigrationsTable() {
         INDEX idx_executed_at (executed_at)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
-    console.log('✅ Tabela migrations criada/verificada');
   } finally {
     await connection.end();
   }
@@ -96,7 +95,6 @@ export async function executeMigration(filename: string): Promise<void> {
       [filename]
     );
 
-    console.log(`✅ Migration executada: ${filename}`);
   } catch (error) {
     console.error(`❌ Erro ao executar migration ${filename}:`, error);
     throw error;
@@ -109,24 +107,17 @@ export async function executeMigration(filename: string): Promise<void> {
  * Executa todas as migrations pendentes
  */
 export async function runPendingMigrations(): Promise<void> {
-  console.log('🔍 Verificando migrations pendentes...');
-  
   await createMigrationsTable();
   const pending = await getPendingMigrations();
 
   if (pending.length === 0) {
-    console.log('✅ Nenhuma migration pendente');
     return;
   }
-
-  console.log(`📋 ${pending.length} migration(s) pendente(s):`);
-  pending.forEach(m => console.log(`  - ${m}`));
 
   for (const migration of pending) {
     await executeMigration(migration);
   }
 
-  console.log('🎉 Todas as migrations foram executadas com sucesso!');
 }
 
 /**
@@ -139,19 +130,4 @@ export async function showMigrationsStatus(): Promise<void> {
   const executed = await getExecutedMigrations();
   const pending = available.filter(m => !executed.includes(m));
 
-  console.log('\n📊 Status das Migrations:');
-  console.log('========================');
-  console.log(`Total disponíveis: ${available.length}`);
-  console.log(`Executadas: ${executed.length}`);
-  console.log(`Pendentes: ${pending.length}`);
-
-  if (executed.length > 0) {
-    console.log('\n✅ Executadas:');
-    executed.forEach(m => console.log(`  - ${m}`));
-  }
-
-  if (pending.length > 0) {
-    console.log('\n⏳ Pendentes:');
-    pending.forEach(m => console.log(`  - ${m}`));
-  }
 }

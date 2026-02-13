@@ -20,8 +20,6 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    console.log('[API /mapas/estatisticas GET] Conectando ao banco de dados...');
-    
     // Verificar se as configurações do banco estão definidas
     if (!dbConfig.host || !dbConfig.user || !dbConfig.database) {
       console.error('[API /mapas/estatisticas GET] Configuração do banco de dados incompleta:', {
@@ -36,7 +34,6 @@ export async function GET(request: NextRequest) {
     }
 
     connection = await mysql.createConnection(dbConfig);
-    console.log('[API /mapas/estatisticas GET] Conexão estabelecida com sucesso');
 
     // Buscar contagem de lotes por status
     const [stats] = await connection.execute(
@@ -52,8 +49,6 @@ export async function GET(request: NextRequest) {
     );
 
     const result = (stats as any[])[0];
-    
-    console.log('[API /mapas/estatisticas GET] Estatísticas carregadas:', result);
 
     return NextResponse.json({
       total: Number(result.total) || 0,
@@ -89,7 +84,6 @@ export async function GET(request: NextRequest) {
     if (connection) {
       try {
         await connection.end();
-        console.log('[API /mapas/estatisticas GET] Conexão fechada');
       } catch (closeError) {
         console.error('[API /mapas/estatisticas GET] Erro ao fechar conexão:', closeError);
       }

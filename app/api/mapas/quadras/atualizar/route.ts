@@ -38,7 +38,6 @@ export async function PATCH(request: NextRequest) {
         `ALTER TABLE blocks 
          ADD COLUMN coordinates JSON AFTER description`
       );
-      console.log('✅ Coluna coordinates criada na tabela blocks');
     }
 
     // UPDATE com coordenadas

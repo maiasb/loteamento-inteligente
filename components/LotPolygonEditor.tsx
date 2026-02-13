@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { GoogleMap, useLoadScript, Polygon, OverlayView } from '@react-google-maps/api';
 import { GeoCoordinate, Lot } from '@/types';
 import { useCustomAlert } from '@/hooks/useCustomAlert';
@@ -183,8 +183,9 @@ export default function LotPolygonEditor({ lot, mapBoundary, blockBoundary, othe
     };
   }, [mapLoaded, isLoaded, isDrawing]);
 
-  // Calcular centro do mapa baseado na quadra (prioritário) ou no loteamento
-  const getCenter = () => {
+  // Calcular centro do mapa apenas uma vez (baseado na quadra ou loteamento)
+  // useMemo evita recriar o objeto a cada render, o que faria o mapa pular de volta
+  const center = useMemo(() => {
     // Prioridade 1: Centro da área da quadra (mais específico)
     if (blockBoundary && blockBoundary.length > 0) {
       const latSum = blockBoundary.reduce((sum, coord) => sum + coord.lat, 0);
@@ -204,9 +205,8 @@ export default function LotPolygonEditor({ lot, mapBoundary, blockBoundary, othe
       };
     }
     return { lat: -6.064831, lng: -50.045556 };
-  };
-
-  const center = getCenter();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [blockBoundary?.length, mapBoundary?.length]);
 
   const updateCoordinatesFromPolygon = useCallback((poly: google.maps.Polygon) => {
     const path = poly.getPath();
@@ -276,7 +276,6 @@ export default function LotPolygonEditor({ lot, mapBoundary, blockBoundary, othe
 
   const handleSave = async () => {
     const currentCoords = coordinatesRef.current;
-    console.log('[LotPolygonEditor] Salvando coordenadas:', currentCoords.length, 'pontos');
     if (currentCoords.length < 3) {
       customAlert.warning('Você precisa desenhar um polígono com pelo menos 3 pontos!');
       return;

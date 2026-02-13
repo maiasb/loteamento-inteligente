@@ -108,32 +108,6 @@ export default function PublicMapViewer({
   // Filtrar apenas quadras que têm coordenadas definidas
   const blocksWithCoordinates = blocks.filter(block => block.coordinates && block.coordinates.length > 0);
 
-  console.log('[PublicMapViewer] Debug completo:', {
-    totalBlocks: blocks.length,
-    blocksWithCoordinates: blocksWithCoordinates.length,
-    totalLots: lots.length,
-    lotsWithCoordinates: lotsWithCoordinates.length,
-    allBlocksData: blocks.map(b => ({ 
-      id: b.id, 
-      name: b.name, 
-      hasCoords: !!(b.coordinates && b.coordinates.length > 0),
-      coordsLength: b.coordinates?.length || 0,
-      coordinates: b.coordinates || null
-    })),
-    blockDetails: blocks.map(b => ({ 
-      id: b.id, 
-      name: b.name, 
-      hasCoords: !!(b.coordinates && b.coordinates.length > 0),
-      coordsLength: b.coordinates?.length || 0 
-    })),
-    lotDetails: lots.map(l => ({ 
-      id: l.id, 
-      number: l.lotNumber, 
-      hasCoords: !!(l.coordinates && l.coordinates.length > 0),
-      coordsLength: l.coordinates?.length || 0 
-    }))
-  });
-
   useEffect(() => {
     if (boundaryCoordinates && boundaryCoordinates.length > 0) {
       // Calcular o centro do polígono
@@ -285,7 +259,6 @@ export default function PublicMapViewer({
             options={polygonOptions}
             onClick={() => {
               if (isAdminContext && onBoundaryClick) {
-                console.log('[PublicMapViewer] Área do loteamento clicada');
                 onBoundaryClick();
               }
             }}
@@ -300,7 +273,6 @@ export default function PublicMapViewer({
               options={getBlockPolygonOptions(block, hoveredBlockId === block.id, focusedBlockId === block.id)}
               onClick={() => {
                 if (onBlockClick) {
-                  console.log('[PublicMapViewer] Quadra clicada:', block.name);
                   onBlockClick(block);
                 }
               }}
@@ -317,7 +289,6 @@ export default function PublicMapViewer({
               paths={lot.coordinates || []}
               options={getLotPolygonOptions(lot, hoveredLotId === lot.id, focusedLotId === lot.id)}
               onClick={() => {
-                console.log('[PublicMapViewer] Lote clicado:', lot.lotNumber);
                 onLotClick && onLotClick(lot);
               }}
               onMouseOver={() => setHoveredLotId(lot.id)}
