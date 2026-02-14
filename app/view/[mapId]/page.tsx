@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import ViewOnlyLotMap from '@/components/ViewOnlyLotMap';
-import { Block, Lot, GeoCoordinate } from '@/types';
+import { Block, Lot, OverlayConfig } from '@/types';
 
 // Forçar essa página a ser apenas client-side (sem SSG/SSR)
 export const dynamic = 'force-dynamic';
@@ -14,7 +14,7 @@ interface MapData {
   name: string;
   description: string | null;
   address: string | null;
-  boundaryCoordinates: GeoCoordinate[] | null;
+  overlayConfig?: OverlayConfig | null;
 }
 
 interface ViewData {
@@ -150,7 +150,7 @@ export default function ViewMapPage() {
     <ViewOnlyLotMap
       mapName={viewData.map.name}
       address={viewData.map.address || undefined}
-      boundaryCoordinates={viewData.map.boundaryCoordinates || undefined}
+      overlayConfig={viewData.map.overlayConfig || undefined}
       blocks={viewData.blocks}
       lots={viewData.lots}
     />

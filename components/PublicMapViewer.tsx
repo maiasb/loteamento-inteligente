@@ -1,22 +1,18 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
-import { GoogleMap, useLoadScript, Polygon, OverlayView } from '@react-google-maps/api';
-import { GeoCoordinate, Lot, Block } from '@/types';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
+import { GoogleMap, useLoadScript } from '@react-google-maps/api';
+import { Lot, Block, LotStatus, OverlayConfig } from '@/types';
 
 interface PublicMapViewerProps {
   address?: string;
-  boundaryCoordinates?: GeoCoordinate[];
-  blocks?: Block[]; // Novo: quadras com coordenadas
+  blocks?: Block[];
   lots?: Lot[];
   onLotClick?: (lot: Lot) => void;
-  onBlockClick?: (block: Block) => void; // Novo: callback para clicar em quadra
-  onBoundaryClick?: () => void; // Novo: callback para clicar na área do loteamento
-  isAdminContext?: boolean; // Novo: indica se está no contexto admin
-  selectedLotIds?: string[]; // Novo: IDs dos lotes selecionados
-  focusedBlockId?: string | null; // ID da quadra focada
-  focusedLotId?: string | null; // ID do lote focado
-  showAreas?: boolean; // Controla visibilidade das áreas (controlado externamente)
+  onBlockClick?: (block: Block) => void;
+  overlayConfig?: OverlayConfig | null;
+  onMapClick?: (lat: number, lng: number) => void; // Para posicionar lotes no mapa
+  placingMode?: boolean; // Indica se está em modo de posicionamento de lote
 }
 
 const GOOGLE_MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || '';
@@ -32,142 +28,289 @@ const defaultCenter = {
   lng: -46.6333,
 };
 
+// Calcula o tamanho do círculo do lote baseado no zoom do mapa
+function getCircleSizeFromZoom(zoom: number): number {
+  // Zoom 15 => ~12px, zoom 17 => ~24px, zoom 19 => ~48px, zoom 21 => ~96px
+  // Escala exponencial: dobra a cada 2 níveis de zoom
+  const base = 6;
+  const size = base * Math.pow(2, (zoom - 14) / 2);
+  return Math.max(8, Math.min(size, 120));
+}
+
 export default function PublicMapViewer({ 
   address, 
-  boundaryCoordinates, 
   blocks = [], 
   lots = [], 
   onLotClick, 
   onBlockClick, 
-  onBoundaryClick, 
-  isAdminContext = false, 
-  selectedLotIds = [],
-  focusedBlockId = null,
-  focusedLotId = null,
-  showAreas = true
+  overlayConfig = null,
+  onMapClick,
+  placingMode = false,
 }: PublicMapViewerProps) {
   const [center, setCenter] = useState(defaultCenter);
   const [mapLoaded, setMapLoaded] = useState(false);
-
-  // Função para calcular o centroide de um polígono usando área ponderada
-  const getPolygonCenter = (coordinates: GeoCoordinate[]) => {
-    if (!coordinates || coordinates.length === 0) return null;
-    
-    let area = 0;
-    let centroidLat = 0;
-    let centroidLng = 0;
-    
-    for (let i = 0; i < coordinates.length; i++) {
-      const j = (i + 1) % coordinates.length;
-      const xi = coordinates[i].lat;
-      const yi = coordinates[i].lng;
-      const xj = coordinates[j].lat;
-      const yj = coordinates[j].lng;
-      
-      const cross = xi * yj - xj * yi;
-      area += cross;
-      centroidLat += (xi + xj) * cross;
-      centroidLng += (yi + yj) * cross;
-    }
-    
-    area /= 2;
-    
-    if (area === 0) {
-      // Fallback para média simples se área for zero
-      let totalLat = 0;
-      let totalLng = 0;
-      coordinates.forEach(coord => {
-        totalLat += coord.lat;
-        totalLng += coord.lng;
-      });
-      return {
-        lat: totalLat / coordinates.length,
-        lng: totalLng / coordinates.length
-      };
-    }
-    
-    centroidLat /= (6 * area);
-    centroidLng /= (6 * area);
-    
-    return {
-      lat: centroidLat,
-      lng: centroidLng
-    };
-  };
   const [hoveredLotId, setHoveredLotId] = useState<string | null>(null);
-  const [hoveredBlockId, setHoveredBlockId] = useState<string | null>(null);
+  const mapRef = useRef<google.maps.Map | null>(null);
+  const overlayRef = useRef<google.maps.OverlayView | null>(null);
+  const overlayDivRef = useRef<HTMLDivElement | null>(null);
+  const lotOverlaysRef = useRef<google.maps.OverlayView[]>([]);
+  const hoveredLotIdRef = useRef<string | null>(null);
 
   const { isLoaded, loadError } = useLoadScript({
     googleMapsApiKey: GOOGLE_MAPS_API_KEY,
     libraries: libraries as any,
   });
 
-  // Filtrar apenas lotes que têm coordenadas definidas
-  const lotsWithCoordinates = lots.filter(lot => lot.coordinates && lot.coordinates.length > 0);
-  
-  // Filtrar apenas quadras que têm coordenadas definidas
-  const blocksWithCoordinates = blocks.filter(block => block.coordinates && block.coordinates.length > 0);
+  // Função para obter cor do status
+  const getStatusColor = useCallback((status: LotStatus) => {
+    switch (status) {
+      case LotStatus.AVAILABLE: return { bg: '#22c55e', border: '#16a34a' }; // green
+      case LotStatus.RESERVED: return { bg: '#eab308', border: '#ca8a04' }; // yellow
+      case LotStatus.SOLD: return { bg: '#ef4444', border: '#dc2626' }; // red
+      case LotStatus.BLOCKED: return { bg: '#6366f1', border: '#4f46e5' }; // indigo (especial)
+      default: return { bg: '#9ca3af', border: '#6b7280' }; // gray
+    }
+  }, []);
 
+  // Handler para clique no mapa (posicionar lote)
+  const handleMapClick = useCallback((e: google.maps.MapMouseEvent) => {
+    if (placingMode && onMapClick && e.latLng) {
+      onMapClick(e.latLng.lat(), e.latLng.lng());
+    }
+  }, [placingMode, onMapClick]);
+
+  // Calcular centro a partir dos bounds do overlay
   useEffect(() => {
-    if (boundaryCoordinates && boundaryCoordinates.length > 0) {
-      // Calcular o centro do polígono
-      const latSum = boundaryCoordinates.reduce((sum, coord) => sum + coord.lat, 0);
-      const lngSum = boundaryCoordinates.reduce((sum, coord) => sum + coord.lng, 0);
-      
+    if (overlayConfig?.bounds) {
       setCenter({
-        lat: latSum / boundaryCoordinates.length,
-        lng: lngSum / boundaryCoordinates.length,
+        lat: (overlayConfig.bounds.north + overlayConfig.bounds.south) / 2,
+        lng: (overlayConfig.bounds.east + overlayConfig.bounds.west) / 2,
       });
     }
-  }, [boundaryCoordinates]);
+  }, [overlayConfig]);
 
-  const polygonOptions = {
-    fillColor: '#10B981', // Verde esmeralda - Loteamento
-    fillOpacity: 0.25,
-    strokeColor: '#059669',
-    strokeOpacity: 0.9,
-    strokeWeight: 3,
-    clickable: isAdminContext, // Clicável apenas no contexto admin
-    zIndex: 1,
-  };
+  // Gerenciar overlay SVG/imagem nativamente via google.maps.OverlayView
+  // Isso evita o "flash" causado pelo OverlayView do React criando novos bounds a cada render
+  useEffect(() => {
+    if (!mapRef.current || !overlayConfig?.imageUrl || !overlayConfig?.bounds) {
+      // Remover overlay existente se config foi removida
+      if (overlayRef.current) {
+        overlayRef.current.setMap(null);
+        overlayRef.current = null;
+        overlayDivRef.current = null;
+      }
+      return;
+    }
 
-  const getLotPolygonOptions = (lot: Lot, isHovered: boolean = false, isFocused: boolean = false) => {
-    const isSelected = selectedLotIds.includes(lot.id);
-    
-    // Cores bem definidas baseadas no status do lote
-    const colors: Record<string, { fill: string; stroke: string }> = {
-      available: { fill: '#22C55E', stroke: '#16A34A' },  // Verde - Disponível
-      reserved: { fill: '#F59E0B', stroke: '#D97706' },   // Amarelo - Reservado
-      sold: { fill: '#EF4444', stroke: '#DC2626' },       // Vermelho - Vendido
-      blocked: { fill: '#6B7280', stroke: '#4B5563' },    // Cinza - Bloqueado
+    const map = mapRef.current;
+    const config = overlayConfig;
+    const sw = new google.maps.LatLng(config.bounds.south, config.bounds.west);
+    const ne = new google.maps.LatLng(config.bounds.north, config.bounds.east);
+    const bounds = new google.maps.LatLngBounds(sw, ne);
+
+    // Se já existe um overlay, removê-lo antes de criar um novo
+    if (overlayRef.current) {
+      overlayRef.current.setMap(null);
+      overlayRef.current = null;
+      overlayDivRef.current = null;
+    }
+
+    class ImageOverlay extends google.maps.OverlayView {
+      private div: HTMLDivElement | null = null;
+
+      onAdd() {
+        const div = document.createElement('div');
+        div.style.position = 'absolute';
+        div.style.pointerEvents = 'none';
+
+        const img = document.createElement('img');
+        img.src = config.imageUrl!;
+        img.alt = 'Overlay do loteamento';
+        img.draggable = false;
+        img.style.width = '100%';
+        img.style.height = '100%';
+        img.style.objectFit = 'fill';
+        img.style.display = 'block';
+
+        div.appendChild(img);
+
+        div.style.opacity = String(config.opacity ?? 0.6);
+        if (config.rotation) {
+          div.style.transform = `rotate(${config.rotation}deg)`;
+        }
+
+        this.div = div;
+        overlayDivRef.current = div;
+
+        const panes = this.getPanes();
+        panes?.overlayLayer.appendChild(div);
+      }
+
+      draw() {
+        if (!this.div) return;
+        const projection = this.getProjection();
+        if (!projection) return;
+
+        const swPixel = projection.fromLatLngToDivPixel(bounds.getSouthWest());
+        const nePixel = projection.fromLatLngToDivPixel(bounds.getNorthEast());
+
+        if (!swPixel || !nePixel) return;
+
+        this.div.style.left = swPixel.x + 'px';
+        this.div.style.top = nePixel.y + 'px';
+        this.div.style.width = (nePixel.x - swPixel.x) + 'px';
+        this.div.style.height = (swPixel.y - nePixel.y) + 'px';
+      }
+
+      onRemove() {
+        if (this.div?.parentNode) {
+          this.div.parentNode.removeChild(this.div);
+        }
+        this.div = null;
+      }
+    }
+
+    const overlay = new ImageOverlay();
+    overlay.setMap(map);
+    overlayRef.current = overlay;
+
+    return () => {
+      overlay.setMap(null);
+      overlayRef.current = null;
+      overlayDivRef.current = null;
     };
+  }, [mapLoaded, overlayConfig]);
 
-    const color = colors[lot.status] || colors.available;
+  // Filtrar lotes que têm coordenadas (lat/lng)
+  const lotsWithPosition = lots.filter(lot => lot.lat !== undefined && lot.lat !== null && lot.lng !== undefined && lot.lng !== null);
 
-    return {
-      fillColor: isSelected ? '#3B82F6' : color.fill, // Azul para selecionado
-      fillOpacity: isSelected ? 0.7 : (isFocused ? 0.8 : (isHovered ? 0.7 : 0.5)),
-      strokeColor: isSelected ? '#2563EB' : (isFocused ? color.stroke : color.stroke),
-      strokeOpacity: 1,
-      strokeWeight: isSelected ? 4 : (isFocused ? 4 : (isHovered ? 3 : 2.5)),
-      clickable: true,
-      zIndex: isSelected ? 200 : (isFocused ? 150 : (isHovered ? 100 : 10)),
-      cursor: 'pointer',
+  // Gerenciar círculos dos lotes nativamente via google.maps.OverlayView
+  useEffect(() => {
+    // Limpar overlays anteriores
+    lotOverlaysRef.current.forEach(o => o.setMap(null));
+    lotOverlaysRef.current = [];
+
+    if (!mapRef.current || !mapLoaded || lotsWithPosition.length === 0) return;
+
+    const map = mapRef.current;
+
+    lotsWithPosition.forEach((lot) => {
+      const position = new google.maps.LatLng(lot.lat!, lot.lng!);
+
+      class LotCircleOverlay extends google.maps.OverlayView {
+        private div: HTMLDivElement | null = null;
+
+        onAdd() {
+          const div = document.createElement('div');
+          div.style.position = 'absolute';
+          div.style.cursor = onLotClick ? 'pointer' : 'default';
+          div.style.userSelect = 'none';
+          div.style.zIndex = '10';
+
+          // Atualizar visuais
+          this.updateVisuals(div, false);
+
+          div.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (onLotClick) onLotClick(lot);
+          });
+
+          div.addEventListener('mouseenter', () => {
+            hoveredLotIdRef.current = lot.id;
+            setHoveredLotId(lot.id);
+            this.updateVisuals(div, true);
+            div.style.zIndex = '100';
+          });
+
+          div.addEventListener('mouseleave', () => {
+            hoveredLotIdRef.current = null;
+            setHoveredLotId(null);
+            this.updateVisuals(div, false);
+            div.style.zIndex = '10';
+          });
+
+          const statusText = lot.status === LotStatus.AVAILABLE ? 'Disponível'
+            : lot.status === LotStatus.RESERVED ? 'Reservado'
+            : lot.status === LotStatus.SOLD ? 'Vendido' : 'Bloqueado';
+          div.title = `Lote ${lot.lotNumber}${lot.blockName ? ` - Quadra ${lot.blockName}` : ''} (${statusText})`;
+
+          this.div = div;
+          const panes = this.getPanes();
+          panes?.overlayMouseTarget.appendChild(div);
+        }
+
+        updateVisuals(div: HTMLDivElement, hovered: boolean) {
+          const colors = getStatusColor(lot.status);
+          const zoom = map.getZoom() || 17;
+          const baseSize = getCircleSizeFromZoom(zoom);
+          const size = hovered ? baseSize + 6 : baseSize;
+          const fontSize = Math.max(8, Math.round(baseSize * 0.4));
+
+          div.style.width = size + 'px';
+          div.style.height = size + 'px';
+          div.style.marginLeft = (-size / 2) + 'px';
+          div.style.marginTop = (-size / 2) + 'px';
+          div.style.borderRadius = '50%';
+          div.style.backgroundColor = colors.bg;
+          div.style.border = `2.5px solid ${colors.border}`;
+          div.style.display = 'flex';
+          div.style.alignItems = 'center';
+          div.style.justifyContent = 'center';
+          div.style.transition = 'width 0.15s ease, height 0.15s ease, margin 0.15s ease, box-shadow 0.15s ease';
+          div.style.boxShadow = hovered
+            ? `0 0 12px 3px ${colors.bg}88, 0 2px 8px rgba(0,0,0,0.4)`
+            : '0 1px 4px rgba(0,0,0,0.4)';
+
+          // Atualizar ou criar o span interno
+          let span = div.querySelector('span') as HTMLSpanElement;
+          if (!span) {
+            span = document.createElement('span');
+            div.appendChild(span);
+          }
+          span.textContent = lot.lotNumber;
+          span.style.color = '#fff';
+          span.style.fontWeight = '800';
+          span.style.fontSize = fontSize + 'px';
+          span.style.lineHeight = '1';
+          span.style.textShadow = '0 1px 2px rgba(0,0,0,0.5)';
+          span.style.letterSpacing = '-0.5px';
+        }
+
+        draw() {
+          if (!this.div) return;
+          const projection = this.getProjection();
+          if (!projection) return;
+
+          const point = projection.fromLatLngToDivPixel(position);
+          if (!point) return;
+
+          this.div.style.left = point.x + 'px';
+          this.div.style.top = point.y + 'px';
+
+          // Atualizar tamanho com base no zoom atual
+          const isHovered = hoveredLotIdRef.current === lot.id;
+          this.updateVisuals(this.div, isHovered);
+        }
+
+        onRemove() {
+          if (this.div?.parentNode) {
+            this.div.parentNode.removeChild(this.div);
+          }
+          this.div = null;
+        }
+      }
+
+      const overlay = new LotCircleOverlay();
+      overlay.setMap(map);
+      lotOverlaysRef.current.push(overlay);
+    });
+
+    return () => {
+      lotOverlaysRef.current.forEach(o => o.setMap(null));
+      lotOverlaysRef.current = [];
     };
-  };
-  
-  const getBlockPolygonOptions = (block: Block, isHovered: boolean = false, isFocused: boolean = false) => {
-    return {
-      fillColor: '#A855F7', // Roxo/Púrpura - Quadra
-      fillOpacity: isFocused ? 0.5 : (isHovered ? 0.35 : 0.2),
-      strokeColor: '#9333EA',
-      strokeOpacity: 0.9,
-      strokeWeight: isFocused ? 4 : (isHovered ? 3 : 2.5),
-      clickable: true, // Sempre clicável se houver callback
-      zIndex: isFocused ? 8 : 5, // Sempre abaixo dos lotes (que começam em 10)
-      cursor: 'pointer',
-    };
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mapLoaded, lotsWithPosition.map(l => `${l.id}-${l.lat}-${l.lng}-${l.status}-${l.lotNumber}`).join(','), onLotClick]);
 
   if (!GOOGLE_MAPS_API_KEY) {
     return (
@@ -181,24 +324,6 @@ export default function PublicMapViewer({
           </p>
           <p className="text-red-600 dark:text-red-400 text-sm">
             Configure a chave da API no arquivo .env.local
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  if (!boundaryCoordinates || boundaryCoordinates.length === 0) {
-    return (
-      <div className="w-full h-[500px] bg-gray-100 dark:bg-gray-800 rounded-xl flex items-center justify-center p-8">
-        <div className="text-center">
-          <svg className="w-16 h-16 mx-auto mb-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
-          </svg>
-          <p className="text-gray-600 dark:text-gray-400 font-semibold text-lg mb-2">
-            Área não configurada
-          </p>
-          <p className="text-gray-500 dark:text-gray-500 text-sm">
-            Configure a área do loteamento para visualizar no mapa
           </p>
         </div>
       </div>
@@ -237,132 +362,39 @@ export default function PublicMapViewer({
   }
 
   return (
-    <div className="w-full h-full rounded-xl overflow-hidden relative">
+    <div className={`w-full h-full rounded-xl overflow-hidden relative ${placingMode ? 'cursor-crosshair' : ''}`}>
       <GoogleMap
         mapContainerStyle={mapContainerStyle}
         center={center}
         zoom={17}
-        onLoad={() => setMapLoaded(true)}
+        onLoad={(map) => {
+          mapRef.current = map;
+          setMapLoaded(true);
+        }}
+        onClick={handleMapClick}
         options={{
           mapTypeId: 'satellite',
           streetViewControl: false,
           mapTypeControl: true,
           fullscreenControl: true,
           zoomControl: true,
-          gestureHandling: 'cooperative', // Requer Ctrl+scroll para zoom
+          gestureHandling: 'cooperative',
+          draggableCursor: placingMode ? 'crosshair' : undefined,
         }}
       >
-        {/* Polígono da área do loteamento */}
-        {mapLoaded && showAreas && boundaryCoordinates && boundaryCoordinates.length > 0 && (
-          <Polygon
-            paths={boundaryCoordinates}
-            options={polygonOptions}
-            onClick={() => {
-              if (isAdminContext && onBoundaryClick) {
-                onBoundaryClick();
-              }
-            }}
-          />
-        )}
-        
-        {/* Polígonos das quadras */}
-        {mapLoaded && showAreas && blocksWithCoordinates.map((block) => (
-          <React.Fragment key={`block-${block.id}`}>
-            <Polygon
-              paths={block.coordinates || []}
-              options={getBlockPolygonOptions(block, hoveredBlockId === block.id, focusedBlockId === block.id)}
-              onClick={() => {
-                if (onBlockClick) {
-                  onBlockClick(block);
-                }
-              }}
-              onMouseOver={() => setHoveredBlockId(block.id)}
-              onMouseOut={() => setHoveredBlockId(null)}
-            />
-          </React.Fragment>
-        ))}
-
-        {/* Polígonos dos lotes */}
-        {mapLoaded && showAreas && lotsWithCoordinates.map((lot) => (
-          <React.Fragment key={lot.id}>
-            <Polygon
-              paths={lot.coordinates || []}
-              options={getLotPolygonOptions(lot, hoveredLotId === lot.id, focusedLotId === lot.id)}
-              onClick={() => {
-                onLotClick && onLotClick(lot);
-              }}
-              onMouseOver={() => setHoveredLotId(lot.id)}
-              onMouseOut={() => setHoveredLotId(null)}
-            />
-          </React.Fragment>
-        ))}
-
-        {/* Tooltip de hover para quadras */}
-        {hoveredBlockId && (() => {
-          const block = blocksWithCoordinates.find(b => b.id === hoveredBlockId);
-          if (!block) return null;
-          const blockCenter = getPolygonCenter(block.coordinates || []);
-          if (!blockCenter) return null;
-          return (
-            <OverlayView
-              position={blockCenter}
-              mapPaneName={OverlayView.OVERLAY_MOUSE_TARGET}
-            >
-              <div
-                style={{
-                  position: 'absolute',
-                  transform: 'translate(-50%, -50%)',
-                  backgroundColor: 'rgba(0, 0, 0, 0.85)',
-                  color: '#FFFFFF',
-                  padding: '8px 16px',
-                  borderRadius: '8px',
-                  fontSize: '14px',
-                  fontWeight: '600',
-                  whiteSpace: 'nowrap',
-                  pointerEvents: 'none',
-                  boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-                  border: '2px solid rgba(147, 51, 234, 0.6)'
-                }}
-              >
-                QUADRA {block.name}
-              </div>
-            </OverlayView>
-          );
-        })()}
-
-        {/* Tooltip de hover para lotes */}
-        {hoveredLotId && (() => {
-          const lot = lotsWithCoordinates.find(l => l.id === hoveredLotId);
-          if (!lot) return null;
-          const lotCenter = getPolygonCenter(lot.coordinates || []);
-          if (!lotCenter) return null;
-          return (
-            <OverlayView
-              position={lotCenter}
-              mapPaneName={OverlayView.OVERLAY_MOUSE_TARGET}
-            >
-              <div
-                style={{
-                  position: 'absolute',
-                  transform: 'translate(-50%, -50%)',
-                  backgroundColor: 'rgba(0, 0, 0, 0.85)',
-                  color: '#FFFFFF',
-                  padding: '8px 16px',
-                  borderRadius: '8px',
-                  fontSize: '14px',
-                  fontWeight: '600',
-                  whiteSpace: 'nowrap',
-                  pointerEvents: 'none',
-                  boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-                  border: '2px solid rgba(147, 51, 234, 0.6)'
-                }}
-              >
-                QUADRA {lot.blockName} &gt; LOTE {lot.lotNumber}
-              </div>
-            </OverlayView>
-          );
-        })()}
+        {/* Overlay SVG/imagem e círculos dos lotes são gerenciados nativamente via useEffect */}
       </GoogleMap>
+
+      {/* Indicador de modo de posicionamento */}
+      {placingMode && (
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 bg-blue-600 text-white px-4 py-2 rounded-full shadow-lg text-sm font-semibold flex items-center gap-2 animate-pulse">
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+          </svg>
+          Clique no mapa para posicionar o lote
+        </div>
+      )}
     </div>
   );
 }

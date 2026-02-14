@@ -17,7 +17,8 @@ export async function PATCH(request: NextRequest) {
       size,
       description,
       features,
-      coordinates,
+      lat,
+      lng,
     } = body;
 
     if (!id || !mapId) {
@@ -61,9 +62,9 @@ export async function PATCH(request: NextRequest) {
       updateFields.push('features = ?');
       updateValues.push(features ? JSON.stringify(features) : null);
     }
-    if (coordinates !== undefined) {
+    if (lat !== undefined && lng !== undefined) {
       updateFields.push('coordinates = ?');
-      updateValues.push(coordinates ? JSON.stringify(coordinates) : null);
+      updateValues.push(JSON.stringify({ lat, lng }));
     }
 
     updateFields.push('updated_at = NOW()');
@@ -84,7 +85,8 @@ export async function PATCH(request: NextRequest) {
       size,
       description,
       features,
-      coordinates,
+      lat: lat ?? null,
+      lng: lng ?? null,
       updatedAt: new Date().toISOString(),
     };
 

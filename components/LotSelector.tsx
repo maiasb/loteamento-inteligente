@@ -13,7 +13,7 @@ interface LotSelectorProps {
   onLotEdit?: (lot: Lot) => void;
   onLotDelete?: (lotId: string) => void;
   onToggleLotStatus?: (lotId: string, currentStatus: LotStatus) => Promise<void>;
-  onDefineArea?: (lot: Lot) => void; // Callback para definir área do lote no mapa
+  onPlaceLot?: (lot: Lot) => void; // Callback para posicionar lote no mapa
   selectedLotIds?: string[];
   allowMultipleSelection?: boolean;
   lotsPerRow?: number;
@@ -34,7 +34,7 @@ export default function LotSelector({
   onLotEdit,
   onLotDelete,
   onToggleLotStatus,
-  onDefineArea,
+  onPlaceLot,
   selectedLotIds = [],
   allowMultipleSelection = false,
   lotsPerRow = 10,
@@ -348,28 +348,30 @@ export default function LotSelector({
                 className="relative group"
               >
                 {/* Botões de ação que aparecem no hover */}
-                {isAdminContext && (onDefineArea || onLotDelete || onToggleLotStatus) && (
+                {isAdminContext && (onLotDelete || onToggleLotStatus || onPlaceLot) && (
                   <div className="absolute -bottom-10 left-1/2 -translate-x-1/2 z-20 flex flex-row gap-1 opacity-0 group-hover:opacity-100 group-hover:scale-100 scale-75 transition-all duration-200 origin-top">
-                    {/* Botão de definir área */}
-                    {onDefineArea && (
+                    
+                    {/* Botão de posicionar no mapa */}
+                    {onPlaceLot && (
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          onDefineArea(lot);
+                          onPlaceLot(lot);
                         }}
                         className={`p-1.5 rounded-lg shadow-lg cursor-pointer transform hover:scale-110 transition-all ${
-                          lot.coordinates && lot.coordinates.length > 0
+                          lot.lat != null && lot.lng != null
                             ? 'bg-yellow-500 hover:bg-yellow-600'
                             : 'bg-green-500 hover:bg-green-600'
                         }`}
-                        title={lot.coordinates && lot.coordinates.length > 0 ? "Editar área do lote" : "Definir área do lote"}
+                        title={lot.lat != null && lot.lng != null ? 'Reposicionar no mapa' : 'Posicionar no mapa'}
                       >
                         <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
                         </svg>
                       </button>
                     )}
-                    
+
                     {/* Botão de bloqueio/desbloqueio */}
                     {onToggleLotStatus && (lot.status === LotStatus.AVAILABLE || lot.status === LotStatus.BLOCKED) && (
                       <button
@@ -678,22 +680,22 @@ export default function LotSelector({
                   Lote {viewingLot.lotNumber}
                 </h3>
                 <div className="flex items-center gap-2">
-                  {/* Botão de definir/editar área */}
-                  {onDefineArea && !externalViewingLot && (
+                  {/* Botão de posicionar no mapa */}
+                  {onPlaceLot && userRole !== 'seller' && !externalViewingLot && (
                     <button
                       onClick={() => {
-                        onDefineArea(viewingLot);
+                        onPlaceLot(viewingLot);
                         closeModal();
                       }}
                       className={`p-2 rounded-lg transition-colors touch-manipulation cursor-pointer ${
-                        viewingLot.coordinates && viewingLot.coordinates.length > 0
+                        viewingLot.lat != null && viewingLot.lng != null
                           ? 'bg-yellow-500/20 text-yellow-400 hover:bg-yellow-500/30'
                           : 'bg-green-500/20 text-green-400 hover:bg-green-500/30'
                       }`}
-                      title={viewingLot.coordinates && viewingLot.coordinates.length > 0 ? "Editar área do lote" : "Definir área do lote"}
+                      title={viewingLot.lat != null && viewingLot.lng != null ? 'Reposicionar no mapa' : 'Posicionar no mapa'}
                     >
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+                      <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" />
                       </svg>
                     </button>
                   )}

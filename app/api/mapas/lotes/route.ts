@@ -54,22 +54,40 @@ export async function GET(request: NextRequest) {
     }
 
     // Formatar lotes (mesmo formato esperado pelo frontend)
-    const lots = rows.map((lot: any) => ({
-      id: lot.id?.toString() || '',
-      mapId: lot.map_id?.toString() || mapId,
-      blockId: lot.block_id?.toString() || null,
-      blockName: lot.block_name || null,
-      lotNumber: lot.lot_number || '',
-      status: lot.status || 'available',
-      price: lot.price ? Number(lot.price) : 0,
-      pricePerM2: lot.price_per_m2 ? Number(lot.price_per_m2) : null,
-      size: lot.size ? Number(lot.size) : 0,
-      description: lot.description || '',
-      features: lot.features ? JSON.parse(lot.features) : [],
-      coordinates: lot.coordinates ? (typeof lot.coordinates === 'string' ? JSON.parse(lot.coordinates) : lot.coordinates) : null,
-      createdAt: lot.created_at || new Date(),
-      updatedAt: lot.updated_at || new Date(),
-    }));
+    const lots = rows.map((lot: any) => {
+      // Parse coordinates JSON para lat/lng
+      let lat = null;
+      let lng = null;
+      if (lot.coordinates) {
+        try {
+          const coords = typeof lot.coordinates === 'string' ? JSON.parse(lot.coordinates) : lot.coordinates;
+          if (coords && typeof coords.lat === 'number' && typeof coords.lng === 'number') {
+            lat = coords.lat;
+            lng = coords.lng;
+          }
+        } catch (e) {
+          // ignore parse errors
+        }
+      }
+
+      return {
+        id: lot.id?.toString() || '',
+        mapId: lot.map_id?.toString() || mapId,
+        blockId: lot.block_id?.toString() || null,
+        blockName: lot.block_name || null,
+        lotNumber: lot.lot_number || '',
+        status: lot.status || 'available',
+        price: lot.price ? Number(lot.price) : 0,
+        pricePerM2: lot.price_per_m2 ? Number(lot.price_per_m2) : null,
+        size: lot.size ? Number(lot.size) : 0,
+        description: lot.description || '',
+        features: lot.features ? JSON.parse(lot.features) : [],
+        lat,
+        lng,
+        createdAt: lot.created_at || new Date(),
+        updatedAt: lot.updated_at || new Date(),
+      };
+    });
 
     // Retorna no formato esperado pelo frontend
     const response = [

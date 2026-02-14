@@ -24,6 +24,13 @@ export async function GET(request: NextRequest) {
 
     connection = await mysql.createConnection(dbConfig);
 
+    // Verificar se a coluna overlay_config existe
+    const [overlayCols] = await connection.execute(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS 
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'maps' AND COLUMN_NAME = 'overlay_config'`
+    ) as any;
+    const hasOverlay = Array.isArray(overlayCols) && overlayCols.length > 0;
+
     // Buscar dados do mapa
     const [mapRows]: any = await connection.execute(
       `SELECT 
@@ -31,7 +38,7 @@ export async function GET(request: NextRequest) {
         name, 
         description, 
         address, 
-        boundary_coordinates as boundaryCoordinates,
+        ${hasOverlay ? 'overlay_config as overlayConfig,' : ''}
         image_url as imageUrl,
         created_at as createdAt, 
         updated_at as updatedAt 
@@ -49,26 +56,13 @@ export async function GET(request: NextRequest) {
 
     const mapData = mapRows[0];
 
-    // Parse boundary coordinates se existir
-    let boundaryCoordinates = null;
-    if (mapData.boundaryCoordinates) {
-      try {
-        boundaryCoordinates = typeof mapData.boundaryCoordinates === 'string' 
-          ? JSON.parse(mapData.boundaryCoordinates) 
-          : mapData.boundaryCoordinates;
-      } catch (e) {
-        console.error('[API /mapas/visualizacao] Erro ao parsear boundary_coordinates:', e);
-      }
-    }
-
-    // Buscar quadras do mapa com coordenadas
+    // Buscar quadras do mapa
     const [blockRows]: any = await connection.execute(
       `SELECT 
         id, 
         mapId, 
         name, 
         description, 
-        coordinates,
         createdAt, 
         updatedAt 
       FROM blocks 
@@ -78,23 +72,11 @@ export async function GET(request: NextRequest) {
     );
 
     const blocks = blockRows.map((block: any) => {
-      let coordinates = null;
-      if (block.coordinates) {
-        try {
-          coordinates = typeof block.coordinates === 'string' 
-            ? JSON.parse(block.coordinates) 
-            : block.coordinates;
-        } catch (e) {
-          console.error(`[API /mapas/visualizacao] Erro ao parsear coordinates da quadra ${block.id}:`, e);
-        }
-      }
-
       return {
         id: block.id.toString(),
         mapId: block.mapId.toString(),
         name: block.name,
         description: block.description || null,
-        coordinates,
         createdAt: block.createdAt,
         updatedAt: block.updatedAt,
       };
@@ -124,15 +106,17 @@ export async function GET(request: NextRequest) {
     );
 
     const lots = lotRows.map((lot: any) => {
-      let coordinates = null;
+      // Parse coordinates for lat/lng
+      let lat = null;
+      let lng = null;
       if (lot.coordinates) {
         try {
-          coordinates = typeof lot.coordinates === 'string' 
-            ? JSON.parse(lot.coordinates) 
-            : lot.coordinates;
-        } catch (e) {
-          console.error(`[API /mapas/visualizacao] Erro ao parsear coordinates do lote ${lot.id}:`, e);
-        }
+          const coords = typeof lot.coordinates === 'string' ? JSON.parse(lot.coordinates) : lot.coordinates;
+          if (coords && typeof coords.lat === 'number' && typeof coords.lng === 'number') {
+            lat = coords.lat;
+            lng = coords.lng;
+          }
+        } catch (e) { /* ignore */ }
       }
 
       let features = [];
@@ -162,11 +146,24 @@ export async function GET(request: NextRequest) {
         size,
         description: lot.description || null,
         features,
-        coordinates,
+        lat,
+        lng,
         createdAt: lot.createdAt,
         updatedAt: lot.updatedAt,
       };
     });
+
+    // Parse overlay config
+    let overlayConfig = null;
+    if (mapData.overlayConfig) {
+      try {
+        overlayConfig = typeof mapData.overlayConfig === 'string'
+          ? JSON.parse(mapData.overlayConfig)
+          : mapData.overlayConfig;
+      } catch (e) {
+        console.error('[API /mapas/visualizacao] Erro ao parsear overlay_config:', e);
+      }
+    }
 
     const response = {
       map: {
@@ -174,7 +171,7 @@ export async function GET(request: NextRequest) {
         name: mapData.name,
         description: mapData.description || null,
         address: mapData.address || null,
-        boundaryCoordinates,
+        overlayConfig,
         imageUrl: mapData.imageUrl,
         createdAt: mapData.createdAt,
         updatedAt: mapData.updatedAt,

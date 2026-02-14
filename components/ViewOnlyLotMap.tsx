@@ -2,12 +2,12 @@
 
 import React, { useState } from 'react';
 import PublicMapViewer from './PublicMapViewer';
-import { Lot, Block, GeoCoordinate } from '@/types';
+import { Lot, Block, OverlayConfig } from '@/types';
 
 interface ViewOnlyLotMapProps {
   mapName: string;
   address?: string;
-  boundaryCoordinates?: GeoCoordinate[];
+  overlayConfig?: OverlayConfig | null;
   blocks: Block[];
   lots: Lot[];
 }
@@ -140,7 +140,7 @@ function LotInfoModal({ lot, onClose }: LotModalProps) {
 export default function ViewOnlyLotMap({ 
   mapName, 
   address, 
-  boundaryCoordinates, 
+  overlayConfig,
   blocks, 
   lots 
 }: ViewOnlyLotMapProps) {
@@ -287,13 +287,11 @@ export default function ViewOnlyLotMap({
       <div className="flex-1 relative overflow-hidden">
         <PublicMapViewer
           address={address}
-          boundaryCoordinates={boundaryCoordinates}
           blocks={blocks}
           lots={lots}
           onLotClick={handleLotClick}
           onBlockClick={handleBlockClick}
-          focusedBlockId={focusedBlockId}
-          showAreas={true}
+          overlayConfig={overlayConfig}
         />
       </div>
 

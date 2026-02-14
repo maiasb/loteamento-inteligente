@@ -3,9 +3,16 @@ export interface Coordinate {
   y: number;
 }
 
-export interface GeoCoordinate {
-  lat: number;
-  lng: number;
+export interface OverlayConfig {
+  imageUrl: string;
+  bounds: {
+    north: number;
+    south: number;
+    east: number;
+    west: number;
+  };
+  opacity: number;
+  rotation: number;
 }
 
 export interface LotArea {
@@ -32,7 +39,8 @@ export interface Lot {
   size: number; // Área em m²
   description?: string;
   features?: string[];
-  coordinates?: GeoCoordinate[]; // Coordenadas do polígono no Google Maps
+  lat?: number; // Latitude do centro do círculo no mapa
+  lng?: number; // Longitude do centro do círculo no mapa
   createdAt: Date;
   updatedAt: Date;
 }
@@ -42,7 +50,6 @@ export interface Block {
   mapId: string;
   name: string;
   description?: string;
-  coordinates?: GeoCoordinate[]; // Coordenadas do polígono da quadra no Google Maps
   createdAt: Date;
   updatedAt: Date;
 }
@@ -56,10 +63,7 @@ export interface Map {
   width: number;
   height: number;
   address?: string; // Endereço do loteamento
-  boundaryCoordinates?: GeoCoordinate[]; // Coordenadas do polígono que delimita a área do loteamento
-  centerLat?: number; // Latitude central (depreciado, use boundaryCoordinates)
-  centerLng?: number; // Longitude central (depreciado, use boundaryCoordinates)
-  zoom?: number; // Zoom do mapa (depreciado)
+  overlayConfig?: OverlayConfig | null; // Configuração do overlay SVG/imagem sobre o Google Maps
   createdAt: Date;
   updatedAt: Date;
 }

@@ -53,7 +53,7 @@ export const useMapSelection = () => {
               width: mapData.width || 800,
               height: mapData.height || 600,
               address: mapData.address || '',
-              boundaryCoordinates: mapData.boundaryCoordinates || undefined,
+              overlayConfig: mapData.overlayConfig || undefined,
               createdAt: new Date(),
               updatedAt: new Date(),
             }));
@@ -135,7 +135,6 @@ export const useMapSelection = () => {
           mapId: block.mapId,
           name: block.name,
           description: block.description || '',
-          coordinates: block.coordinates || undefined,
           createdAt: new Date(block.createdAt),
           updatedAt: new Date(block.updatedAt),
         }));
@@ -200,7 +199,8 @@ export const useMapSelection = () => {
           size: parseFloat(lot.size) || 0,
           description: lot.description || '',
           features: lot.features ? (typeof lot.features === 'string' ? JSON.parse(lot.features) : lot.features) : [],
-          coordinates: lot.coordinates ? (typeof lot.coordinates === 'string' ? JSON.parse(lot.coordinates) : lot.coordinates) : undefined,
+          lat: lot.lat != null ? parseFloat(lot.lat) : undefined,
+          lng: lot.lng != null ? parseFloat(lot.lng) : undefined,
           createdAt: new Date(lot.createdAt),
           updatedAt: new Date(lot.updatedAt),
         }));

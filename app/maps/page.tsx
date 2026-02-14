@@ -58,9 +58,6 @@ export default function AdminMapsLotsPage() {
   const [multiSelectMode, setMultiSelectMode] = useState(false);
   const [singleLotPurchase, setSingleLotPurchase] = useState<Lot | null>(null);
   const [clickedLot, setClickedLot] = useState<Lot | null>(null); // Lote clicado no mapa
-  const [showMapAreas, setShowMapAreas] = useState(true); // Controla visibilidade das áreas no mapa
-  const [focusedBlockId, setFocusedBlockId] = useState<string | null>(null); // ID da quadra focada no mapa
-  const [focusedLotId, setFocusedLotId] = useState<string | null>(null); // ID do lote focado no mapa
 
   // Função para carregar estatísticas do mapa
   const loadMapStats = async (forceReload = false) => {
@@ -337,8 +334,6 @@ export default function AdminMapsLotsPage() {
                       if (selectedBlock?.id !== block.id) {
                         selectBlock(block.id);
                       }
-                      setFocusedBlockId(block.id);
-                      setFocusedLotId(null);
                     }}
                     className={`p-4 rounded-xl font-semibold transition-all border-2 cursor-pointer ${
                       selectedBlock?.id === block.id
@@ -544,35 +539,11 @@ export default function AdminMapsLotsPage() {
                   </div>
                 </div>
               ) : selectedMap ? (
-                selectedMap.boundaryCoordinates && selectedMap.boundaryCoordinates.length > 0 ? (
+                selectedMap.overlayConfig ? (
                   <>
                   <div className="h-full relative flex flex-col">
-                    {/* Botão de controle de visibilidade - só mostrar se houver marcações */}
-                    {(blocks.length > 0 || lots.length > 0) && (
-                      <div className="flex-shrink-0 p-2 bg-[var(--card-bg)] border-b border-[var(--border)] flex justify-end gap-2">
-                        <button
-                          onClick={() => setShowMapAreas(!showMapAreas)}
-                          className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg flex items-center gap-2 transition-colors text-sm cursor-pointer"
-                          title={showMapAreas ? "Ocultar marcações no mapa" : "Exibir marcações no mapa"}
-                        >
-                          {showMapAreas ? (
-                            <>
-                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
-                              </svg>
-                              Ocultar Marcações
-                            </>
-                          ) : (
-                            <>
-                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                              </svg>
-                              Exibir Marcações
-                            </>
-                          )}
-                        </button>
-                        
+                    {/* Barra de controle */}
+                    <div className="flex-shrink-0 p-2 bg-[var(--card-bg)] border-b border-[var(--border)] flex justify-end gap-2">
                         <button
                           onClick={() => window.open(`/view/${selectedMap.id}/`, '_blank')}
                           className="px-4 py-2 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white rounded-lg flex items-center gap-2 transition-colors text-sm cursor-pointer shadow-md hover:shadow-lg"
@@ -585,14 +556,12 @@ export default function AdminMapsLotsPage() {
                           <span className="hidden sm:inline">Visualizar Mapa</span>
                         </button>
                         
-                        {selectedMap?.boundaryCoordinates && selectedMap.boundaryCoordinates.length > 0 && (
+                        {selectedMap.overlayConfig?.bounds && (
                           <button
                             onClick={() => {
-                              // Calcular centro das coordenadas
-                              const lats = selectedMap.boundaryCoordinates!.map(coord => coord.lat);
-                              const lngs = selectedMap.boundaryCoordinates!.map(coord => coord.lng);
-                              const centerLat = lats.reduce((a, b) => a + b, 0) / lats.length;
-                              const centerLng = lngs.reduce((a, b) => a + b, 0) / lngs.length;
+                              const bounds = selectedMap.overlayConfig!.bounds;
+                              const centerLat = (bounds.north + bounds.south) / 2;
+                              const centerLng = (bounds.east + bounds.west) / 2;
                               const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${centerLat},${centerLng}`;
                               window.open(mapsUrl, '_blank');
                             }}
@@ -602,38 +571,21 @@ export default function AdminMapsLotsPage() {
                             Abrir no Google Maps
                           </button>
                         )}
-                      </div>
-                    )}
+                    </div>
                     
                     <div className="flex-1 relative">
                     <PublicMapViewer
                       address={selectedMap.address}
-                      boundaryCoordinates={selectedMap.boundaryCoordinates}
                       blocks={blocks}
                       lots={lots}
-                      selectedLotIds={selectedLots.map(l => l.id)}
-                      focusedBlockId={focusedBlockId}
-                      focusedLotId={focusedLotId}
-                      showAreas={showMapAreas}
-                      onBlockClick={(block) => {
-                        // Apenas fazer requisição se for uma quadra diferente
-                        if (selectedBlock?.id !== block.id) {
-                          selectBlock(block.id);
-                        }
-                        setFocusedBlockId(block.id);
-                        setFocusedLotId(null);
-                      }}
+                      overlayConfig={selectedMap.overlayConfig}
                       onLotClick={(lot) => {
                         if (multiSelectMode) {
-                          // Em modo de seleção múltipla, adiciona/remove da seleção
                           handleToggleLotSelection(lot);
                         } else {
-                          // Fora do modo de seleção múltipla, comportamento normal
                           if (lot.status === LotStatus.AVAILABLE) {
-                            // Se disponível, abre modal de compra única
                             setSingleLotPurchase(lot);
                           } else {
-                            // Se não disponível, abre modal de informações
                             setClickedLot(lot);
                           }
                         }
@@ -644,19 +596,6 @@ export default function AdminMapsLotsPage() {
                   
                   {/* Avisos e Legenda fora da área do mapa */}
                   <div className="flex-shrink-0 p-3 lg:p-4 bg-[var(--card-bg)] border-t border-[var(--border)] space-y-3">
-                    {/* Aviso quando não há lotes com coordenadas */}
-                    {lots.length > 0 && lots.filter(l => l.coordinates && l.coordinates.length > 0).length === 0 && (
-                      <div className="bg-amber-500 text-white px-3 py-2 lg:px-4 lg:py-3 rounded-lg shadow-lg text-xs lg:text-sm font-medium flex items-center gap-2">
-                        <svg className="w-4 h-4 lg:w-5 lg:h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                        <div>
-                          <div className="font-bold">Nenhum lote com área definida ainda</div>
-                          <div className="text-[10px] lg:text-xs opacity-90 mt-0.5">{lots.length} lote(s) cadastrado(s) - Defina as áreas para visualizá-los no mapa</div>
-                        </div>
-                      </div>
-                    )}
-                    
                     {lots.length === 0 && (
                       <div className="bg-blue-500 text-white px-3 py-2 lg:px-4 lg:py-2 rounded-lg shadow-lg text-xs lg:text-sm font-medium flex items-center gap-2">
                         <svg className="w-4 h-4 lg:w-5 lg:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

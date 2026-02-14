@@ -13,6 +13,15 @@ export async function GET(request: NextRequest) {
     // Conectar ao banco de dados
     connection = await mysql.createConnection(dbConfig);
 
+    // Verificar se a coluna overlay_config existe
+    const [overlayCols] = await connection.execute(
+      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS 
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'maps' AND COLUMN_NAME = 'overlay_config'`
+    ) as any;
+    const hasOverlay = Array.isArray(overlayCols) && overlayCols.length > 0;
+    const overlayCol = hasOverlay ? ', overlay_config' : '';
+    const overlayColM = hasOverlay ? ', m.overlay_config' : '';
+
     // Verificar se é requisição do dashboard (sem imagem) ou filtro por ID
     const { searchParams } = new URL(request.url);
     const minimal = searchParams.get('minimal') === 'true';
@@ -25,13 +34,13 @@ export async function GET(request: NextRequest) {
 
     if (mapId) {
       // Buscar mapa específico por ID (sempre com imageUrl)
-      query = `SELECT id, name, description, image_url, width, height, address, boundary_coordinates, created_at, updated_at FROM maps WHERE id = ?`;
+      query = `SELECT id, name, description, image_url, width, height, address${overlayCol}, created_at, updated_at FROM maps WHERE id = ?`;
       params = [mapId];
     } else if (withLots) {
       // Buscar apenas mapas que tenham pelo menos um lote cadastrado em qualquer quadra
       if (minimal) {
         query = `
-          SELECT DISTINCT m.id, m.name, m.description, m.width, m.height, m.address, m.boundary_coordinates, m.created_at, m.updated_at
+          SELECT DISTINCT m.id, m.name, m.description, m.width, m.height, m.address${overlayColM}, m.created_at, m.updated_at
           FROM maps m
           INNER JOIN blocks b ON b.mapId = m.id
           INNER JOIN lots l ON l.block_id = b.id
@@ -39,7 +48,7 @@ export async function GET(request: NextRequest) {
         `;
       } else {
         query = `
-          SELECT DISTINCT m.id, m.name, m.description, m.image_url, m.width, m.height, m.address, m.boundary_coordinates, m.created_at, m.updated_at
+          SELECT DISTINCT m.id, m.name, m.description, m.image_url, m.width, m.height, m.address${overlayColM}, m.created_at, m.updated_at
           FROM maps m
           INNER JOIN blocks b ON b.mapId = m.id
           INNER JOIN lots l ON l.block_id = b.id
@@ -48,10 +57,10 @@ export async function GET(request: NextRequest) {
       }
     } else if (minimal) {
       // Buscar todos sem image_url
-      query = `SELECT id, name, description, width, height, address, boundary_coordinates, created_at, updated_at FROM maps ORDER BY created_at DESC`;
+      query = `SELECT id, name, description, width, height, address${overlayCol}, created_at, updated_at FROM maps ORDER BY created_at DESC`;
     } else {
       // Buscar todos com image_url
-      query = `SELECT id, name, description, image_url, width, height, address, boundary_coordinates, created_at, updated_at FROM maps ORDER BY created_at DESC`;
+      query = `SELECT id, name, description, image_url, width, height, address${overlayCol}, created_at, updated_at FROM maps ORDER BY created_at DESC`;
     }
 
     const [rows] = await connection.execute(query, params);
@@ -62,22 +71,18 @@ export async function GET(request: NextRequest) {
 
     // Formatar resposta (mesmo formato do n8n)
     const formattedMaps = rows.map((map: any) => {
-      let boundaryCoords = null;
-      
-      // Parse seguro do JSON
-      if (map.boundary_coordinates) {
+      // Parse overlay_config
+      let overlayConfig = null;
+      if (map.overlay_config) {
         try {
-          if (typeof map.boundary_coordinates === 'string') {
-            boundaryCoords = JSON.parse(map.boundary_coordinates);
-          } else {
-            boundaryCoords = map.boundary_coordinates;
-          }
+          overlayConfig = typeof map.overlay_config === 'string'
+            ? JSON.parse(map.overlay_config)
+            : map.overlay_config;
         } catch (e) {
-          console.error('Erro ao fazer parse de boundary_coordinates:', e);
-          boundaryCoords = null;
+          console.error('Erro ao fazer parse de overlay_config:', e);
         }
       }
-      
+
       const base: any = {
         mapId: map.id?.toString() || '',
         name: map.name || '',
@@ -85,7 +90,7 @@ export async function GET(request: NextRequest) {
         width: map.width ? Number(map.width) : null,
         height: map.height ? Number(map.height) : null,
         address: map.address || '',
-        boundaryCoordinates: boundaryCoords,
+        overlayConfig: overlayConfig,
         createdAt: map.created_at
           ? map.created_at.toISOString().replace('T', ' ').slice(0, 19)
           : null,

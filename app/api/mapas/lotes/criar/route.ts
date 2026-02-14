@@ -21,6 +21,8 @@ export async function POST(request: NextRequest) {
       size,
       description,
       features = [],
+      lat,
+      lng,
     } = body;
     
     lotNumber = lotNum;
@@ -51,9 +53,9 @@ export async function POST(request: NextRequest) {
     await connection.execute(
       `INSERT INTO lots (
         map_id, block_id, lot_number, status,
-        price, size, description, features,
+        price, size, description, features, coordinates,
         created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
       [
         mapId,
         blockId || null,
@@ -63,6 +65,7 @@ export async function POST(request: NextRequest) {
         size,
         description || '',
         JSON.stringify(features),
+        (lat !== undefined && lng !== undefined) ? JSON.stringify({ lat, lng }) : null,
       ]
     );
 
@@ -82,6 +85,8 @@ export async function POST(request: NextRequest) {
       size,
       description: description || '',
       features,
+      lat: lat ?? null,
+      lng: lng ?? null,
     };
 
     return NextResponse.json(newLot, { status: 201 });

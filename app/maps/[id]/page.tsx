@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import axios from 'axios';
 import { Map, Lot, Block } from '@/types';
 import LotSelector from '@/components/LotSelector';
-import InteractiveLotMap from '@/components/InteractiveLotMap';
+import PublicMapViewer from '@/components/PublicMapViewer';
 import PurchaseModal from '@/components/PurchaseModal';
 
 // Forçar essa página a ser apenas client-side (sem SSG/SSR)
@@ -54,7 +54,7 @@ export default function MapViewPage() {
           width: mapData.width || 800,
           height: mapData.height || 600,
           address: mapData.address,
-          boundaryCoordinates: mapData.boundaryCoordinates,
+          overlayConfig: mapData.overlayConfig || null,
           createdAt: mapData.createdAt ? new Date(mapData.createdAt) : new Date(),
           updatedAt: mapData.updatedAt ? new Date(mapData.updatedAt) : new Date(),
         };
@@ -288,12 +288,13 @@ export default function MapViewPage() {
           </div>
         </div>
 
-        {/* Mapa Interativo do Google Maps com Lotes */}
+        {/* Mapa Interativo com Overlay */}
         <div className="mb-8">
-          <InteractiveLotMap
-            mapBoundary={map?.boundaryCoordinates}
+          <PublicMapViewer
+            address={map?.address || undefined}
+            blocks={blocks}
             lots={selectedBlockId ? lots : allLots}
-            selectedLots={selectedLots}
+            overlayConfig={map?.overlayConfig || undefined}
             onLotClick={(lot) => {
               if (lot.status === 'available') {
                 const isSelected = selectedLots.some(l => l.id === lot.id);
@@ -304,7 +305,6 @@ export default function MapViewPage() {
                 }
               }
             }}
-            showPrices={true}
           />
         </div>
 
