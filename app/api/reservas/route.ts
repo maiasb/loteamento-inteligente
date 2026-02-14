@@ -64,17 +64,17 @@ export async function GET(request: NextRequest) {
         (reservations as any[]).map(async (reservation) => {
           try {
             // Filtrar lotes por quadra ou mapa
-            let lotQuery = 'SELECT lot_id as id, agreed_price FROM purchase_request_lots WHERE purchase_request_id = ?';
+            let lotQuery = 'SELECT lot_id as id, agreed_price, first_payment, installments, payment_method FROM purchase_request_lots WHERE purchase_request_id = ?';
             const lotParams: any[] = [reservation.id];
 
             if (blockId) {
-              lotQuery = `SELECT prl.lot_id as id, prl.agreed_price 
+              lotQuery = `SELECT prl.lot_id as id, prl.agreed_price, prl.first_payment, prl.installments, prl.payment_method 
                           FROM purchase_request_lots prl 
                           INNER JOIN lots l ON prl.lot_id = l.id 
                           WHERE prl.purchase_request_id = ? AND l.block_id = ?`;
               lotParams.push(blockId);
             } else if (mapId) {
-              lotQuery = `SELECT prl.lot_id as id, prl.agreed_price 
+              lotQuery = `SELECT prl.lot_id as id, prl.agreed_price, prl.first_payment, prl.installments, prl.payment_method 
                           FROM purchase_request_lots prl 
                           INNER JOIN lots l ON prl.lot_id = l.id 
                           WHERE prl.purchase_request_id = ? AND l.map_id = ?`;
@@ -156,7 +156,7 @@ export async function GET(request: NextRequest) {
           let lots;
           try {
             [lots] = await connection!.execute(
-              `SELECT l.*, prl.purchase_request_id, prl.agreed_price, prl.first_payment, prl.installments, 
+              `SELECT l.*, prl.purchase_request_id, prl.agreed_price, prl.first_payment, prl.installments, prl.payment_method, 
                       b.name as block_name, m.name as map_name 
                FROM purchase_request_lots prl
                INNER JOIN lots l ON prl.lot_id = l.id
@@ -169,7 +169,7 @@ export async function GET(request: NextRequest) {
             // Fallback sem blocks
             console.warn('[API /reservas GET] Tabela blocks não encontrada, usando fallback');
             [lots] = await connection!.execute(
-              `SELECT l.*, prl.purchase_request_id, prl.agreed_price, prl.first_payment, prl.installments,
+              `SELECT l.*, prl.purchase_request_id, prl.agreed_price, prl.first_payment, prl.installments, prl.payment_method,
                       m.name as map_name
                FROM purchase_request_lots prl
                INNER JOIN lots l ON prl.lot_id = l.id

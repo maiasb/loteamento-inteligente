@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import axios from 'axios';
 import { Lot } from '@/types';
-import { validateCPF } from '@/utils/formatters';
+import { validateCPF, parseCurrency } from '@/utils/formatters';
 
 const API_URL = '/api';
 
@@ -15,11 +15,13 @@ interface FormData {
   sellerEmail: string;
   sellerPhone: string;
   sellerCPF: string;
-  paymentMethod: string;
+  paymentMethod: string[];
   otherPayment: string;
   contract: string;
   firstPayment: string;
   installments: number;
+  reservationDate: string;
+  lotPaymentMethods: Record<string, string[]>;
 }
 
 export function usePurchaseForm(
@@ -40,11 +42,13 @@ export function usePurchaseForm(
     sellerEmail: '',
     sellerPhone: '',
     sellerCPF: '',
-    paymentMethod: '',
+    paymentMethod: [],
     otherPayment: '',
     contract: '',
     firstPayment: '',
     installments: 1,
+    reservationDate: new Date().toISOString().slice(0, 16),
+    lotPaymentMethods: {},
   });
 
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -101,13 +105,22 @@ export function usePurchaseForm(
       }
 
       // Preparar detalhes dos lotes com map_id, block_id, preço, firstPayment e installments
+      // Converter firstPayment do formulário (string "1.900,00") para número
+      const formFirstPayment = formData.firstPayment ? parseCurrency(formData.firstPayment) : null;
+      const formInstallments = formData.installments > 1 ? formData.installments : null;
+
       const lotDetails = lots.map(lot => ({
         lotId: lot.id,
         mapId: lot.mapId,
         blockId: lot.blockId || null,
         price: lotPrices?.[lot.id] || lot.price,
-        firstPayment: lotFirstPayments?.[lot.id] || null,
-        installments: lotInstallments?.[lot.id] || null,
+        firstPayment: lotFirstPayments?.[lot.id] || formFirstPayment || null,
+        installments: lotInstallments?.[lot.id] || formInstallments || null,
+        paymentMethod: formData.lotPaymentMethods[lot.id]?.length > 0
+          ? formData.lotPaymentMethods[lot.id].join(', ')
+          : formData.paymentMethod.length > 0
+            ? formData.paymentMethod.join(', ')
+            : null,
       }));
 
       // Criar objeto de requisição apenas com campos obrigatórios e preenchidos
@@ -127,10 +140,14 @@ export function usePurchaseForm(
       if (formData.sellerCPF) requestData.sellerCPF = formData.sellerCPF;
       if (formData.message) requestData.message = formData.message;
       if (formData.contract) requestData.contract = formData.contract;
+      if (formData.reservationDate) requestData.reservationDate = formData.reservationDate;
       if (userId) requestData.userId = userId;
       
-      if (formData.paymentMethod || formData.otherPayment) {
-        requestData.paymentMethod = formData.otherPayment || formData.paymentMethod;
+      if (formData.paymentMethod.length > 0 || formData.otherPayment) {
+        const methods = formData.otherPayment
+          ? [...formData.paymentMethod, formData.otherPayment]
+          : formData.paymentMethod;
+        requestData.paymentMethod = methods.join(', ');
       }
 
       const response = await axios.post(`${API_URL}/mapas/lotes/reservar`, requestData, {

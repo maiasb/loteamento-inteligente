@@ -25,6 +25,7 @@ export async function POST(request: NextRequest) {
       sellerCPF,
       paymentMethod,
       contract,
+      reservationDate,
     } = body;
 
     if (!lotIds || !Array.isArray(lotIds) || lotIds.length === 0) {
@@ -90,7 +91,7 @@ export async function POST(request: NextRequest) {
           user_id, customer_name, customer_email, customer_phone,
           customer_cpf, message, payment_method, seller_name, seller_email, 
           seller_phone, seller_cpf, contract, status, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', NOW())`,
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
         [
           userId || null,
           customerName,
@@ -104,6 +105,7 @@ export async function POST(request: NextRequest) {
           sellerPhone ? sellerPhone.replace(/\D/g, '') : null,
           sellerCPF ? sellerCPF.replace(/\D/g, '') : null,
           contract || null,
+          reservationDate ? new Date(reservationDate).toISOString().slice(0, 19).replace('T', ' ') : new Date().toISOString().slice(0, 19).replace('T', ' '),
         ]
       );
 
@@ -113,14 +115,15 @@ export async function POST(request: NextRequest) {
       for (const lotDetail of lotDetails) {
         await connection.execute(
           `INSERT INTO purchase_request_lots (
-            purchase_request_id, lot_id, agreed_price, first_payment, installments
-          ) VALUES (?, ?, ?, ?, ?)`,
+            purchase_request_id, lot_id, agreed_price, first_payment, installments, payment_method
+          ) VALUES (?, ?, ?, ?, ?, ?)`,
           [
             purchaseRequestId,
             lotDetail.lotId,
             lotDetail.price || null,
             lotDetail.firstPayment || null,
-            lotDetail.installments || null
+            lotDetail.installments || null,
+            lotDetail.paymentMethod || null
           ]
         );
       }

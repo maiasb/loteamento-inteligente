@@ -86,6 +86,7 @@ export default function ReservationsPage() {
   const [lotPrices, setLotPrices] = useState<{ [lotId: number]: string }>({});
   const [lotFirstPayments, setLotFirstPayments] = useState<{ [lotId: number]: string }>({});
   const [lotInstallments, setLotInstallments] = useState<{ [lotId: number]: number | null }>({});
+  const [lotPaymentMethods, setLotPaymentMethods] = useState<{ [lotId: number]: string[] }>({});
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'completed' | 'cancelled'>('all');
   const [processedReservationId, setProcessedReservationId] = useState<string | null>(null);
   const [stats, setStats] = useState({
@@ -383,18 +384,23 @@ export default function ReservationsPage() {
     const prices: { [lotId: number]: string } = {};
     const firstPayments: { [lotId: number]: string } = {};
     const installments: { [lotId: number]: number | null } = {};
+    const paymentMethods: { [lotId: number]: string[] } = {};
     
     if (reservation.lots && reservation.lots.length > 0) {
       reservation.lots.forEach((lot: any) => {
         prices[lot.id] = formatCurrency(lot.agreed_price || lot.price || 0);
         firstPayments[lot.id] = formatCurrency(lot.first_payment || 0);
         installments[lot.id] = lot.installments || null;
+        paymentMethods[lot.id] = lot.payment_method
+          ? lot.payment_method.split(',').map((s: string) => s.trim()).filter(Boolean)
+          : [];
       });
     }
     
     setLotPrices(prices);
     setLotFirstPayments(firstPayments);
     setLotInstallments(installments);
+    setLotPaymentMethods(paymentMethods);
     
     setIsEditModalOpen(true);
   };
@@ -456,7 +462,8 @@ export default function ReservationsPage() {
         id: lot.id,
         agreed_price: lotPrices[lot.id] ? parseCurrency(lotPrices[lot.id]) : (lot.agreed_price || lot.price),
         firstPayment: lotFirstPayments[lot.id] ? parseCurrency(lotFirstPayments[lot.id]) : null,
-        installments: lotInstallments[lot.id] || null
+        installments: lotInstallments[lot.id] || null,
+        paymentMethod: lotPaymentMethods[lot.id]?.length > 0 ? lotPaymentMethods[lot.id].join(', ') : null
       })) || [];
 
 
@@ -1283,38 +1290,94 @@ export default function ReservationsPage() {
                               </div>
                             </div>
 
-                            {/* Entrada (se não for Pix ou Dinheiro) */}
-                            {editingReservation.payment_method && editingReservation.payment_method !== 'pix' && editingReservation.payment_method !== 'dinheiro' && (
+                            {/* Entrada */}
+                            <div className="flex items-center gap-2">
+                              <span className="text-[var(--foreground)] opacity-50 text-xs w-20">Entrada:</span>
+                              <div className="flex-1 flex items-center gap-1">
+                                <span className="text-[var(--foreground)] opacity-50 text-sm">R$</span>
+                                <input
+                                  type="text"
+                                  value={lotFirstPayments[lot.id] || ''}
+                                  onChange={(e) => handleLotFirstPaymentChange(lot.id, e)}
+                                  className="flex-1 px-3 py-2 bg-[var(--surface)] border-2 border-[var(--border)] rounded-lg text-[var(--foreground)] focus:ring-2 focus:ring-[var(--primary)] focus:border-[var(--primary)] text-right font-semibold"
+                                  placeholder="0,00"
+                                />
+                              </div>
+                            </div>
+
+                            {/* Parcelas - para Cartão Crédito ou Carnê */}
+                            {((lotPaymentMethods[lot.id] || []).includes('cartao_credito') || (lotPaymentMethods[lot.id] || []).includes('carne')) && (
                               <div className="flex items-center gap-2">
-                                <span className="text-[var(--foreground)] opacity-50 text-xs w-20">Entrada:</span>
-                                <div className="flex-1 flex items-center gap-1">
-                                  <span className="text-[var(--foreground)] opacity-50 text-sm">R$</span>
-                                  <input
-                                    type="text"
-                                    value={lotFirstPayments[lot.id] || ''}
-                                    onChange={(e) => handleLotFirstPaymentChange(lot.id, e)}
-                                    className="flex-1 px-3 py-2 bg-[var(--surface)] border-2 border-[var(--border)] rounded-lg text-[var(--foreground)] focus:ring-2 focus:ring-[var(--primary)] focus:border-[var(--primary)] text-right font-semibold"
-                                    placeholder="0,00"
-                                  />
-                                </div>
+                                <span className="text-[var(--foreground)] opacity-50 text-xs w-20">Parcelas:</span>
+                                <select
+                                  value={lotInstallments[lot.id] || 1}
+                                  onChange={(e) => setLotInstallments({ ...lotInstallments, [lot.id]: parseInt(e.target.value) })}
+                                  className="flex-1 px-3 py-2 bg-[var(--surface)] border-2 border-[var(--border)] rounded-lg text-[var(--foreground)] focus:ring-2 focus:ring-[var(--primary)] focus:border-[var(--primary)] cursor-pointer"
+                                >
+                                  {[
+                                    { label: 'À Vista', value: 1 },
+                                    { label: '12x', value: 12 },
+                                    { label: '24x', value: 24 },
+                                    { label: '36x', value: 36 },
+                                    { label: '48x', value: 48 },
+                                    { label: '60x', value: 60 },
+                                    { label: '72x', value: 72 },
+                                    { label: '84x', value: 84 },
+                                    { label: '100x', value: 100 },
+                                  ].map((option) => (
+                                    <option key={option.value} value={option.value}>
+                                      {option.label}
+                                    </option>
+                                  ))}
+                                </select>
                               </div>
                             )}
 
-                            {/* Parcelas (se for Carnê, Cartão ou Financiamento) */}
-                            {(editingReservation.payment_method === 'carne' || editingReservation.payment_method === 'cartao' || editingReservation.payment_method === 'financing') && (
-                              <div className="flex items-center gap-2">
-                                <span className="text-[var(--foreground)] opacity-50 text-xs w-20">Parcelas:</span>
-                                <input
-                                  type="number"
-                                  min="1"
-                                  value={lotInstallments[lot.id] || ''}
-                                  onChange={(e) => setLotInstallments({ ...lotInstallments, [lot.id]: parseInt(e.target.value) || null })}
-                                  className="flex-1 px-3 py-2 bg-[var(--surface)] border-2 border-[var(--border)] rounded-lg text-[var(--foreground)] focus:ring-2 focus:ring-[var(--primary)] focus:border-[var(--primary)] text-right font-semibold"
-                                  placeholder="Ex: 12"
-                                />
-                                <span className="text-[var(--foreground)] opacity-50 text-xs">x</span>
+                            {/* Forma de Pagamento por Lote */}
+                            <div>
+                              <span className="text-[var(--foreground)] opacity-50 text-xs">Pagamento:</span>
+                              <div className="flex flex-wrap gap-1.5 mt-1">
+                                {[
+                                  { label: '💵 Dinheiro', value: 'dinheiro' },
+                                  { label: '💰 PIX', value: 'pix' },
+                                  { label: '💳 Crédito', value: 'cartao_credito' },
+                                  { label: '💳 Débito', value: 'cartao_debito' },
+                                  { label: '📄 Carnê', value: 'carne' },
+                                  { label: '🏦 Financ.', value: 'financing' },
+                                  { label: '📝 Outro', value: 'outro' },
+                                ].map((option) => {
+                                  const methods = lotPaymentMethods[lot.id] || [];
+                                  const isSelected = methods.includes(option.value);
+                                  const isDisabled = !isSelected && methods.length >= 2;
+                                  return (
+                                    <button
+                                      key={option.value}
+                                      type="button"
+                                      disabled={isDisabled}
+                                      onClick={() => {
+                                        const current = lotPaymentMethods[lot.id] || [];
+                                        let updated: string[];
+                                        if (isSelected) {
+                                          updated = current.filter((v: string) => v !== option.value);
+                                        } else {
+                                          updated = [...current, option.value];
+                                        }
+                                        setLotPaymentMethods({ ...lotPaymentMethods, [lot.id]: updated });
+                                      }}
+                                      className={`px-2 py-1 rounded border text-xs font-medium transition-all cursor-pointer ${
+                                        isSelected
+                                          ? 'border-green-500 bg-green-500/20 text-green-600 dark:text-green-400 ring-1 ring-green-500/50'
+                                          : isDisabled
+                                            ? 'border-[var(--border)] bg-[var(--surface)] text-[var(--foreground)] opacity-30 cursor-not-allowed'
+                                            : 'border-[var(--border)] bg-[var(--surface)] text-[var(--foreground)] hover:border-green-500/50'
+                                      }`}
+                                    >
+                                      {option.label}
+                                    </button>
+                                  );
+                                })}
                               </div>
-                            )}
+                            </div>
                           </div>
                         </div>
                       ))}
@@ -1323,42 +1386,6 @@ export default function ReservationsPage() {
                 )}
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-[var(--foreground)] opacity-80 text-sm font-semibold mb-2">Forma de Pagamento</label>
-                    <select
-                      value={editingReservation.payment_method || ''}
-                      onChange={(e) => {
-                        const newPaymentMethod = e.target.value;
-                        // Limpar entrada e parcelas de todos os lotes se for pagamento à vista (pix ou dinheiro)
-                        if (newPaymentMethod === 'pix' || newPaymentMethod === 'dinheiro') {
-                          setEditingReservation({ 
-                            ...editingReservation, 
-                            payment_method: newPaymentMethod
-                          });
-                          // Limpar todos os valores de first_payment e installments
-                          const emptyFirstPayments: { [lotId: number]: string } = {};
-                          const emptyInstallments: { [lotId: number]: number | null } = {};
-                          editingReservation.lots?.forEach((lot: any) => {
-                            emptyFirstPayments[lot.id] = '';
-                            emptyInstallments[lot.id] = null;
-                          });
-                          setLotFirstPayments(emptyFirstPayments);
-                          setLotInstallments(emptyInstallments);
-                        } else {
-                          setEditingReservation({ ...editingReservation, payment_method: newPaymentMethod });
-                        }
-                      }}
-                      className="w-full px-4 py-2.5 bg-[var(--surface)] border-2 border-[var(--border)] rounded-lg text-[var(--foreground)] focus:ring-2 focus:ring-[var(--primary)] focus:border-[var(--primary)] cursor-pointer"
-                    >
-                      <option value="">Selecione...</option>
-                      <option value="pix">💰 Pix</option>
-                      <option value="cartao">💳 Cartão</option>
-                      <option value="dinheiro">💵 Dinheiro</option>
-                      <option value="carne">📄 Carnê</option>
-                      <option value="financing">🏦 Financiamento</option>
-                      <option value="outro">📝 Outro</option>
-                    </select>
-                  </div>
                   <div>
                     <label className="block text-[var(--foreground)] opacity-80 text-sm font-semibold mb-2">Número do Contrato</label>
                     <input

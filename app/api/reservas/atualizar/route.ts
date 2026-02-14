@@ -102,12 +102,13 @@ export async function PUT(request: NextRequest) {
           if (lot.id) {
             await connection.execute(
               `UPDATE purchase_request_lots 
-               SET agreed_price = ?, first_payment = ?, installments = ?
+               SET agreed_price = ?, first_payment = ?, installments = ?, payment_method = ?
                WHERE purchase_request_id = ? AND lot_id = ?`,
               [
                 lot.agreed_price || null, 
                 lot.firstPayment || null, 
                 lot.installments || null, 
+                lot.paymentMethod || null,
                 id, 
                 lot.id
               ]

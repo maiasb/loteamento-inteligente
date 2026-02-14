@@ -10,6 +10,7 @@ import PurchaseModal from '@/components/PurchaseModal';
 import { useMapSelection } from '@/hooks/useMapSelection';
 import { Lot, LotStatus } from '@/types';
 import { useAuth } from '@/contexts/AuthContext';
+import { showAlert } from '@/hooks/useCustomAlert';
 
 export default function AdminMapsLotsPage() {
   const { user } = useAuth();
@@ -164,7 +165,11 @@ export default function AdminMapsLotsPage() {
     // Redirecionar para a página da reserva se o ID for retornado
     if (reservationId) {
       // Mostrar mensagem de sucesso
-      alert(`✅ Reserva criada com sucesso!\n\nSua reserva foi registrada e você será redirecionado para visualizá-la.`);
+      showAlert({
+        title: 'Reserva Criada!',
+        message: 'Sua reserva foi registrada e você será redirecionado para visualizá-la.',
+        type: 'success',
+      });
       
       // Aguardar um pouco para garantir que a reserva foi salva no banco
       await new Promise(resolve => setTimeout(resolve, 800));
@@ -770,7 +775,11 @@ export default function AdminMapsLotsPage() {
               const id = returnedId || reservationId;
               
               // Mostrar mensagem de sucesso
-              alert(`✅ Reserva criada com sucesso!\n\nSua reserva foi registrada e você será redirecionado para visualizá-la.`);
+              showAlert({
+                title: 'Reserva Criada!',
+                message: 'Sua reserva foi registrada e você será redirecionado para visualizá-la.',
+                type: 'success',
+              });
               
               // Aguardar um pouco para garantir que a reserva foi salva no banco
               await new Promise(resolve => setTimeout(resolve, 800));
