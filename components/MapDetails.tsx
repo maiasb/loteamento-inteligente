@@ -703,6 +703,34 @@ export default function MapDetails() {
     setPlacingLotId(null);
   };
 
+  // Handler para remover a posição de um lote do mapa
+  const handleRemoveLotPosition = async (lot: Lot) => {
+    try {
+      await axios.patch(`${API_URL}/mapas/lotes/atualizar`, {
+        id: lot.id,
+        mapId: lot.mapId,
+        lat: null,
+        lng: null,
+      }, {
+        headers: { 'Content-Type': 'application/json' },
+        timeout: 10000,
+      });
+
+      // Atualizar estado local
+      setAllLotsInMap(prev => prev.map(l => 
+        l.id === lot.id ? { ...l, lat: undefined, lng: undefined } : l
+      ));
+      setSelectedBlockLots(prev => prev.map(l => 
+        l.id === lot.id ? { ...l, lat: undefined, lng: undefined } : l
+      ));
+
+      customAlert.success(`Marcação do lote ${lot.lotNumber} removida do mapa`);
+    } catch (error: any) {
+      console.error('[MapDetails] ❌ Erro ao remover posição do lote:', error);
+      customAlert.error('Erro ao remover marcação do lote');
+    }
+  };
+
   const handleToggleLotStatus = async (lotId: string, currentStatus: LotStatus) => {
     try {
       // Buscar o lote apenas na quadra selecionada
@@ -1618,6 +1646,7 @@ export default function MapDetails() {
               selectedLots={selectedLots}
               onToggleLotSelection={handleToggleLotSelection}
               onPlaceLot={(lot) => startPlacingLot(lot.id)}
+              onRemoveLotPosition={handleRemoveLotPosition}
             />
           </div>
         </div>
@@ -2441,6 +2470,7 @@ interface BlockCardProps {
   onToggleLotSelection?: (lot: Lot) => void;
   onSingleLotClick?: (lot: Lot) => void;
   onPlaceLot?: (lot: Lot) => void;
+  onRemoveLotPosition?: (lot: Lot) => void;
 }
 
 function BlockCard({
@@ -2463,6 +2493,7 @@ function BlockCard({
   onToggleLotSelection,
   onSingleLotClick,
   onPlaceLot,
+  onRemoveLotPosition,
 }: BlockCardProps) {
   const [isHovered, setIsHovered] = useState(false);
   
@@ -2527,6 +2558,7 @@ function BlockCard({
             userRole={userRole}
             isAdminContext={true}
             onPlaceLot={onPlaceLot}
+            onRemoveLotPosition={onRemoveLotPosition}
           />
         ) : (
           <div className="text-center py-8 bg-[var(--card-bg)] rounded-xl border-2 border-dashed border-[var(--accent)]/40">

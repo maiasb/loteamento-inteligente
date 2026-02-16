@@ -14,6 +14,7 @@ interface LotSelectorProps {
   onLotDelete?: (lotId: string) => void;
   onToggleLotStatus?: (lotId: string, currentStatus: LotStatus) => Promise<void>;
   onPlaceLot?: (lot: Lot) => void; // Callback para posicionar lote no mapa
+  onRemoveLotPosition?: (lot: Lot) => void; // Callback para remover posição do lote no mapa
   selectedLotIds?: string[];
   allowMultipleSelection?: boolean;
   lotsPerRow?: number;
@@ -35,6 +36,7 @@ export default function LotSelector({
   onLotDelete,
   onToggleLotStatus,
   onPlaceLot,
+  onRemoveLotPosition,
   selectedLotIds = [],
   allowMultipleSelection = false,
   lotsPerRow = 10,
@@ -348,7 +350,7 @@ export default function LotSelector({
                 className="relative group"
               >
                 {/* Botões de ação que aparecem no hover */}
-                {isAdminContext && (onLotDelete || onToggleLotStatus || onPlaceLot) && (
+                {isAdminContext && (onLotDelete || onToggleLotStatus || onPlaceLot || onRemoveLotPosition) && (
                   <div className="absolute -bottom-10 left-1/2 -translate-x-1/2 z-20 flex flex-row gap-1 opacity-0 group-hover:opacity-100 group-hover:scale-100 scale-75 transition-all duration-200 origin-top">
                     
                     {/* Botão de posicionar no mapa */}
@@ -368,6 +370,24 @@ export default function LotSelector({
                         <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                        </svg>
+                      </button>
+                    )}
+
+                    {/* Botão de remover posição do mapa */}
+                    {onRemoveLotPosition && lot.lat != null && lot.lng != null && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onRemoveLotPosition(lot);
+                        }}
+                        className="p-1.5 bg-red-500 hover:bg-red-600 rounded-lg shadow-lg cursor-pointer transform hover:scale-110 transition-all"
+                        title="Remover marcação do mapa"
+                      >
+                        <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M4 4l16 16" />
                         </svg>
                       </button>
                     )}
@@ -696,6 +716,23 @@ export default function LotSelector({
                     >
                       <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
                         <path fillRule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" />
+                      </svg>
+                    </button>
+                  )}
+                  {/* Botão de remover marcação do mapa */}
+                  {onRemoveLotPosition && userRole !== 'seller' && !externalViewingLot && viewingLot.lat != null && viewingLot.lng != null && (
+                    <button
+                      onClick={() => {
+                        onRemoveLotPosition(viewingLot);
+                        closeModal();
+                      }}
+                      className="p-2 rounded-lg transition-colors touch-manipulation cursor-pointer bg-red-500/20 text-red-400 hover:bg-red-500/30"
+                      title="Remover marcação do mapa"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 4l16 16" />
                       </svg>
                     </button>
                   )}

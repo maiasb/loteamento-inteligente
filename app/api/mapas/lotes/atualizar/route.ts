@@ -64,7 +64,7 @@ export async function PATCH(request: NextRequest) {
     }
     if (lat !== undefined && lng !== undefined) {
       updateFields.push('coordinates = ?');
-      updateValues.push(JSON.stringify({ lat, lng }));
+      updateValues.push(lat != null && lng != null ? JSON.stringify({ lat, lng }) : null);
     }
 
     updateFields.push('updated_at = NOW()');
