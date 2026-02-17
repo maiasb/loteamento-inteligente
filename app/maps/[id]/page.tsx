@@ -37,7 +37,7 @@ export default function MapViewPage() {
       // Carregar dados apenas do mapa específico (não buscar todos)
       const mapResponse = await axios.get(`${API_URL}/mapas`, {
         params: { id: mapId },
-        timeout: 10000,
+        timeout: 30000,
       });
 
       // Se a API suportar filtro por ID, virá apenas um mapa, senão filtramos
@@ -63,7 +63,7 @@ export default function MapViewPage() {
         // Carregar quadras do mapa
         const blocksResponse = await axios.get(`${API_URL}/mapas/quadras`, {
           params: { mapId },
-          timeout: 10000,
+          timeout: 30000,
         });
 
         if (Array.isArray(blocksResponse.data)) {
@@ -80,7 +80,7 @@ export default function MapViewPage() {
           // Carregar TODOS os lotes do mapa de uma vez
           const lotsResponse = await axios.get(`${API_URL}/mapas/lotes`, {
             params: { mapId }, // Sem blockId = todos os lotes
-            timeout: 10000,
+            timeout: 30000,
           });
 
           const lotsData = lotsResponse.data[0];

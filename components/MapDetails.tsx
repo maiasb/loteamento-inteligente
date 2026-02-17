@@ -137,7 +137,7 @@ export default function MapDetails() {
     try {
       const response = await axios.get(`${API_URL}/mapas/lotes`, {
         params: { mapId, blockId },
-        timeout: 10000,
+        timeout: 30000,
       });
 
       const data = response.data[0];
@@ -182,7 +182,7 @@ export default function MapDetails() {
     try {
       const response = await axios.get(`${API_URL}/mapas/lotes`, {
         params: { mapId },
-        timeout: 15000,
+        timeout: 30000,
       });
 
       // A API retorna [{ mapId, lots: [...] }] ou diretamente [...]
@@ -216,7 +216,7 @@ export default function MapDetails() {
       
       const response = await axios.get(`${API_URL}/mapas/lotes/stats`, {
         params: { mapId },
-        timeout: 10000,
+        timeout: 30000,
       });
 
       if (response.data) {
@@ -297,7 +297,7 @@ export default function MapDetails() {
     try {
       // Buscar mapas completos
       const response = await axios.get(`${API_URL}/mapas`, {
-        timeout: 10000,
+        timeout: 30000,
       });
 
       const mapsData = response.data;
@@ -619,7 +619,7 @@ export default function MapDetails() {
       if (lot.id && lot.id !== '') {
         const response = await axios.patch(`${API_URL}/mapas/lotes/atualizar`, lotToSave, {
           headers: { 'Content-Type': 'application/json' },
-          timeout: 10000,
+          timeout: 30000,
         });
       } else {
         const response = await axios.post(`${API_URL}/mapas/lotes/criar`, {
@@ -627,7 +627,7 @@ export default function MapDetails() {
           id: Date.now().toString(),
         }, {
           headers: { 'Content-Type': 'application/json' },
-          timeout: 10000,
+          timeout: 30000,
         });
       }
 
@@ -671,7 +671,7 @@ export default function MapDetails() {
         lng,
       }, {
         headers: { 'Content-Type': 'application/json' },
-        timeout: 10000,
+        timeout: 30000,
       });
 
       // Atualizar estado local
@@ -713,7 +713,7 @@ export default function MapDetails() {
         lng: null,
       }, {
         headers: { 'Content-Type': 'application/json' },
-        timeout: 10000,
+        timeout: 30000,
       });
 
       // Atualizar estado local
@@ -787,7 +787,7 @@ export default function MapDetails() {
       }
 
       const response = await axios.delete(`${API_URL}/mapas/lotes/deletar?lotId=${lotId}`, {
-        timeout: 10000,
+        timeout: 30000,
       });
 
       // Recarregar lotes da quadra selecionada
@@ -881,7 +881,7 @@ export default function MapDetails() {
     setIsDeletingMap(true);
     try {
       await axios.delete(`${API_URL}/mapas/deletar?mapId=${mapId}`, {
-        timeout: 15000,
+        timeout: 30000,
       });
 
       customAlert.success('Loteamento excluído com sucesso!');

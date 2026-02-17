@@ -49,7 +49,7 @@ export default function DashboardPage() {
       setIsLoading(true);
 
       // Carregar estatísticas agregadas do dashboard (apenas uma requisição otimizada)
-      const response = await axios.get<DashboardStats>(`${API_URL}/dashboard/stats`, { timeout: 10000 });
+      const response = await axios.get<DashboardStats>(`${API_URL}/dashboard/stats`, { timeout: 30000 });
       setStats(response.data);
     } catch (error) {
       console.error('Erro ao carregar dados do dashboard:', error);

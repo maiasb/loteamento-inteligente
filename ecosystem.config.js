@@ -13,8 +13,8 @@ module.exports = {
       exec_mode: "fork",
       instances: 1,
 
-      // 🔥 CRÍTICO: Reiniciar se passar de 350MB (VPS 2GB)
-      max_memory_restart: "350M",
+      // 🔥 CRÍTICO: Reiniciar se passar de 1GB (VPS 4GB)
+      max_memory_restart: "1G",
 
       // Variáveis de ambiente
       env: {

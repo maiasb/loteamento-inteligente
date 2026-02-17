@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import axios from 'axios';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useRealtimeUpdates } from '@/hooks/useRealtimeUpdates';
@@ -103,7 +103,79 @@ export default function ReservationsPage() {
     return pageParam ? parseInt(pageParam) : 1;
   });
 
+  // Ref para armazenar o ID da reserva que precisa ser expandida
+  // Usar ref ao invés de searchParams evita race conditions com router.replace
+  const targetReservationRef = useRef<string | null>(searchParams.get('reservationId'));
+  const skipFilterResetRef = useRef(false);
+
+  // Controle para resolver a página correta ANTES de carregar dados
+  const [isResolvingPage, setIsResolvingPage] = useState<boolean>(() => {
+    const reservationId = searchParams.get('reservationId');
+    const pageParam = searchParams.get('page');
+    return !!reservationId && !pageParam;
+  });
+  const pageResolved = useRef(false);
+
+  // Capturar reservationId de mudanças na URL (ex: navegação vinda de outra página)
+  useEffect(() => {
+    const reservationId = searchParams.get('reservationId');
+    if (reservationId && reservationId !== processedReservationId) {
+      targetReservationRef.current = reservationId;
+    }
+  }, [searchParams, processedReservationId]);
+
+  // Efeito para resolver a página correta ANTES de carregar dados
+  useEffect(() => {
+    if (!isResolvingPage || pageResolved.current || !user) return;
+
+    const reservationId = targetReservationRef.current;
+    if (!reservationId) {
+      setIsResolvingPage(false);
+      return;
+    }
+
+    pageResolved.current = true;
+
+    const resolveReservationPage = async () => {
+      try {
+        const params: any = {
+          reservationId: parseInt(reservationId),
+          limit: itemsPerPage,
+        };
+
+        if (user?.role !== UserRole.DEV && user?.role !== UserRole.ADMIN && user?.id) {
+          params.userId = user.id;
+        }
+
+        const response = await axios.get(`${API_URL}/reservas/find-page`, {
+          params,
+          timeout: 5000
+        });
+
+        if (response.data && response.data.page) {
+          const pageNumber = response.data.page;
+          
+          skipFilterResetRef.current = true;
+          setStatusFilter('all');
+          setCurrentPage(pageNumber);
+          
+          // NÃO chamar router.replace aqui - evita race condition com searchParams
+          // A URL será limpa depois que a reserva for expandida com sucesso
+        }
+      } catch (error) {
+        console.error('[Reservations] Erro ao resolver página da reserva:', error);
+        targetReservationRef.current = null;
+      } finally {
+        setIsResolvingPage(false);
+      }
+    };
+
+    resolveReservationPage();
+  }, [user, isResolvingPage, itemsPerPage]);
+
   const loadData = useCallback(async () => {
+    // Aguardar resolução da página antes de carregar dados
+    if (isResolvingPage) return;
     try {
       // Carregar apenas a página atual com filtros
       const params: any = {
@@ -160,22 +232,24 @@ export default function ReservationsPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [user?.id, user?.role, currentPage, statusFilter]);
+  }, [user?.id, user?.role, currentPage, statusFilter, isResolvingPage]);
 
   useEffect(() => {
     loadData();
   }, [loadData]);
 
-  // Sincronizar currentPage com URL
+  // Sincronizar currentPage com URL (apenas para navegação manual de paginação)
   useEffect(() => {
+    // Não sincronizar durante resolução de reserva
+    if (isResolvingPage || targetReservationRef.current) return;
+    
     const pageParam = searchParams.get('page');
     const pageFromUrl = pageParam ? parseInt(pageParam) : 1;
     if (pageFromUrl !== currentPage) {
       setCurrentPage(pageFromUrl);
-      // Resetar processedReservationId quando a página mudar
       setProcessedReservationId(null);
     }
-  }, [searchParams, currentPage]);
+  }, [searchParams, currentPage, isResolvingPage]);
 
   // Função para carregar estatísticas
   const loadStats = useCallback(async () => {
@@ -206,17 +280,23 @@ export default function ReservationsPage() {
     }
   }, [user, loadStats]);
 
-  // Expandir automaticamente a reserva se vier da URL
+  // Expandir automaticamente a reserva quando os dados estiverem carregados
+  // Usa ref (targetReservationRef) ao invés de searchParams para evitar race conditions
   useEffect(() => {
-    const reservationId = searchParams.get('reservationId');
+    const reservationId = targetReservationRef.current;
     
-    // Evitar processar a mesma reserva múltiplas vezes
+    // Nada para expandir
     if (!reservationId || reservationId === processedReservationId) {
       return;
     }
     
-    // Esperar os dados carregarem
-    if (isLoading) {
+    // Esperar os dados carregarem e a página ser resolvida
+    if (isLoading || isResolvingPage) {
+      return;
+    }
+    
+    // Sem reservas carregadas ainda
+    if (reservations.length === 0) {
       return;
     }
     
@@ -226,78 +306,29 @@ export default function ReservationsPage() {
     const reservation = reservations.find(r => r.id === id);
     
     if (reservation) {
-      // Reserva encontrada na página atual
+      // Reserva encontrada - expandir e fazer scroll
       setExpandedReservation(id);
       setProcessedReservationId(reservationId);
+      targetReservationRef.current = null;
       
-      // Limpar reservationId da URL
-      const urlParams = new URLSearchParams(searchParams.toString());
-      urlParams.delete('reservationId');
-      router.replace(`/reservations?${urlParams.toString()}`);
+      // Limpar reservationId da URL e colocar a página correta
+      router.replace(`/reservations?page=${currentPage}`);
       
-      // Scroll suave até a reserva após um pequeno delay
+      // Scroll suave até a reserva após renderização
       setTimeout(() => {
         const element = document.getElementById(`reservation-${id}`);
         if (element) {
           element.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }
-      }, 500);
-    } else if (reservations.length > 0) {
-      // Reserva não está na página atual e já terminou de carregar
-      // Buscar em qual página ela está usando o novo endpoint
-      const findReservationPage = async () => {
-        try {
-          const params: any = {
-            reservationId: id,
-            limit: itemsPerPage,
-          };
-
-          if (statusFilter !== 'all') {
-            params.status = statusFilter;
-          }
-
-          if (user?.role !== UserRole.DEV && user?.role !== UserRole.ADMIN && user?.id) {
-            params.userId = user.id;
-          }
-
-          const response = await axios.get(`${API_URL}/reservas/find-page`, { 
-            params,
-            timeout: 5000 
-          });
-
-          if (response.data && response.data.page) {
-            const pageNumber = response.data.page;
-            
-            // Navegar para a página correta se for diferente da atual
-            if (pageNumber !== currentPage) {
-              const urlParams = new URLSearchParams(searchParams.toString());
-              urlParams.set('page', pageNumber.toString());
-              // Manter reservationId para processar na nova página
-              router.push(`/reservations?${urlParams.toString()}`);
-            } else {
-              // Mesma página, mas não encontrou - marcar como processado
-              setProcessedReservationId(reservationId);
-            }
-          } else {
-            // Não encontrou a reserva - marcar como processado e limpar URL
-            setProcessedReservationId(reservationId);
-            const urlParams = new URLSearchParams(searchParams.toString());
-            urlParams.delete('reservationId');
-            router.replace(`/reservations?${urlParams.toString()}`);
-          }
-        } catch (error) {
-          console.error('[Reservations] Erro ao buscar página da reserva:', error);
-          // Limpar reservationId e marcar como processado em caso de erro
-          setProcessedReservationId(reservationId);
-          const urlParams = new URLSearchParams(searchParams.toString());
-          urlParams.delete('reservationId');
-          router.replace(`/reservations?${urlParams.toString()}`);
-        }
-      };
-
-      findReservationPage();
+      }, 600);
+    } else {
+      // Reserva não encontrada na página carregada
+      console.warn('[Reservations] Reserva não encontrada na página atual após resolução');
+      setProcessedReservationId(reservationId);
+      targetReservationRef.current = null;
+      router.replace(`/reservations?page=${currentPage}`);
     }
-  }, [searchParams, reservations, isLoading, processedReservationId, currentPage, statusFilter, user?.id, user?.role, router, itemsPerPage]);
+  }, [reservations, isLoading, isResolvingPage, processedReservationId, currentPage, router]);
 
   // Polling automático removido - atualização manual apenas
   // useRealtimeUpdates(() => {
@@ -523,8 +554,12 @@ export default function ReservationsPage() {
     router.push(`/reservations?${params.toString()}`);
   };
 
-  // Reset para página 1 quando mudar o filtro
+  // Reset para página 1 quando mudar o filtro (mas não durante resolução de página)
   useEffect(() => {
+    if (skipFilterResetRef.current) {
+      skipFilterResetRef.current = false;
+      return;
+    }
     setCurrentPage(1);
   }, [statusFilter]);
 
