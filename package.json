@@ -32,7 +32,7 @@
     "ts-node": "^10.9.2",
     "typescript": "^5"
   },
-  "optionalDependencies": {
-    "canvas": "^2.11.2"
+  "resolutions": {
+    "canvas": "npm:empty-npm-package@1.0.0"
   }
 }

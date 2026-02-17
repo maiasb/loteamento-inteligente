@@ -67,13 +67,12 @@ export async function POST(request: NextRequest) {
       // 1. Criar o mapa
       const mapId = Date.now().toString();
       await connection.execute(
-        `INSERT INTO maps (id, name, image_url, image_type, width, height, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+        `INSERT INTO maps (id, name, image_url, width, height, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, NOW(), NOW())`,
         [
           mapId,
           importData.name,
           importData.imageUrl || null,
-          importData.imageType || 'image/png',
           importData.width || 800,
           importData.height || 600,
         ]

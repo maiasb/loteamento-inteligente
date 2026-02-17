@@ -22,20 +22,13 @@ export async function POST(request: NextRequest) {
     // Gerar ID baseado em timestamp (tabela não tem AUTO_INCREMENT)
     const mapId = Date.now().toString();
     
-    // Extrair tipo MIME da imagem
-    let imageType = '';
-    if (imageUrl && imageUrl.startsWith('data:')) {
-      const match = imageUrl.match(/^data:(.*?);base64,/);
-      imageType = match ? match[1] : '';
-    }
-
     connection = await mysql.createConnection(dbConfig);
 
     // INSERT com id fornecido
     await connection.execute(
-      `INSERT INTO maps (id, name, description, image_url, image_type, width, height, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
-      [mapId, name, description || '', imageUrl || '', imageType, width, height]
+      `INSERT INTO maps (id, name, description, image_url, width, height, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+      [mapId, name, description || '', imageUrl || '', width, height]
     );
 
     const newMap = {

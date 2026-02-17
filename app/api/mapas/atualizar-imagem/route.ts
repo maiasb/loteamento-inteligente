@@ -34,26 +34,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Extrair tipo MIME da imagem
-    let imageType = '';
-    if (imageUrl.startsWith('data:')) {
-      const match = imageUrl.match(/^data:(.*?);base64,/);
-      imageType = match ? match[1] : '';
-    }
-
     // Atualizar imagem do mapa
     await connection.execute(
       `UPDATE maps 
-       SET image_url = ?, image_type = ?, width = ?, height = ?, updated_at = NOW()
+       SET image_url = ?, width = ?, height = ?, updated_at = NOW()
        WHERE id = ?`,
-      [imageUrl, imageType, width, height, mapId]
+      [imageUrl, width, height, mapId]
     );
 
     
     return NextResponse.json({
       message: 'Imagem atualizada com sucesso',
       mapId,
-      imageType,
       width,
       height
     }, { status: 200 });
