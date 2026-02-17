@@ -26,7 +26,6 @@ export default function MapDetails() {
   const [allMaps, setAllMaps] = useState<Map[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingStats, setIsLoadingStats] = useState(true);
-  const [isLoadingImage, setIsLoadingImage] = useState(false);
   const [refreshTrigger, setRefreshTrigger] = useState(0); // Trigger para forçar refresh dos cards
   
   // Estados para estatísticas
@@ -241,56 +240,7 @@ export default function MapDetails() {
     }
   }, [mapId]);
 
-  // Função para carregar a imagem de um mapa específico
-  const loadMapImage = useCallback(async (mapIdToLoad: string) => {
-    if (!mapIdToLoad) return;
-    
-    setIsLoadingImage(true);
-    try {
-      const response = await axios.get(`${API_URL}/mapas/imagem`, {
-        params: { mapId: mapIdToLoad },
-        timeout: 30000, // Timeout maior para imagens (30 segundos)
-      });
-
-      if (!response?.data) {
-        console.warn('[MapDetails] Resposta vazia ao carregar imagem');
-        setIsLoadingImage(false);
-        return;
-      }
-
-      const { imageUrl, width, height } = response.data;
-
-      // Atualizar o mapa atual se for o mesmo
-      setMap(prevMap => {
-        if (prevMap && prevMap.id === mapIdToLoad) {
-          return {
-            ...prevMap,
-            imageUrl: imageUrl || '',
-            width: width || prevMap.width,
-            height: height || prevMap.height,
-          };
-        }
-        return prevMap;
-      });
-
-      // Atualizar na lista de todos os mapas também
-      setAllMaps(prevMaps => 
-        prevMaps.map(m => 
-          m.id === mapIdToLoad 
-            ? { ...m, imageUrl: imageUrl || '', width: width || m.width, height: height || m.height }
-            : m
-        )
-      );
-    } catch (error: any) {
-      // Silenciar erro 404 - endpoint pode não existir em alguns ambientes
-      if (error.response?.status !== 404) {
-        console.error('[MapDetails] ❌ Erro ao carregar imagem do mapa:', error);
-      }
-      // Não mostra erro ao usuário, apenas loga (imagem é opcional)
-    } finally {
-      setIsLoadingImage(false);
-    }
-  }, []);
+  // loadMapImage REMOVIDO - imageUrl já vem na resposta de /api/mapas (loadMapData)
 
   const loadMapData = useCallback(async (currentMapId?: string) => {
     const targetMapId = currentMapId || mapId;
@@ -370,57 +320,46 @@ export default function MapDetails() {
 
   // Flag para controlar se já inicializou
   const hasInitialized = useRef(false);
+  const previousMapIdRef = useRef<string>(mapId || '');
 
   // Carregar dados iniciais apenas uma vez quando o componente montar
   useEffect(() => {
-    if (!hasInitialized.current) {
-      hasInitialized.current = true;
+    if (hasInitialized.current) return;
+    hasInitialized.current = true;
+    
+    const initializeData = async () => {
+      await loadMapData(mapId);
       
-      const initializeData = async () => {
-        await loadMapData(mapId);
-        
-        // Após carregar mapas, se tem mapId, carregar dados específicos
-        if (mapId && mapId.trim() !== '') {
-          loadBlocks(mapId);
-          loadLotStats();
-          loadMapImage(mapId);
-        }
-      };
-      
-      initializeData();
-    }
+      // Após carregar mapas, se tem mapId, carregar dados específicos
+      if (mapId && mapId.trim() !== '') {
+        loadBlocks(mapId);
+        loadLotStats();
+      }
+    };
+    
+    initializeData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Carregar quadras quando o mapId da URL estiver disponível após o carregamento inicial
-  useEffect(() => {
-    if (hasInitialized.current && mapId && mapId.trim() !== '' && blocks.length === 0) {
-      // Carregar quadras se ainda não foram carregadas
-      loadBlocks(mapId);
-      loadLotStats();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mapId, blocks.length]);
-
   // Detectar mudança de mapId (quando usuário troca de mapa via seletor)
-  const previousMapIdRef = useRef<string>('');
+  // NÃO roda na montagem inicial — isso é feito pelo useEffect acima
   useEffect(() => {
-    // Ignorar a primeira execução (montagem inicial)
-    if (!hasInitialized.current) {
-      return;
-    }
+    if (!hasInitialized.current) return;
+    // Só executar quando mapId realmente mudou (não na montagem)
+    if (previousMapIdRef.current === mapId) return;
     
-    // Apenas executar se o mapId mudou
-    if (previousMapIdRef.current && previousMapIdRef.current !== mapId) {
-      // Limpar estado anterior
+    const prevId = previousMapIdRef.current;
+    previousMapIdRef.current = mapId;
+    
+    // Limpar estado anterior se houve mapa antes
+    if (prevId) {
       setSelectedBlockLots([]);
       setSelectedBlockId('');
       setReservations([]);
     }
     
-    // Carregar dados sempre que mapId estiver definido
+    // Carregar dados do novo mapa
     if (mapId && mapId.trim() !== '') {
-      // Atualizar o mapa atual baseado no mapId da URL
       const selectedMap = allMaps.find(m => m.id === mapId);
       if (selectedMap) {
         setMap(selectedMap);
@@ -428,11 +367,8 @@ export default function MapDetails() {
       
       loadBlocks(mapId);
       loadLotStats();
-      loadMapImage(mapId);
       loadAllLotsInMap();
     }
-    
-    previousMapIdRef.current = mapId;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapId]);
 
@@ -814,17 +750,37 @@ export default function MapDetails() {
     if (!mapId || !map) return;
     
     try {
+      let configToSave = overlayConfig;
+
+      // Se o overlay tem imageUrl como data URL (base64), fazer upload para Cloudinary primeiro
+      if (configToSave && configToSave.imageUrl && configToSave.imageUrl.startsWith('data:')) {
+        const uploadResponse = await axios.post('/api/mapas/upload-svg', {
+          dataUrl: configToSave.imageUrl,
+          mapId,
+        });
+
+        if (uploadResponse.data?.url) {
+          // Substituir data URL pela URL do Cloudinary
+          configToSave = {
+            ...configToSave,
+            imageUrl: uploadResponse.data.url,
+          };
+        } else {
+          throw new Error('Falha ao obter URL do upload');
+        }
+      }
+
       await axios.post('/api/mapas/configurar-overlay', {
         mapId,
-        overlayConfig,
+        overlayConfig: configToSave,
       });
       
-      customAlert.success(overlayConfig ? 'Overlay configurado com sucesso!' : 'Overlay removido com sucesso!');
+      customAlert.success(configToSave ? 'Overlay configurado com sucesso!' : 'Overlay removido com sucesso!');
       setIsConfiguringOverlay(false);
       
       setMap(prev => {
         if (!prev) return prev;
-        return { ...prev, overlayConfig };
+        return { ...prev, overlayConfig: configToSave };
       });
       
       await loadMapData(mapId);

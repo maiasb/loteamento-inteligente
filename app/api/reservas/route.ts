@@ -136,6 +136,27 @@ export async function GET(request: NextRequest) {
     const [countResult] = await connection.execute(countQuery, filterParams);
     const totalCount = (countResult as any[])[0].total;
 
+    // Obter estatísticas gerais (todas as reservas, sem filtro de status/paginação) 
+    // para evitar requisição separada ao /reservas/stats
+    let statsBaseQuery = 'SELECT COUNT(*) as count, status FROM purchase_requests';
+    const statsParams: any[] = [];
+    
+    if (userId && userId !== 'undefined' && userId !== 'null') {
+      statsBaseQuery += ' WHERE user_id = ?';
+      statsParams.push(parseInt(userId));
+    }
+    
+    statsBaseQuery += ' GROUP BY status';
+    const [statsResults] = await connection.execute(statsBaseQuery, statsParams);
+    
+    const stats = { total: 0, pending: 0, completed: 0, cancelled: 0 };
+    (statsResults as any[]).forEach((row: any) => {
+      stats.total += row.count;
+      if (row.status === 'pending') stats.pending = row.count;
+      else if (row.status === 'completed') stats.completed = row.count;
+      else if (row.status === 'cancelled') stats.cancelled = row.count;
+    });
+
     // Adicionar ordenação e paginação
     query += ' ORDER BY created_at DESC';
     
@@ -197,7 +218,8 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ 
       reservations: reservationsWithLots || [], 
-      totalCount 
+      totalCount,
+      stats 
     }, { status: 200 });
   } catch (error) {
     console.error('[API /reservas GET] Erro:', error);

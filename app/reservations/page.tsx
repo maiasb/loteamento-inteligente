@@ -106,7 +106,6 @@ export default function ReservationsPage() {
   // Ref para armazenar o ID da reserva que precisa ser expandida
   // Usar ref ao invés de searchParams evita race conditions com router.replace
   const targetReservationRef = useRef<string | null>(searchParams.get('reservationId'));
-  const skipFilterResetRef = useRef(false);
 
   // Controle para resolver a página correta ANTES de carregar dados
   const [isResolvingPage, setIsResolvingPage] = useState<boolean>(() => {
@@ -155,7 +154,6 @@ export default function ReservationsPage() {
         if (response.data && response.data.page) {
           const pageNumber = response.data.page;
           
-          skipFilterResetRef.current = true;
           setStatusFilter('all');
           setCurrentPage(pageNumber);
           
@@ -202,6 +200,10 @@ export default function ReservationsPage() {
           // Novo formato com paginação
           reservationsData = response.data.reservations || [];
           setTotalCount(response.data.totalCount || 0);
+          // Stats vêm junto na resposta - evita requisição separada
+          if (response.data.stats) {
+            setStats(response.data.stats);
+          }
         } else if (Array.isArray(response.data.data)) {
           // Formato intermediário
           reservationsData = response.data.data;
@@ -251,34 +253,7 @@ export default function ReservationsPage() {
     }
   }, [searchParams, currentPage, isResolvingPage]);
 
-  // Função para carregar estatísticas
-  const loadStats = useCallback(async () => {
-    try {
-      const params: any = {};
-
-      if (user?.role !== UserRole.DEV && user?.role !== UserRole.ADMIN && user?.id) {
-        params.userId = user.id;
-      }
-
-      const response = await axios.get(`${API_URL}/reservas/stats`, { 
-        params,
-        timeout: 30000 
-      });
-
-      if (response.data) {
-        setStats(response.data);
-      }
-    } catch (error) {
-      console.error('[Reservations] Erro ao carregar estatísticas:', error);
-    }
-  }, [user?.id, user?.role]);
-
-  // Carregar estatísticas ao montar o componente
-  useEffect(() => {
-    if (user) {
-      loadStats();
-    }
-  }, [user, loadStats]);
+  // Stats agora vêm junto com a resposta de loadData (sem requisição separada)
 
   // Expandir automaticamente a reserva quando os dados estiverem carregados
   // Usa ref (targetReservationRef) ao invés de searchParams para evitar race conditions
@@ -357,8 +332,7 @@ export default function ReservationsPage() {
         timeout: 10000,
       });
 
-      loadData(); // Recarregar dados
-      loadStats(); // Recarregar estatísticas
+      loadData(); // Recarregar dados (stats incluídas na resposta)
     } catch (error) {
       console.error('[Reservations] ❌ Erro ao aprovar reserva:', error);
       customAlert.error('Erro ao aprovar reserva. Tente novamente.');
@@ -383,8 +357,7 @@ export default function ReservationsPage() {
         lotStatus: 'available',
         userRole: user?.role
       });
-      loadData(); // Recarregar dados
-      loadStats(); // Recarregar estatísticas
+      loadData(); // Recarregar dados (stats incluídas na resposta)
     } catch (error) {
       console.error('[Reservations] ❌ Erro ao rejeitar reserva:', error);
       customAlert.error('Erro ao rejeitar reserva. Tente novamente.');
@@ -554,14 +527,8 @@ export default function ReservationsPage() {
     router.push(`/reservations?${params.toString()}`);
   };
 
-  // Reset para página 1 quando mudar o filtro (mas não durante resolução de página)
-  useEffect(() => {
-    if (skipFilterResetRef.current) {
-      skipFilterResetRef.current = false;
-      return;
-    }
-    setCurrentPage(1);
-  }, [statusFilter]);
+  // Reset de página ao mudar filtro é feito diretamente em handleStatusFilterChange
+  // Removido useEffect redundante que causava dupla chamada ao loadData
 
   // Verificar se há uma reserva para expandir automaticamente
   useEffect(() => {
