@@ -262,7 +262,7 @@ export default function ReservationsPage() {
 
       const response = await axios.get(`${API_URL}/reservas/stats`, { 
         params,
-        timeout: 5000 
+        timeout: 30000 
       });
 
       if (response.data) {
