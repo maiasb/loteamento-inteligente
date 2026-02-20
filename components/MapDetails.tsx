@@ -77,6 +77,24 @@ export default function MapDetails() {
   const [isPlacingLot, setIsPlacingLot] = useState(false); // Modo de posicionar lote
   const [placingLotId, setPlacingLotId] = useState<string | null>(null); // ID do lote sendo posicionado
 
+  // Estados para visibilidade dos elementos do mapa
+  const [showOverlay, setShowOverlay] = useState(true);
+  const [showMarkers, setShowMarkers] = useState(true);
+
+  // Estados para posicionamento sequencial de lotes
+  const [isSequentialPlacing, setIsSequentialPlacing] = useState(false);
+  const [sequentialQueue, setSequentialQueue] = useState<string[]>([]); // IDs dos lotes na fila
+  const [sequentialCurrentIndex, setSequentialCurrentIndex] = useState(0); // Índice atual na fila
+  const [sequentialBlockName, setSequentialBlockName] = useState<string>(''); // Nome da quadra em sequência
+
+  // Refs para manter valores atualizados dentro de closures async
+  const isSequentialPlacingRef = useRef(false);
+  const sequentialQueueRef = useRef<string[]>([]);
+
+  // Sincronizar refs com o estado
+  useEffect(() => { isSequentialPlacingRef.current = isSequentialPlacing; }, [isSequentialPlacing]);
+  useEffect(() => { sequentialQueueRef.current = sequentialQueue; }, [sequentialQueue]);
+
   
   // Estados para controlar visualização filtrada no mapa principal
   const [focusedBlockId, setFocusedBlockId] = useState<string | null>(null);
@@ -590,8 +608,9 @@ export default function MapDetails() {
     if (!placingLotId) return;
 
     try {
-      // Buscar o lote nos dados locais
-      const lot = allLotsInMap.find(l => l.id === placingLotId);
+      // Buscar o lote nos dados locais (usar String() para garantir comparação correta de tipos)
+      const lot = allLotsInMap.find(l => String(l.id) === String(placingLotId)) 
+        || selectedBlockLots.find(l => String(l.id) === String(placingLotId));
       if (!lot) {
         customAlert.error('Lote não encontrado');
         setIsPlacingLot(false);
@@ -612,15 +631,38 @@ export default function MapDetails() {
 
       // Atualizar estado local
       setAllLotsInMap(prev => prev.map(l => 
-        l.id === placingLotId ? { ...l, lat, lng } : l
+        String(l.id) === String(placingLotId) ? { ...l, lat, lng } : l
       ));
       setSelectedBlockLots(prev => prev.map(l => 
-        l.id === placingLotId ? { ...l, lat, lng } : l
+        String(l.id) === String(placingLotId) ? { ...l, lat, lng } : l
       ));
 
       customAlert.success(`Lote ${lot.lotNumber} posicionado!`);
-      setIsPlacingLot(false);
-      setPlacingLotId(null);
+
+      // Se estiver em modo sequencial, avançar para o próximo lote na fila
+      // Usa refs para evitar problema de stale closure em callback async
+      if (isSequentialPlacingRef.current && sequentialQueueRef.current.length > 0) {
+        const currentIdx = sequentialQueueRef.current.findIndex(id => String(id) === String(placingLotId));
+        const nextIdx = currentIdx + 1;
+
+        if (nextIdx < sequentialQueueRef.current.length) {
+          const nextLotId = sequentialQueueRef.current[nextIdx];
+          setSequentialCurrentIndex(nextIdx);
+          setPlacingLotId(nextLotId);
+          // isPlacingLot permanece true
+        } else {
+          // Fila acabou
+          setIsPlacingLot(false);
+          setPlacingLotId(null);
+          setIsSequentialPlacing(false);
+          setSequentialQueue([]);
+          setSequentialCurrentIndex(0);
+          setSequentialBlockName('');
+        }
+      } else {
+        setIsPlacingLot(false);
+        setPlacingLotId(null);
+      }
     } catch (error: any) {
       console.error('[MapDetails] ❌ Erro ao posicionar lote:', error);
       customAlert.error('Erro ao posicionar lote no mapa');
@@ -633,10 +675,45 @@ export default function MapDetails() {
     setIsPlacingLot(true);
   };
 
-  // Handler para posicionar todos os lotes de uma quadra automaticamente (cancelar modo)
+  // Handler para cancelar posicionamento (individual ou sequencial)
   const cancelPlacingLot = () => {
     setIsPlacingLot(false);
     setPlacingLotId(null);
+    setIsSequentialPlacing(false);
+    setSequentialQueue([]);
+    setSequentialCurrentIndex(0);
+    setSequentialBlockName('');
+  };
+
+  // Handler para iniciar posicionamento sequencial de todos os lotes disponíveis de uma quadra
+  const startSequentialPlacing = (blockId: string, lotsFromBlock?: Lot[]) => {
+    const block = blocks.find(b => b.id === blockId);
+    if (!block) return;
+
+    // Usar lotes passados diretamente (do BlockCard) ou buscar de allLotsInMap como fallback
+    const sourceLots = lotsFromBlock || allLotsInMap;
+
+    // Filtrar lotes da quadra que ainda não possuem marcação no mapa
+    const availableLots = sourceLots
+      .filter(l => String(l.blockId) === String(blockId) && (l.lat == null || l.lng == null))
+      .sort((a, b) => {
+        const numA = parseInt(a.lotNumber) || 0;
+        const numB = parseInt(b.lotNumber) || 0;
+        return numA - numB;
+      });
+
+    if (availableLots.length === 0) {
+      customAlert.info('Todos os lotes desta quadra já estão posicionados no mapa.');
+      return;
+    }
+
+    const lotIds = availableLots.map(l => l.id);
+    setSequentialQueue(lotIds);
+    setSequentialCurrentIndex(0);
+    setSequentialBlockName(block.name);
+    setIsSequentialPlacing(true);
+    setPlacingLotId(lotIds[0]);
+    setIsPlacingLot(true);
   };
 
   // Handler para remover a posição de um lote do mapa
@@ -1603,6 +1680,8 @@ export default function MapDetails() {
               onToggleLotSelection={handleToggleLotSelection}
               onPlaceLot={(lot) => startPlacingLot(lot.id)}
               onRemoveLotPosition={handleRemoveLotPosition}
+              onStartSequentialPlacing={startSequentialPlacing}
+              isSequentialPlacing={isSequentialPlacing}
             />
           </div>
         </div>
@@ -1612,39 +1691,67 @@ export default function MapDetails() {
       <div className="mb-8">
         <div className="flex items-center justify-between mb-3">
           <label className="block text-sm font-bold text-[var(--foreground)] opacity-80">Visualização do Mapa</label>
-          <div className="flex gap-2">
-            <button
-              onClick={() => setIsConfiguringOverlay(true)}
-              className={`px-4 py-2 text-white font-semibold rounded-xl shadow-[var(--shadow-md)] transition-all hover:shadow-[var(--shadow-lg)] cursor-pointer flex items-center gap-2 ${
-                map?.overlayConfig
-                  ? 'bg-cyan-500 hover:bg-cyan-600'
-                  : 'bg-indigo-600 hover:bg-indigo-700'
-              }`}
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-              </svg>
-              {map?.overlayConfig ? 'Editar Overlay' : 'Overlay SVG'}
-            </button>
-          </div>
+          <button
+            onClick={() => setIsConfiguringOverlay(true)}
+            className={`px-4 py-2 text-white font-semibold rounded-lg transition-all cursor-pointer flex items-center gap-2 text-sm ${
+              map?.overlayConfig
+                ? 'bg-cyan-500 hover:bg-cyan-600'
+                : 'bg-indigo-600 hover:bg-indigo-700'
+            }`}
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+            {map?.overlayConfig ? 'Editar SVG' : 'Overlay SVG'}
+          </button>
         </div>
 
         {/* Controles de posicionamento dos lotes */}
         <div className="mb-3 flex flex-wrap items-center gap-4 bg-[var(--surface)] rounded-xl p-3 border border-[var(--border)]">
           {isPlacingLot ? (
-            <button
-              onClick={cancelPlacingLot}
-              className="px-3 py-1.5 bg-red-500 hover:bg-red-600 text-white rounded-lg text-xs font-semibold cursor-pointer flex items-center gap-1.5 transition-colors"
-            >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-              Cancelar Posicionamento
-              {placingLotId && (() => {
-                const lot = allLotsInMap.find(l => l.id === placingLotId);
-                return lot ? ` (Lote ${lot.lotNumber})` : '';
-              })()}
-            </button>
+            <div className="flex items-center gap-3 flex-wrap">
+              <button
+                onClick={cancelPlacingLot}
+                className="px-3 py-1.5 bg-red-500 hover:bg-red-600 text-white rounded-lg text-xs font-semibold cursor-pointer flex items-center gap-1.5 transition-colors"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+                {isSequentialPlacing ? 'Parar Sequência' : 'Cancelar Posicionamento'}
+              </button>
+              {isSequentialPlacing && (
+                <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-500/20 border border-blue-500/40 rounded-lg">
+                  <svg className="w-4 h-4 text-blue-400 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  </svg>
+                  <span className="text-xs font-bold text-blue-300">
+                    Sequencial: {sequentialBlockName}
+                  </span>
+                  <span className="text-xs text-blue-200">
+                    {(() => {
+                      const lot = allLotsInMap.find(l => l.id === placingLotId);
+                      return lot ? `Lote ${lot.lotNumber}` : '';
+                    })()}
+                    {' '}({sequentialCurrentIndex + 1}/{sequentialQueue.length})
+                  </span>
+                  {/* Barra de progresso */}
+                  <div className="w-20 h-1.5 bg-blue-900 rounded-full overflow-hidden">
+                    <div 
+                      className="h-full bg-blue-400 rounded-full transition-all duration-300"
+                      style={{ width: `${((sequentialCurrentIndex) / sequentialQueue.length) * 100}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+              {!isSequentialPlacing && placingLotId && (
+                <span className="text-xs text-[var(--foreground)] opacity-70">
+                  {(() => {
+                    const lot = allLotsInMap.find(l => l.id === placingLotId);
+                    return lot ? `Posicionando Lote ${lot.lotNumber}` : '';
+                  })()}
+                </span>
+              )}
+            </div>
           ) : (
             <div className="text-xs text-[var(--foreground)] opacity-50">
               Clique em &quot;Posicionar&quot; em um lote para colocá-lo no mapa
@@ -1663,10 +1770,75 @@ export default function MapDetails() {
         ) : (
           <div className="bg-[var(--card-bg)] border-2 border-[var(--primary)]/30 rounded-2xl overflow-hidden shadow-[var(--shadow-lg)] p-6">
             <div className="mb-4 flex items-center justify-between">
-              <h3 className="text-[var(--foreground)] text-lg font-semibold">
-                Loteamento Completo
-              </h3>
-              <div className="flex gap-2">
+              <div className="flex gap-2 flex-wrap items-center">
+                <h3 className="text-[var(--foreground)] text-lg font-semibold mr-2">
+                  Loteamento Completo
+                </h3>
+                {/* Toggles de visibilidade */}
+                {map?.overlayConfig && (
+                  <button
+                    onClick={() => setShowOverlay(prev => !prev)}
+                    className={`px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-1.5 transition-all cursor-pointer border ${
+                      showOverlay
+                        ? 'bg-cyan-500/20 border-cyan-500/50 text-cyan-300 hover:bg-cyan-500/30'
+                        : 'bg-[var(--surface)] border-[var(--border)] text-[var(--foreground)] opacity-50 hover:opacity-80'
+                    }`}
+                    title={showOverlay ? 'Ocultar SVG' : 'Exibir SVG'}
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      {showOverlay ? (
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                      ) : (
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.878 9.878L3 3m6.878 6.878l4.242 4.242M21 21l-4.35-4.35" />
+                      )}
+                    </svg>
+                    {showOverlay ? 'Ocultar SVG' : 'Exibir SVG'}
+                  </button>
+                )}
+                <button
+                  onClick={() => setShowMarkers(prev => !prev)}
+                  className={`px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-1.5 transition-all cursor-pointer border ${
+                    showMarkers
+                      ? 'bg-green-500/20 border-green-500/50 text-green-300 hover:bg-green-500/30'
+                      : 'bg-[var(--surface)] border-[var(--border)] text-[var(--foreground)] opacity-50 hover:opacity-80'
+                  }`}
+                  title={showMarkers ? 'Ocultar marcações' : 'Exibir marcações'}
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    {showMarkers ? (
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                    ) : (
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.878 9.878L3 3m6.878 6.878l4.242 4.242M21 21l-4.35-4.35" />
+                    )}
+                  </svg>
+                  {showMarkers ? 'Ocultar Marcações' : 'Exibir Marcações'}
+                </button>
+              </div>
+              <div className="flex gap-2 flex-wrap">
+                {/* Botão de marcação múltipla sequencial */}
+                {selectedBlockId && (() => {
+                  const unpositionedCount = selectedBlockLots.filter(
+                    l => (l.lat == null || l.lng == null)
+                  ).length;
+                  if (unpositionedCount === 0) return null;
+                  return (
+                    <button
+                      onClick={() => startSequentialPlacing(selectedBlockId, selectedBlockLots)}
+                      disabled={isSequentialPlacing}
+                      className={`px-4 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 transition-all cursor-pointer ${
+                        isSequentialPlacing
+                          ? 'bg-gray-500 text-gray-300 cursor-not-allowed'
+                          : 'bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white'
+                      }`}
+                      title={`Posicionar ${unpositionedCount} lotes sequencialmente no mapa`}
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                      </svg>
+                      Marcação Múltipla ({unpositionedCount})
+                    </button>
+                  );
+                })()}
                 {map?.overlayConfig && map.overlayConfig.bounds && (
                   <button
                     onClick={() => {
@@ -1682,6 +1854,17 @@ export default function MapDetails() {
                     Abrir no Google Maps
                   </button>
                 )}
+                {/* Botão para visualização pública */}
+                <button
+                  onClick={() => window.open(`/view/${mapId}`, '_blank')}
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg flex items-center gap-2 transition-colors text-sm cursor-pointer"
+                  title="Abrir mapa de visualização pública"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                  </svg>
+                  Mapa de Visualização
+                </button>
               </div>
             </div>
             
@@ -1693,6 +1876,16 @@ export default function MapDetails() {
                 overlayConfig={map?.overlayConfig}
                 placingMode={isPlacingLot}
                 onMapClick={handleMapClickForPlacement}
+                showOverlay={showOverlay}
+                showMarkers={showMarkers}
+                placingLotLabel={placingLotId ? (() => {
+                  const lot = allLotsInMap.find(l => l.id === placingLotId);
+                  if (!lot) return undefined;
+                  if (isSequentialPlacing) {
+                    return `Lote ${lot.lotNumber} (${sequentialCurrentIndex + 1}/${sequentialQueue.length}) - ${sequentialBlockName}`;
+                  }
+                  return `Lote ${lot.lotNumber}`;
+                })() : undefined}
               />
               {map?.address && (
                 <p className="text-[var(--foreground)]/60 text-xs mt-3 px-4 pb-4 text-center">
@@ -2427,6 +2620,8 @@ interface BlockCardProps {
   onSingleLotClick?: (lot: Lot) => void;
   onPlaceLot?: (lot: Lot) => void;
   onRemoveLotPosition?: (lot: Lot) => void;
+  onStartSequentialPlacing?: (blockId: string, lots?: Lot[]) => void;
+  isSequentialPlacing?: boolean;
 }
 
 function BlockCard({
@@ -2450,6 +2645,8 @@ function BlockCard({
   onSingleLotClick,
   onPlaceLot,
   onRemoveLotPosition,
+  onStartSequentialPlacing,
+  isSequentialPlacing: isSequentialPlacingProp = false,
 }: BlockCardProps) {
   const [isHovered, setIsHovered] = useState(false);
   
@@ -2480,7 +2677,7 @@ function BlockCard({
           </div>
         </div>
       )}
-      
+
       {/* Lotes da Quadra */}
         {isLoadingBlockLots ? (
           <div className="py-6">

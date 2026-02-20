@@ -13,6 +13,9 @@ interface PublicMapViewerProps {
   overlayConfig?: OverlayConfig | null;
   onMapClick?: (lat: number, lng: number) => void; // Para posicionar lotes no mapa
   placingMode?: boolean; // Indica se está em modo de posicionamento de lote
+  placingLotLabel?: string; // Label do lote sendo posicionado (ex: "Lote 5 (3/10)")
+  showOverlay?: boolean; // Controla visibilidade do overlay SVG
+  showMarkers?: boolean; // Controla visibilidade das marcações dos lotes
 }
 
 const GOOGLE_MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || '';
@@ -46,6 +49,9 @@ export default function PublicMapViewer({
   overlayConfig = null,
   onMapClick,
   placingMode = false,
+  placingLotLabel,
+  showOverlay = true,
+  showMarkers = true,
 }: PublicMapViewerProps) {
   const [center, setCenter] = useState(defaultCenter);
   const [mapLoaded, setMapLoaded] = useState(false);
@@ -181,6 +187,13 @@ export default function PublicMapViewer({
     };
   }, [mapLoaded, overlayConfig]);
 
+  // Alternar visibilidade do overlay SVG
+  useEffect(() => {
+    if (overlayDivRef.current) {
+      overlayDivRef.current.style.display = showOverlay ? '' : 'none';
+    }
+  }, [showOverlay]);
+
   // Filtrar lotes que têm coordenadas (lat/lng)
   const lotsWithPosition = lots.filter(lot => lot.lat !== undefined && lot.lat !== null && lot.lng !== undefined && lot.lng !== null);
 
@@ -312,6 +325,17 @@ export default function PublicMapViewer({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapLoaded, lotsWithPosition.map(l => `${l.id}-${l.lat}-${l.lng}-${l.status}-${l.lotNumber}`).join(','), onLotClick]);
 
+  // Alternar visibilidade das marcações dos lotes
+  useEffect(() => {
+    lotOverlaysRef.current.forEach(overlay => {
+      if (showMarkers) {
+        overlay.setMap(mapRef.current);
+      } else {
+        overlay.setMap(null);
+      }
+    });
+  }, [showMarkers]);
+
   if (!GOOGLE_MAPS_API_KEY) {
     return (
       <div className="w-full h-[500px] bg-red-50 dark:bg-red-900/20 border-2 border-red-300 dark:border-red-800 rounded-xl flex items-center justify-center p-8">
@@ -392,7 +416,10 @@ export default function PublicMapViewer({
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
           </svg>
-          Clique no mapa para posicionar o lote
+          {placingLotLabel 
+            ? `Clique no mapa para posicionar: ${placingLotLabel}`
+            : 'Clique no mapa para posicionar o lote'
+          }
         </div>
       )}
     </div>
