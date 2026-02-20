@@ -24,6 +24,7 @@ interface LotSelectorProps {
   isAdminContext?: boolean; // True quando usado na página /admin/map-details para permitir edição de lotes bloqueados
   externalViewingLot?: Lot | null; // Lote para visualizar vindo de fora (ex: clique no mapa)
   onCloseExternalViewing?: () => void; // Callback para fechar visualização externa
+  multiSelectAction?: 'delete' | 'block' | null; // Tipo de ação em lote ativa
 }
 
 export default function LotSelector({
@@ -46,6 +47,7 @@ export default function LotSelector({
   isAdminContext = false,
   externalViewingLot = null,
   onCloseExternalViewing,
+  multiSelectAction = null,
 }: LotSelectorProps) {
   const router = useRouter();
   const [selectedLotForModal, setSelectedLotForModal] = useState<Lot | null>(null);
@@ -459,23 +461,49 @@ export default function LotSelector({
                     {lot.lotNumber}
                   </span>
                   
-                  {/* Círculo de seleção - apenas em modo multi-select */}
+                  {/* Indicador de seleção - apenas em modo multi-select */}
                   {allowMultipleSelection && (
                     isAdminContext 
                       ? (lot.status === LotStatus.AVAILABLE || lot.status === LotStatus.BLOCKED)
                       : lot.status === LotStatus.AVAILABLE
                   ) && (
-                    <div className={`absolute top-0.5 right-0.5 w-4 h-4 rounded-full border-2 border-white shadow-md transition-all duration-200 ${
-                      isSelected 
-                        ? 'bg-blue-500 border-blue-500' 
-                        : 'bg-white/20 backdrop-blur-sm'
-                    }`}>
-                      {isSelected && (
-                        <svg className="w-full h-full text-white p-px" fill="currentColor" viewBox="0 0 20 20">
-                          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                        </svg>
-                      )}
-                    </div>
+                    multiSelectAction === 'block' ? (
+                      // Cadeado: fechado se vai bloquear (disponível), aberto se vai desbloquear (bloqueado)
+                      isSelected ? (
+                        <div className={`absolute top-0 right-0 w-5 h-5 rounded-bl-lg rounded-tr-lg flex items-center justify-center shadow-md transition-all duration-200 ${
+                          lot.status === LotStatus.AVAILABLE
+                            ? 'bg-gray-600'
+                            : 'bg-green-600'
+                        }`}>
+                          {lot.status === LotStatus.AVAILABLE ? (
+                            // Cadeado fechado - vai ser bloqueado
+                            <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+                            </svg>
+                          ) : (
+                            // Cadeado aberto - vai ser desbloqueado
+                            <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 10.5V6.75a4.5 4.5 0 119 0v3.75M3.75 21.75h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H3.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+                            </svg>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="absolute top-0.5 right-0.5 w-4 h-4 rounded-full border-2 border-white/40 bg-white/10 backdrop-blur-sm transition-all duration-200" />
+                      )
+                    ) : (
+                      // Modo padrão (delete ou outro): checkmark
+                      <div className={`absolute top-0.5 right-0.5 w-4 h-4 rounded-full border-2 border-white shadow-md transition-all duration-200 ${
+                        isSelected 
+                          ? 'bg-blue-500 border-blue-500' 
+                          : 'bg-white/20 backdrop-blur-sm'
+                      }`}>
+                        {isSelected && (
+                          <svg className="w-full h-full text-white p-px" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                          </svg>
+                        )}
+                      </div>
+                    )
                   )}
                 </div>
               </div>
