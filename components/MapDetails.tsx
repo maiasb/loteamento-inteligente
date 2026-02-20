@@ -49,11 +49,15 @@ export default function MapDetails() {
   const [isLoadingBlockLots, setIsLoadingBlockLots] = useState(false);
   const [allLotsInMap, setAllLotsInMap] = useState<Lot[]>([]); // Todos os lotes do mapa para validação
   
-  // Estados para seleção múltipla
+  // Estados para seleção múltipla de lotes
   const [multiSelectMode, setMultiSelectMode] = useState(false);
   const [selectedLots, setSelectedLots] = useState<Lot[]>([]);
   const [showBulkActions, setShowBulkActions] = useState(false);
   const [multiSelectAction, setMultiSelectAction] = useState<'delete' | 'block' | null>(null);
+  
+  // Estados para seleção múltipla de quadras
+  const [blockSelectAction, setBlockSelectAction] = useState<'delete' | 'block' | null>(null);
+  const [selectedBlockIds, setSelectedBlockIds] = useState<string[]>([]);
   
   // Estados para criar novo mapa
   const [isCreatingMap, setIsCreatingMap] = useState(false);
@@ -529,6 +533,180 @@ export default function MapDetails() {
     );
     
     return hasReservedOrSold;
+  };
+
+  // Funções para seleção múltipla de quadras
+  const handleToggleBlockSelection = (blockId: string) => {
+    const id = String(blockId);
+    setSelectedBlockIds(prev => {
+      if (prev.includes(id)) {
+        return prev.filter(i => i !== id);
+      }
+      return [...prev, id];
+    });
+  };
+
+  const handleClearBlockSelection = () => {
+    setSelectedBlockIds([]);
+    setBlockSelectAction(null);
+  };
+
+  const handleBulkBlockDelete = async () => {
+    if (selectedBlockIds.length === 0) return;
+    
+    // Verificar quais podem ser excluídas
+    const deletable = selectedBlockIds.filter(id => !hasReservedOrSoldLotsInBlock(id));
+    const notDeletable = selectedBlockIds.filter(id => hasReservedOrSoldLotsInBlock(id));
+    
+    if (deletable.length === 0) {
+      customAlert.error('Nenhuma quadra selecionada pode ser excluída. Todas possuem lotes reservados ou vendidos.');
+      return;
+    }
+
+    if (notDeletable.length > 0) {
+      const names = notDeletable.map(id => blocks.find(b => String(b.id) === id)?.name || '?').join(', ');
+      customAlert.warning(`Quadra(s) ${names} não pode(m) ser excluída(s) por possuir lotes reservados/vendidos. Será(o) ignorada(s).`);
+    }
+
+    const totalLots = deletable.reduce((acc, id) => {
+      return acc + allLotsInMap.filter(l => String(l.blockId) === id).length;
+    }, 0);
+    
+    const blockNames = deletable.map(id => blocks.find(b => String(b.id) === id)?.name || '?').join(', ');
+    const msg = totalLots > 0
+      ? `Deseja EXCLUIR ${deletable.length} quadra(s) (${blockNames}) e seus ${totalLots} lote(s)? Esta ação não pode ser desfeita!`
+      : `Deseja EXCLUIR ${deletable.length} quadra(s) (${blockNames})? Esta ação não pode ser desfeita!`;
+
+    if (!await customAlert.confirm(msg)) return;
+
+    try {
+      for (const blockId of deletable) {
+        await deleteBlock(blockId, mapId);
+      }
+      
+      await loadBlocks(mapId);
+      await loadAllLotsInMap();
+      loadLotStats();
+      
+      if (selectedBlockId && deletable.includes(selectedBlockId)) {
+        setSelectedBlockId('');
+        setSelectedBlockLots([]);
+      }
+      
+      handleClearBlockSelection();
+      customAlert.success(`${deletable.length} quadra(s) excluída(s) com sucesso!`);
+    } catch (error) {
+      console.error('Erro ao excluir quadras:', error);
+      customAlert.error('Erro ao excluir quadras. Tente novamente.');
+    }
+  };
+
+  const handleBulkBlockToggleAll = async () => {
+    if (selectedBlockIds.length === 0) return;
+    
+    if (!mapId) {
+      customAlert.error('Erro: ID do mapa não encontrado');
+      return;
+    }
+
+    // Recarregar allLotsInMap para garantir dados atualizados
+    await loadAllLotsInMap();
+
+    // Pegar todos os lotes das quadras selecionadas (exceto reservados/vendidos)
+    // Buscar diretamente da API para evitar problemas de estado stale
+    let freshLots: Lot[] = [];
+    try {
+      const response = await axios.get(`${API_URL}/mapas/lotes`, {
+        params: { mapId },
+        timeout: 30000,
+      });
+      if (response.data && Array.isArray(response.data)) {
+        if (response.data.length > 0 && response.data[0].lots) {
+          freshLots = response.data[0].lots;
+        } else {
+          freshLots = response.data;
+        }
+      }
+    } catch (error) {
+      console.error('Erro ao buscar lotes frescos:', error);
+      freshLots = allLotsInMap;
+    }
+
+    const lotsToToggle = freshLots.filter(lot => {
+      if (!selectedBlockIds.includes(String(lot.blockId))) return false;
+      return lot.status === LotStatus.AVAILABLE || lot.status === LotStatus.BLOCKED;
+    });
+
+    console.log('DEBUG handleBulkBlockToggleAll:', {
+      selectedBlockIds,
+      freshLotsCount: freshLots.length,
+      freshLotsBlockIds: [...new Set(freshLots.map(l => `${l.blockId} (${typeof l.blockId})`))],
+      freshLotsStatuses: [...new Set(freshLots.map(l => l.status))],
+      lotsToToggleCount: lotsToToggle.length,
+    });
+
+    if (lotsToToggle.length === 0) {
+      customAlert.warning('Nenhum lote disponível ou bloqueado para alterar nas quadras selecionadas.');
+      return;
+    }
+
+    const toBlock = lotsToToggle.filter(l => l.status === LotStatus.AVAILABLE);
+    const toUnblock = lotsToToggle.filter(l => l.status === LotStatus.BLOCKED);
+
+    const parts = [];
+    if (toBlock.length > 0) parts.push(`bloquear ${toBlock.length}`);
+    if (toUnblock.length > 0) parts.push(`desbloquear ${toUnblock.length}`);
+
+    if (!await customAlert.confirm(`Deseja ${parts.join(' e ')} lote(s) nas ${selectedBlockIds.length} quadra(s) selecionada(s)?`)) return;
+
+    try {
+      await Promise.all([
+        ...toBlock.map(lot =>
+          axios.patch('/api/mapas/lotes/atualizar', {
+            id: lot.id,
+            mapId: lot.mapId || mapId,
+            blockId: lot.blockId,
+            lotNumber: lot.lotNumber,
+            status: LotStatus.BLOCKED,
+            price: lot.price,
+            size: lot.size,
+            description: lot.description,
+            features: lot.features,
+          })
+        ),
+        ...toUnblock.map(lot =>
+          axios.patch('/api/mapas/lotes/atualizar', {
+            id: lot.id,
+            mapId: lot.mapId || mapId,
+            blockId: lot.blockId,
+            lotNumber: lot.lotNumber,
+            status: LotStatus.AVAILABLE,
+            price: lot.price,
+            size: lot.size,
+            description: lot.description,
+            features: lot.features,
+          })
+        ),
+      ]);
+
+      const msgs = [];
+      if (toBlock.length > 0) msgs.push(`${toBlock.length} bloqueado(s)`);
+      if (toUnblock.length > 0) msgs.push(`${toUnblock.length} desbloqueado(s)`);
+      customAlert.success(`Lotes atualizados: ${msgs.join(', ')}!`);
+      
+      handleClearBlockSelection();
+      
+      // Recarregar dados
+      if (selectedBlockId) {
+        const lots = await loadLotsForBlock(selectedBlockId);
+        setSelectedBlockLots(lots);
+      }
+      await loadAllLotsInMap();
+      loadLotStats();
+    } catch (error) {
+      console.error('Erro ao alterar lotes das quadras:', error);
+      customAlert.error('Erro ao alterar lotes. Tente novamente.');
+    }
   };
 
   const hasReservedOrSoldLotsInMap = (): boolean => {
@@ -1040,11 +1218,8 @@ export default function MapDetails() {
         setSelectedBlockLots(lots);
       }
       
-      // Recarregar todos os lotes do mapa (para quadras afetadas)
-      if (mapId) {
-        const allLotsRes = await axios.get(`/api/mapas/lotes?mapId=${mapId}`);
-        setAllLotsInMap(allLotsRes.data);
-      }
+      // Recarregar todos os lotes do mapa
+      await loadAllLotsInMap();
       
       // Recarregar estatísticas
       loadLotStats();
@@ -1097,11 +1272,8 @@ export default function MapDetails() {
         setSelectedBlockLots(lots);
       }
       
-      // Recarregar todos os lotes do mapa (para quadras afetadas)
-      if (mapId) {
-        const allLotsRes = await axios.get(`/api/mapas/lotes?mapId=${mapId}`);
-        setAllLotsInMap(allLotsRes.data);
-      }
+      // Recarregar todos os lotes do mapa
+      await loadAllLotsInMap();
       
       // Recarregar estatísticas
       loadLotStats();
@@ -1496,15 +1668,63 @@ export default function MapDetails() {
       <div className="mb-8">
         <div className="flex items-center justify-between mb-3">
           <label className="block text-sm font-bold text-[var(--foreground)] opacity-80">Selecione uma Quadra</label>
-          <button
-            onClick={handleAddBlock}
-            className="px-4 py-2 bg-[var(--success)] text-white font-semibold rounded-xl hover:bg-green-600 shadow-[var(--shadow-md)] transition-all hover:shadow-[var(--shadow-lg)] cursor-pointer flex items-center gap-2"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
-            </svg>
-            Adicionar Quadra
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleAddBlock}
+              className="px-4 py-2 bg-[var(--success)] text-white font-semibold rounded-xl hover:bg-green-600 shadow-[var(--shadow-md)] transition-all hover:shadow-[var(--shadow-lg)] cursor-pointer flex items-center gap-2"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
+              </svg>
+              Adicionar Quadra
+            </button>
+            
+            {blocks && blocks.length > 0 && (
+              <>
+                <button
+                  onClick={() => {
+                    if (blockSelectAction === 'delete') {
+                      handleClearBlockSelection();
+                    } else {
+                      setBlockSelectAction('delete');
+                      setSelectedBlockIds([]);
+                    }
+                  }}
+                  className={`px-4 py-2.5 font-semibold rounded-xl transition-all flex items-center gap-2 cursor-pointer text-sm ${
+                    blockSelectAction === 'delete'
+                      ? 'bg-red-600 text-white ring-2 ring-red-400 shadow-lg'
+                      : 'bg-red-500/30 border-2 border-red-400/60 text-red-200 hover:bg-red-500/45 hover:border-red-300/70'
+                  }`}
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                  Excluir
+                </button>
+
+                <button
+                  onClick={() => {
+                    if (blockSelectAction === 'block') {
+                      handleClearBlockSelection();
+                    } else {
+                      setBlockSelectAction('block');
+                      setSelectedBlockIds([]);
+                    }
+                  }}
+                  className={`px-4 py-2.5 font-semibold rounded-xl transition-all flex items-center gap-2 cursor-pointer text-sm ${
+                    blockSelectAction === 'block'
+                      ? 'bg-gray-600 text-white ring-2 ring-gray-400 shadow-lg'
+                      : 'bg-gray-500/30 border-2 border-gray-400/60 text-gray-200 hover:bg-gray-500/45 hover:border-gray-300/70'
+                  }`}
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                  </svg>
+                  Bloquear / Desbloquear
+                </button>
+              </>
+            )}
+          </div>
         </div>
         
         {isLoading ? (
@@ -1531,12 +1751,25 @@ export default function MapDetails() {
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
               {blocks.map((block) => {
                 const isBlockDeletionDisabled = hasReservedOrSoldLotsInBlock(block.id);
+                const isBlockSelected = selectedBlockIds.includes(String(block.id));
+                const lotsInThisBlock = allLotsInMap.filter(l => String(l.blockId) === String(block.id));
+                const blockableCount = lotsInThisBlock.filter(l => l.status === LotStatus.AVAILABLE).length;
+                const unblocableCount = lotsInThisBlock.filter(l => l.status === LotStatus.BLOCKED).length;
                 
                 return (
                 <div
                   key={block.id}
                   onClick={() => {
-                    // Apenas fazer requisição se for uma quadra diferente
+                    if (blockSelectAction) {
+                      // Em modo de seleção de quadras
+                      if (blockSelectAction === 'delete' && isBlockDeletionDisabled) {
+                        customAlert.warning(`Quadra ${block.name} possui lotes reservados/vendidos e não pode ser excluída.`);
+                        return;
+                      }
+                      handleToggleBlockSelection(block.id);
+                      return;
+                    }
+                    // Comportamento normal
                     if (selectedBlockId !== block.id) {
                       setSelectedBlockId(block.id);
                     }
@@ -1544,9 +1777,17 @@ export default function MapDetails() {
                     setFocusedLotId(null);
                   }}
                   className={`p-4 rounded-xl font-semibold transition-all relative group cursor-pointer border-2 ${
-                    selectedBlockId === block.id
-                      ? 'bg-gradient-to-br from-emerald-600 to-emerald-700 text-white shadow-lg scale-105 border-emerald-500'
-                      : 'bg-[var(--surface)] text-[var(--foreground)] hover:bg-[var(--surface-hover)] border-[var(--border)] hover:border-emerald-400 hover:shadow-md'
+                    blockSelectAction
+                      ? isBlockSelected
+                        ? blockSelectAction === 'delete'
+                          ? 'bg-gradient-to-br from-red-600 to-red-700 text-white shadow-lg scale-105 border-red-400'
+                          : 'bg-gradient-to-br from-gray-500 to-gray-600 text-white shadow-lg scale-105 border-gray-400'
+                        : blockSelectAction === 'delete' && isBlockDeletionDisabled
+                          ? 'bg-[var(--surface)] text-[var(--foreground)] border-[var(--border)] opacity-40 cursor-not-allowed'
+                          : 'bg-[var(--surface)] text-[var(--foreground)] hover:bg-[var(--surface-hover)] border-[var(--border)] hover:border-gray-400 hover:shadow-md'
+                      : selectedBlockId === block.id
+                        ? 'bg-gradient-to-br from-emerald-600 to-emerald-700 text-white shadow-lg scale-105 border-emerald-500'
+                        : 'bg-[var(--surface)] text-[var(--foreground)] hover:bg-[var(--surface-hover)] border-[var(--border)] hover:border-emerald-400 hover:shadow-md'
                   }`}
                 >
                   <div className="text-xs mb-1 opacity-70">Quadra</div>
@@ -1555,12 +1796,32 @@ export default function MapDetails() {
                     <div className="text-xs mt-1 opacity-70 truncate">{block.description}</div>
                   )}
                   
+                  {/* Indicador de seleção para operações em lote de quadras */}
+                  {blockSelectAction && !(blockSelectAction === 'delete' && isBlockDeletionDisabled) && (
+                    blockSelectAction === 'block' && isBlockSelected ? (
+                      <div className="absolute top-1 right-1 w-6 h-6 rounded-lg bg-gray-600 flex items-center justify-center shadow-md">
+                        <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+                        </svg>
+                      </div>
+                    ) : isBlockSelected ? (
+                      <div className="absolute top-1 right-1 w-6 h-6 rounded-lg bg-blue-500 flex items-center justify-center shadow-md">
+                        <svg className="w-3.5 h-3.5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                        </svg>
+                      </div>
+                    ) : (
+                      <div className="absolute top-1 right-1 w-6 h-6 rounded-lg border-2 border-white/30 bg-white/10 backdrop-blur-sm" />
+                    )
+                  )}
+                  
                   {/* Botões de ação no hover e focus (funcionalidades do MapDetails) */}
-                  <div className={`absolute top-1 right-1 flex gap-1 transition-opacity ${
-                    selectedBlockId === block.id 
-                      ? 'opacity-100' 
-                      : 'opacity-0 group-hover:opacity-100'
-                  }`}>
+                  {!blockSelectAction && (
+                    <div className={`absolute top-1 right-1 flex gap-1 transition-opacity ${
+                      selectedBlockId === block.id 
+                        ? 'opacity-100' 
+                        : 'opacity-0 group-hover:opacity-100'
+                    }`}>
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
@@ -1596,6 +1857,7 @@ export default function MapDetails() {
                       </svg>
                     </button>
                   </div>
+                  )}
                 </div>
               );
               })}
@@ -2425,6 +2687,83 @@ export default function MapDetails() {
                   onClick={handleBulkBlockToggle}
                   disabled={!selectedLots.some(l => l.status === LotStatus.AVAILABLE || l.status === LotStatus.BLOCKED)}
                   className="px-4 py-2 bg-white hover:bg-gray-100 text-gray-700 rounded-xl font-bold transition-all duration-200 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed text-sm cursor-pointer"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+                  </svg>
+                  Confirmar
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Barra de Ação Flutuante para Seleção Múltipla de Quadras */}
+      {blockSelectAction && selectedBlockIds.length > 0 && (
+        <div className="fixed bottom-8 left-1/2 transform -translate-x-1/2 z-50 animate-slide-up">
+          <div className={`rounded-2xl shadow-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-center gap-4 min-w-[300px] sm:min-w-[400px] border-2 ${
+            blockSelectAction === 'delete'
+              ? 'bg-gradient-to-r from-red-600 to-red-700 border-red-400/30'
+              : 'bg-gradient-to-r from-gray-600 to-gray-700 border-gray-400/30'
+          }`}>
+            {/* Contador de Quadras */}
+            <div className="flex items-center gap-3">
+              <div className="bg-white/20 backdrop-blur-sm rounded-full w-10 h-10 flex items-center justify-center">
+                <span className="text-white font-bold text-lg">{selectedBlockIds.length}</span>
+              </div>
+              <div className="text-white">
+                <p className="font-bold text-lg leading-tight">
+                  {selectedBlockIds.length === 1 ? '1 Quadra' : `${selectedBlockIds.length} Quadras`}
+                </p>
+                <p className="text-white opacity-80 text-xs">
+                  {blockSelectAction === 'delete'
+                    ? selectedBlockIds.map(id => blocks.find(b => b.id === id)?.name || '?').join(', ')
+                    : (() => {
+                        const allLots = allLotsInMap.filter(l => selectedBlockIds.includes(String(l.blockId)));
+                        const toBlock = allLots.filter(l => l.status === LotStatus.AVAILABLE).length;
+                        const toUnblock = allLots.filter(l => l.status === LotStatus.BLOCKED).length;
+                        const parts = [];
+                        if (toBlock > 0) parts.push(`${toBlock} bloquear`);
+                        if (toUnblock > 0) parts.push(`${toUnblock} desbloquear`);
+                        return parts.join(' | ') || 'sem lotes alteráveis';
+                      })()
+                  }
+                </p>
+              </div>
+            </div>
+
+            {/* Separador */}
+            <div className="hidden sm:block w-px h-12 bg-white/20"></div>
+
+            {/* Botões de Ação */}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleClearBlockSelection}
+                className="px-3 py-2 bg-white/10 hover:bg-white/20 text-white rounded-xl font-semibold transition-all duration-200 flex items-center gap-2 backdrop-blur-sm border border-white/20 text-sm cursor-pointer"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+                Cancelar
+              </button>
+
+              {blockSelectAction === 'delete' && (
+                <button
+                  onClick={handleBulkBlockDelete}
+                  className="px-4 py-2 bg-white hover:bg-red-100 text-red-700 rounded-xl font-bold transition-all duration-200 flex items-center gap-2 text-sm cursor-pointer"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                  Confirmar Exclusão
+                </button>
+              )}
+
+              {blockSelectAction === 'block' && (
+                <button
+                  onClick={handleBulkBlockToggleAll}
+                  className="px-4 py-2 bg-white hover:bg-gray-100 text-gray-700 rounded-xl font-bold transition-all duration-200 flex items-center gap-2 text-sm cursor-pointer"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
