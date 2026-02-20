@@ -1877,8 +1877,8 @@ export default function MapDetails() {
                     blockSelectAction
                       ? isBlockSelected
                         ? blockSelectAction === 'delete'
-                          ? 'bg-gradient-to-br from-red-600 to-red-700 text-white shadow-lg scale-105 border-red-400'
-                          : 'bg-gradient-to-br from-gray-500 to-gray-600 text-white shadow-lg scale-105 border-gray-400'
+                          ? 'bg-[var(--surface)] text-[var(--foreground)] shadow-md border-red-500 ring-2 ring-red-500/60'
+                          : 'bg-[var(--surface)] text-[var(--foreground)] shadow-md border-gray-400 ring-2 ring-gray-400/60'
                         : blockSelectAction === 'delete' && isBlockDeletionDisabled
                           ? 'bg-[var(--surface)] text-[var(--foreground)] border-[var(--border)] opacity-40 cursor-not-allowed'
                           : 'bg-[var(--surface)] text-[var(--foreground)] hover:bg-[var(--surface-hover)] border-[var(--border)] hover:border-gray-400 hover:shadow-md'
@@ -1914,7 +1914,7 @@ export default function MapDetails() {
                         )}
                       </div>
                     ) : (
-                      <div className="absolute top-1 right-1 w-6 h-6 rounded-lg border-2 border-white/30 bg-white/10 backdrop-blur-sm" />
+                      <div className="absolute top-1 right-1 w-6 h-6 rounded-lg border-2 border-[var(--border)] bg-[var(--surface-hover)]" />
                     )
                   )}
                   
