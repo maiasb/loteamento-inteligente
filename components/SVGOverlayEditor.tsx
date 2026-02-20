@@ -3,6 +3,7 @@
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { GoogleMap, useLoadScript, OverlayView } from '@react-google-maps/api';
 import { useCustomAlert } from '@/hooks/useCustomAlert';
+import { GOOGLE_MAPS_API_KEY, GOOGLE_MAPS_LIBRARIES } from '@/lib/googleMapsConfig';
 
 export interface OverlayConfig {
   imageUrl: string;
@@ -22,9 +23,6 @@ interface SVGOverlayEditorProps {
   onSave: (overlay: OverlayConfig | null) => void;
   onCancel: () => void;
 }
-
-const GOOGLE_MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || '';
-const libraries: ("drawing" | "places")[] = ["drawing", "places"];
 
 const mapContainerStyle = {
   width: '100%',
@@ -47,7 +45,7 @@ export default function SVGOverlayEditor({
   const customAlert = useCustomAlert();
   const { isLoaded, loadError } = useLoadScript({
     googleMapsApiKey: GOOGLE_MAPS_API_KEY,
-    libraries: libraries as any,
+    libraries: GOOGLE_MAPS_LIBRARIES as any,
   });
 
   const mapRef = useRef<google.maps.Map | null>(null);

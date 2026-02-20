@@ -367,6 +367,7 @@ export default function MapDetails() {
       if (mapId && mapId.trim() !== '') {
         loadBlocks(mapId);
         loadLotStats();
+        loadAllLotsInMap();
       }
     };
     

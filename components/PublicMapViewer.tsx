@@ -3,6 +3,7 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { GoogleMap, useLoadScript } from '@react-google-maps/api';
 import { Lot, Block, LotStatus, OverlayConfig } from '@/types';
+import { GOOGLE_MAPS_API_KEY, GOOGLE_MAPS_LIBRARIES } from '@/lib/googleMapsConfig';
 
 interface PublicMapViewerProps {
   address?: string;
@@ -17,9 +18,6 @@ interface PublicMapViewerProps {
   showOverlay?: boolean; // Controla visibilidade do overlay SVG
   showMarkers?: boolean; // Controla visibilidade das marcações dos lotes
 }
-
-const GOOGLE_MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || '';
-const libraries: ("drawing" | "places")[] = ["drawing", "places"];
 
 const mapContainerStyle = {
   width: '100%',
@@ -61,10 +59,15 @@ export default function PublicMapViewer({
   const overlayDivRef = useRef<HTMLDivElement | null>(null);
   const lotOverlaysRef = useRef<google.maps.OverlayView[]>([]);
   const hoveredLotIdRef = useRef<string | null>(null);
+  // Ref para controlar se o idle inicial já foi processado
+  const idleInitializedRef = useRef(false);
+  // Ref para acompanhar o valor atual de showMarkers sem incluir nas deps do effect de criação
+  const showMarkersRef = useRef(showMarkers);
+  useEffect(() => { showMarkersRef.current = showMarkers; }, [showMarkers]);
 
   const { isLoaded, loadError } = useLoadScript({
     googleMapsApiKey: GOOGLE_MAPS_API_KEY,
-    libraries: libraries as any,
+    libraries: GOOGLE_MAPS_LIBRARIES as any,
   });
 
   // Função para obter cor do status
@@ -314,7 +317,8 @@ export default function PublicMapViewer({
       }
 
       const overlay = new LotCircleOverlay();
-      overlay.setMap(map);
+      // Usar o valor atual de showMarkers para a visibilidade inicial
+      overlay.setMap(showMarkersRef.current ? map : null);
       lotOverlaysRef.current.push(overlay);
     });
 
@@ -393,7 +397,15 @@ export default function PublicMapViewer({
         zoom={17}
         onLoad={(map) => {
           mapRef.current = map;
-          setMapLoaded(true);
+          // Não definir mapLoaded aqui — aguardar o primeiro idle para garantir
+          // que a projeção do mapa está pronta antes de criar as marcações
+        }}
+        onIdle={() => {
+          // Primeiro idle: mapa e tiles carregados, projeção disponível
+          if (!idleInitializedRef.current) {
+            idleInitializedRef.current = true;
+            setMapLoaded(true);
+          }
         }}
         onClick={handleMapClick}
         options={{
