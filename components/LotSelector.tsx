@@ -352,7 +352,7 @@ export default function LotSelector({
                 className="relative group"
               >
                 {/* Botões de ação que aparecem no hover */}
-                {isAdminContext && (onLotDelete || onToggleLotStatus || onPlaceLot || onRemoveLotPosition) && (
+                {isAdminContext && !allowMultipleSelection && (onLotDelete || onToggleLotStatus || onPlaceLot || onRemoveLotPosition) && (
                   <div className="absolute -bottom-10 left-1/2 -translate-x-1/2 z-20 flex flex-row gap-1 opacity-0 group-hover:opacity-100 group-hover:scale-100 scale-75 transition-all duration-200 origin-top">
                     
                     {/* Botão de posicionar no mapa */}
@@ -491,16 +491,24 @@ export default function LotSelector({
                         <div className="absolute top-0.5 right-0.5 w-4 h-4 rounded-full border-2 border-white/40 bg-white/10 backdrop-blur-sm transition-all duration-200" />
                       )
                     ) : (
-                      // Modo padrão (delete ou outro): checkmark
+                      // Modo delete: lixeira | modo padrão: checkmark
                       <div className={`absolute top-0.5 right-0.5 w-4 h-4 rounded-full border-2 border-white shadow-md transition-all duration-200 ${
                         isSelected 
-                          ? 'bg-blue-500 border-blue-500' 
+                          ? multiSelectAction === 'delete'
+                            ? 'bg-red-500 border-red-500'
+                            : 'bg-blue-500 border-blue-500'
                           : 'bg-white/20 backdrop-blur-sm'
                       }`}>
                         {isSelected && (
-                          <svg className="w-full h-full text-white p-px" fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                          </svg>
+                          multiSelectAction === 'delete' ? (
+                            <svg className="w-full h-full text-white p-px" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                          ) : (
+                            <svg className="w-full h-full text-white p-px" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                            </svg>
+                          )
                         )}
                       </div>
                     )

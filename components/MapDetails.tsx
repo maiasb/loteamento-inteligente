@@ -129,6 +129,14 @@ export default function MapDetails() {
     setSelectedLots([]);
   };
 
+  const clearActiveOperations = () => {
+    setSelectedLots([]);
+    setMultiSelectAction(null);
+    setMultiSelectMode(false);
+    setSelectedBlockIds([]);
+    setBlockSelectAction(null);
+  };
+
   // Limpar seleção ao mudar de quadra ou desativar multi-select
   useEffect(() => {
     if (!multiSelectMode) {
@@ -438,6 +446,7 @@ export default function MapDetails() {
   // }, 10000);
 
   const handleAddBlock = () => {
+    clearActiveOperations();
     setEditingBlock({
       id: '',
       mapId,
@@ -709,11 +718,81 @@ export default function MapDetails() {
     }
   };
 
+  const handleToggleSingleBlockLots = async (blockId: string) => {
+    if (!mapId) {
+      customAlert.error('Erro: ID do mapa não encontrado');
+      return;
+    }
+
+    const lotsInBlock = allLotsInMap.filter(l => String(l.blockId) === String(blockId));
+    const toBlock = lotsInBlock.filter(l => l.status === LotStatus.AVAILABLE);
+    const toUnblock = lotsInBlock.filter(l => l.status === LotStatus.BLOCKED);
+
+    if (toBlock.length === 0 && toUnblock.length === 0) {
+      customAlert.warning('Nenhum lote disponível ou bloqueado para alterar nesta quadra.');
+      return;
+    }
+
+    const parts = [];
+    if (toBlock.length > 0) parts.push(`bloquear ${toBlock.length}`);
+    if (toUnblock.length > 0) parts.push(`desbloquear ${toUnblock.length}`);
+    const blockName = blocks.find(b => String(b.id) === String(blockId))?.name ?? blockId;
+
+    if (!await customAlert.confirm(`Deseja ${parts.join(' e ')} lote(s) na quadra ${blockName}?`)) return;
+
+    try {
+      await Promise.all([
+        ...toBlock.map(lot =>
+          axios.patch('/api/mapas/lotes/atualizar', {
+            id: lot.id,
+            mapId: lot.mapId || mapId,
+            blockId: lot.blockId,
+            lotNumber: lot.lotNumber,
+            status: LotStatus.BLOCKED,
+            price: lot.price,
+            size: lot.size,
+            description: lot.description,
+            features: lot.features,
+          })
+        ),
+        ...toUnblock.map(lot =>
+          axios.patch('/api/mapas/lotes/atualizar', {
+            id: lot.id,
+            mapId: lot.mapId || mapId,
+            blockId: lot.blockId,
+            lotNumber: lot.lotNumber,
+            status: LotStatus.AVAILABLE,
+            price: lot.price,
+            size: lot.size,
+            description: lot.description,
+            features: lot.features,
+          })
+        ),
+      ]);
+
+      const msgs = [];
+      if (toBlock.length > 0) msgs.push(`${toBlock.length} bloqueado(s)`);
+      if (toUnblock.length > 0) msgs.push(`${toUnblock.length} desbloqueado(s)`);
+      customAlert.success(`Quadra ${blockName}: ${msgs.join(', ')}!`);
+
+      if (selectedBlockId === blockId) {
+        const lots = await loadLotsForBlock(blockId);
+        setSelectedBlockLots(lots);
+      }
+      await loadAllLotsInMap();
+      loadLotStats();
+    } catch (error) {
+      console.error('Erro ao alterar lotes da quadra:', error);
+      customAlert.error('Erro ao alterar lotes. Tente novamente.');
+    }
+  };
+
   const hasReservedOrSoldLotsInMap = (): boolean => {
     return (lotStats.reserved > 0 || lotStats.sold > 0);
   };
 
   const handleAddLotToBlock = (blockId: string) => {
+    clearActiveOperations();
     setSelectedBlockForLot(blockId);
     setIsAddingLot(true);
   };
@@ -1310,7 +1389,10 @@ export default function MapDetails() {
                   Importar Loteamento
                 </button>
                 <button
-                  onClick={() => setIsCreatingMap(true)}
+                  onClick={() => {
+                    clearActiveOperations();
+                    setIsCreatingMap(true);
+                  }}
                   className="px-6 py-3 bg-[var(--primary)] text-white font-semibold rounded-lg hover:bg-[var(--primary-dark)] transition-colors inline-flex items-center gap-2"
                 >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1503,7 +1585,10 @@ export default function MapDetails() {
         {/* Botão Novo Loteamento - Separado */}
         <div className="mb-4">
           <button
-            onClick={() => setIsCreatingMap(true)}
+            onClick={() => {
+              clearActiveOperations();
+              setIsCreatingMap(true);
+            }}
             className="w-full lg:w-auto px-6 py-3.5 bg-gradient-to-r from-[var(--primary)] to-[var(--primary-dark)] text-white font-bold rounded-xl hover:from-[var(--primary-dark)] hover:to-[var(--primary)] shadow-lg transition-all hover:shadow-xl hover:-translate-y-0.5 cursor-pointer flex items-center justify-center gap-3 border-2 border-[var(--primary)]/30"
           >
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1541,6 +1626,7 @@ export default function MapDetails() {
               {mapId && (
                 <button
                   onClick={() => {
+                    clearActiveOperations();
                     // Buscar dados do mapa atual do estado map ou da lista allMaps
                     const currentMap = map || allMaps.find(m => m.id === mapId);
                     setEditMapName(currentMap?.name || '');
@@ -1686,6 +1772,11 @@ export default function MapDetails() {
                     if (blockSelectAction === 'delete') {
                       handleClearBlockSelection();
                     } else {
+                      // Desativar qualquer operação de lote ativa
+                      setMultiSelectAction(null);
+                      setMultiSelectMode(false);
+                      handleClearSelection();
+                      // Ativar seleção de quadras para exclusão
                       setBlockSelectAction('delete');
                       setSelectedBlockIds([]);
                     }
@@ -1707,6 +1798,11 @@ export default function MapDetails() {
                     if (blockSelectAction === 'block') {
                       handleClearBlockSelection();
                     } else {
+                      // Desativar qualquer operação de lote ativa
+                      setMultiSelectAction(null);
+                      setMultiSelectMode(false);
+                      handleClearSelection();
+                      // Ativar seleção de quadras para bloqueio
                       setBlockSelectAction('block');
                       setSelectedBlockIds([]);
                     }
@@ -1805,10 +1901,16 @@ export default function MapDetails() {
                         </svg>
                       </div>
                     ) : isBlockSelected ? (
-                      <div className="absolute top-1 right-1 w-6 h-6 rounded-lg bg-blue-500 flex items-center justify-center shadow-md">
-                        <svg className="w-3.5 h-3.5 text-white" fill="currentColor" viewBox="0 0 20 20">
-                          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                        </svg>
+                      <div className={`absolute top-1 right-1 w-6 h-6 rounded-lg flex items-center justify-center shadow-md ${blockSelectAction === 'delete' ? 'bg-red-500' : 'bg-blue-500'}`}>
+                        {blockSelectAction === 'delete' ? (
+                          <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        ) : (
+                          <svg className="w-3.5 h-3.5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                          </svg>
+                        )}
                       </div>
                     ) : (
                       <div className="absolute top-1 right-1 w-6 h-6 rounded-lg border-2 border-white/30 bg-white/10 backdrop-blur-sm" />
@@ -1834,6 +1936,39 @@ export default function MapDetails() {
                       <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                       </svg>
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (blockableCount === 0 && unblocableCount === 0) return;
+                        handleToggleSingleBlockLots(String(block.id));
+                      }}
+                      disabled={blockableCount === 0 && unblocableCount === 0}
+                      style={blockableCount === 0 && unblocableCount === 0 ? { pointerEvents: 'none' } : {}}
+                      className={`p-1.5 rounded-lg transition-all ${
+                        blockableCount === 0 && unblocableCount === 0
+                          ? 'bg-gray-400/60 cursor-not-allowed opacity-40'
+                          : 'bg-gray-600/80 hover:bg-gray-700 cursor-pointer'
+                      }`}
+                      title={
+                        blockableCount === 0 && unblocableCount === 0
+                          ? 'Nenhum lote disponível ou bloqueado nesta quadra'
+                          : blockableCount > 0 && unblocableCount > 0
+                          ? `Bloquear ${blockableCount} e desbloquear ${unblocableCount} lote(s)`
+                          : blockableCount > 0
+                          ? `Bloquear ${blockableCount} lote(s) disponível(is)`
+                          : `Desbloquear ${unblocableCount} lote(s) bloqueado(s)`
+                      }
+                    >
+                      {blockableCount > 0 ? (
+                        <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+                        </svg>
+                      ) : (
+                        <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 10.5V6.75a4.5 4.5 0 119 0v3.75M3.75 21.75h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H3.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+                        </svg>
+                      )}
                     </button>
                     <button
                       onClick={(e) => {
@@ -1897,6 +2032,9 @@ export default function MapDetails() {
                           setMultiSelectMode(false);
                           handleClearSelection();
                         } else {
+                          // Desativar qualquer operação de quadra ativa
+                          handleClearBlockSelection();
+                          // Ativar seleção de lotes para exclusão
                           setMultiSelectAction('delete');
                           setMultiSelectMode(true);
                           handleClearSelection();
@@ -1921,6 +2059,9 @@ export default function MapDetails() {
                           setMultiSelectMode(false);
                           handleClearSelection();
                         } else {
+                          // Desativar qualquer operação de quadra ativa
+                          handleClearBlockSelection();
+                          // Ativar seleção de lotes para bloqueio
                           setMultiSelectAction('block');
                           setMultiSelectMode(true);
                           handleClearSelection();
@@ -1975,7 +2116,10 @@ export default function MapDetails() {
         <div className="flex items-center justify-between mb-3">
           <label className="block text-sm font-bold text-[var(--foreground)] opacity-80">Visualização do Mapa</label>
           <button
-            onClick={() => setIsConfiguringOverlay(true)}
+            onClick={() => {
+              clearActiveOperations();
+              setIsConfiguringOverlay(true);
+            }}
             className={`px-4 py-2 text-white font-semibold rounded-lg transition-all cursor-pointer flex items-center gap-2 text-sm ${
               map?.overlayConfig
                 ? 'bg-cyan-500 hover:bg-cyan-600'
@@ -2106,7 +2250,10 @@ export default function MapDetails() {
                   if (unpositionedCount === 0) return null;
                   return (
                     <button
-                      onClick={() => startSequentialPlacing(selectedBlockId, selectedBlockLots)}
+                      onClick={() => {
+                        clearActiveOperations();
+                        startSequentialPlacing(selectedBlockId, selectedBlockLots);
+                      }}
                       disabled={isSequentialPlacing}
                       className={`px-4 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 transition-all cursor-pointer ${
                         isSequentialPlacing
