@@ -53,10 +53,10 @@ export default function MapDetails() {
   const [multiSelectMode, setMultiSelectMode] = useState(false);
   const [selectedLots, setSelectedLots] = useState<Lot[]>([]);
   const [showBulkActions, setShowBulkActions] = useState(false);
-  const [multiSelectAction, setMultiSelectAction] = useState<'delete' | 'block' | null>(null);
+  const [multiSelectAction, setMultiSelectAction] = useState<'delete' | 'block' | 'unblock' | null>(null);
   
   // Estados para seleção múltipla de quadras
-  const [blockSelectAction, setBlockSelectAction] = useState<'delete' | 'block' | null>(null);
+  const [blockSelectAction, setBlockSelectAction] = useState<'delete' | 'block' | 'unblock' | null>(null);
   const [selectedBlockIds, setSelectedBlockIds] = useState<string[]>([]);
   
   // Estados para criar novo mapa
@@ -644,11 +644,14 @@ export default function MapDetails() {
 
     const lotsToToggle = freshLots.filter(lot => {
       if (!selectedBlockIds.includes(String(lot.blockId))) return false;
+      if (blockSelectAction === 'block') return lot.status === LotStatus.AVAILABLE;
+      if (blockSelectAction === 'unblock') return lot.status === LotStatus.BLOCKED;
       return lot.status === LotStatus.AVAILABLE || lot.status === LotStatus.BLOCKED;
     });
 
     console.log('DEBUG handleBulkBlockToggleAll:', {
       selectedBlockIds,
+      blockSelectAction,
       freshLotsCount: freshLots.length,
       freshLotsBlockIds: [...new Set(freshLots.map(l => `${l.blockId} (${typeof l.blockId})`))],
       freshLotsStatuses: [...new Set(freshLots.map(l => l.status))],
@@ -656,12 +659,17 @@ export default function MapDetails() {
     });
 
     if (lotsToToggle.length === 0) {
-      customAlert.warning('Nenhum lote disponível ou bloqueado para alterar nas quadras selecionadas.');
+      const msg = blockSelectAction === 'block'
+        ? 'Nenhum lote disponível para bloquear nas quadras selecionadas.'
+        : blockSelectAction === 'unblock'
+        ? 'Nenhum lote bloqueado para desbloquear nas quadras selecionadas.'
+        : 'Nenhum lote disponível ou bloqueado para alterar nas quadras selecionadas.';
+      customAlert.warning(msg);
       return;
     }
 
-    const toBlock = lotsToToggle.filter(l => l.status === LotStatus.AVAILABLE);
-    const toUnblock = lotsToToggle.filter(l => l.status === LotStatus.BLOCKED);
+    const toBlock = blockSelectAction !== 'unblock' ? lotsToToggle.filter(l => l.status === LotStatus.AVAILABLE) : [];
+    const toUnblock = blockSelectAction !== 'block' ? lotsToToggle.filter(l => l.status === LotStatus.BLOCKED) : [];
 
     const parts = [];
     if (toBlock.length > 0) parts.push(`bloquear ${toBlock.length}`);
@@ -1241,11 +1249,20 @@ export default function MapDetails() {
       return;
     }
     
-    const lotsToBlock = selectedLots.filter(lot => lot.status === LotStatus.AVAILABLE);
-    const lotsToUnblock = selectedLots.filter(lot => lot.status === LotStatus.BLOCKED);
+    const lotsToBlock = multiSelectAction !== 'unblock'
+      ? selectedLots.filter(lot => lot.status === LotStatus.AVAILABLE)
+      : [];
+    const lotsToUnblock = multiSelectAction !== 'block'
+      ? selectedLots.filter(lot => lot.status === LotStatus.BLOCKED)
+      : [];
     
     if (lotsToBlock.length === 0 && lotsToUnblock.length === 0) {
-      customAlert.warning('Nenhum lote disponível ou bloqueado para alterar');
+      const msg = multiSelectAction === 'block'
+        ? 'Nenhum lote disponível selecionado para bloquear'
+        : multiSelectAction === 'unblock'
+        ? 'Nenhum lote bloqueado selecionado para desbloquear'
+        : 'Nenhum lote disponível ou bloqueado para alterar';
+      customAlert.warning(msg);
       return;
     }
 
@@ -1799,11 +1816,9 @@ export default function MapDetails() {
                     if (blockSelectAction === 'block') {
                       handleClearBlockSelection();
                     } else {
-                      // Desativar qualquer operação de lote ativa
                       setMultiSelectAction(null);
                       setMultiSelectMode(false);
                       handleClearSelection();
-                      // Ativar seleção de quadras para bloqueio
                       setBlockSelectAction('block');
                       setSelectedBlockIds([]);
                     }
@@ -1815,9 +1830,33 @@ export default function MapDetails() {
                   }`}
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
                   </svg>
-                  Bloquear / Desbloquear
+                  Bloquear
+                </button>
+
+                <button
+                  onClick={() => {
+                    if (blockSelectAction === 'unblock') {
+                      handleClearBlockSelection();
+                    } else {
+                      setMultiSelectAction(null);
+                      setMultiSelectMode(false);
+                      handleClearSelection();
+                      setBlockSelectAction('unblock');
+                      setSelectedBlockIds([]);
+                    }
+                  }}
+                  className={`px-4 py-2.5 font-semibold rounded-xl transition-all flex items-center gap-2 cursor-pointer text-sm ${
+                    blockSelectAction === 'unblock'
+                      ? 'bg-blue-600 text-white ring-2 ring-blue-400 shadow-lg'
+                      : 'bg-blue-500/20 border-2 border-blue-400/50 text-blue-200 hover:bg-blue-500/35 hover:border-blue-300/70'
+                  }`}
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.5 10.5V6.75a4.5 4.5 0 119 0v3.75M3.75 21.75h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H3.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+                  </svg>
+                  Desbloquear
                 </button>
               </>
             )}
@@ -1895,24 +1934,26 @@ export default function MapDetails() {
                   
                   {/* Indicador de seleção para operações em lote de quadras */}
                   {blockSelectAction && !(blockSelectAction === 'delete' && isBlockDeletionDisabled) && (
-                    blockSelectAction === 'block' && isBlockSelected ? (
-                      <div className="absolute top-1 right-1 w-6 h-6 rounded-lg bg-gray-600 flex items-center justify-center shadow-md">
-                        <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
-                        </svg>
-                      </div>
-                    ) : isBlockSelected ? (
-                      <div className={`absolute top-1 right-1 w-6 h-6 rounded-lg flex items-center justify-center shadow-md ${blockSelectAction === 'delete' ? 'bg-red-500' : 'bg-blue-500'}`}>
-                        {blockSelectAction === 'delete' ? (
+                    isBlockSelected ? (
+                      blockSelectAction === 'delete' ? (
+                        <div className="absolute top-1 right-1 w-6 h-6 rounded-lg bg-red-500 flex items-center justify-center shadow-md">
                           <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
                             <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                           </svg>
-                        ) : (
-                          <svg className="w-3.5 h-3.5 text-white" fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                        </div>
+                      ) : blockSelectAction === 'block' ? (
+                        <div className="absolute top-1 right-1 w-6 h-6 rounded-lg bg-gray-600 flex items-center justify-center shadow-md">
+                          <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
                           </svg>
-                        )}
-                      </div>
+                        </div>
+                      ) : (
+                        <div className="absolute top-1 right-1 w-6 h-6 rounded-lg bg-blue-500 flex items-center justify-center shadow-md">
+                          <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 10.5V6.75a4.5 4.5 0 119 0v3.75M3.75 21.75h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H3.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+                          </svg>
+                        </div>
+                      )
                     ) : (
                       <div className="absolute top-1 right-1 w-6 h-6 rounded-lg border-2 border-[var(--border)] bg-[var(--surface-hover)]" />
                     )
@@ -2060,9 +2101,7 @@ export default function MapDetails() {
                           setMultiSelectMode(false);
                           handleClearSelection();
                         } else {
-                          // Desativar qualquer operação de quadra ativa
                           handleClearBlockSelection();
-                          // Ativar seleção de lotes para bloqueio
                           setMultiSelectAction('block');
                           setMultiSelectMode(true);
                           handleClearSelection();
@@ -2075,9 +2114,34 @@ export default function MapDetails() {
                       }`}
                     >
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
                       </svg>
-                      Bloquear / Desbloquear
+                      Bloquear
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        if (multiSelectAction === 'unblock') {
+                          setMultiSelectAction(null);
+                          setMultiSelectMode(false);
+                          handleClearSelection();
+                        } else {
+                          handleClearBlockSelection();
+                          setMultiSelectAction('unblock');
+                          setMultiSelectMode(true);
+                          handleClearSelection();
+                        }
+                      }}
+                      className={`px-4 py-2.5 font-semibold rounded-xl transition-all flex items-center gap-2 cursor-pointer text-sm ${
+                        multiSelectAction === 'unblock'
+                          ? 'bg-blue-600 text-white ring-2 ring-blue-400 shadow-lg'
+                          : 'bg-blue-500/20 border-2 border-blue-400/50 text-blue-200 hover:bg-blue-500/35 hover:border-blue-300/70'
+                      }`}
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.5 10.5V6.75a4.5 4.5 0 119 0v3.75M3.75 21.75h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H3.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+                      </svg>
+                      Desbloquear
                     </button>
                   </>
                 )}
@@ -2760,6 +2824,8 @@ export default function MapDetails() {
           <div className={`rounded-2xl shadow-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-center gap-4 min-w-[300px] sm:min-w-[400px] border-2 ${
             multiSelectAction === 'delete'
               ? 'bg-gradient-to-r from-red-600 to-red-700 border-red-400/30'
+              : multiSelectAction === 'unblock'
+              ? 'bg-gradient-to-r from-blue-600 to-blue-700 border-blue-400/30'
               : 'bg-gradient-to-r from-gray-600 to-gray-700 border-gray-400/30'
           }`}>
             {/* Contador de Lotes */}
@@ -2781,18 +2847,12 @@ export default function MapDetails() {
                     }, {} as Record<string, number>);
                     const groupTexts = Object.entries(blockGroups).map(([name, count]) => `${name}: ${count}`);
                     return groupTexts.length > 1 ? groupTexts.join(' | ') : 'selecionado(s) para exclusão';
+                  })() : multiSelectAction === 'block' ? (() => {
+                    const count = selectedLots.filter(l => l.status === LotStatus.AVAILABLE).length;
+                    return `${count} lote(s) a bloquear`;
                   })() : (() => {
-                    const toBlock = selectedLots.filter(l => l.status === LotStatus.AVAILABLE).length;
-                    const toUnblock = selectedLots.filter(l => l.status === LotStatus.BLOCKED).length;
-                    const parts = [];
-                    if (toBlock > 0) parts.push(`${toBlock} bloquear`);
-                    if (toUnblock > 0) parts.push(`${toUnblock} desbloquear`);
-                    const blockGroups = [...new Set(selectedLots.map(l => l.blockId))];
-                    if (blockGroups.length > 1) {
-                      const groupNames = blockGroups.map(bid => blocks.find(b => b.id === bid)?.name || '?').join(', ');
-                      parts.push(`Quadras: ${groupNames}`);
-                    }
-                    return parts.join(' | ');
+                    const count = selectedLots.filter(l => l.status === LotStatus.BLOCKED).length;
+                    return `${count} lote(s) a desbloquear`;
                   })()}
                 </p>
               </div>
@@ -2830,16 +2890,24 @@ export default function MapDetails() {
                 </button>
               )}
 
-              {multiSelectAction === 'block' && (
+              {(multiSelectAction === 'block' || multiSelectAction === 'unblock') && (
                 <button
                   onClick={handleBulkBlockToggle}
-                  disabled={!selectedLots.some(l => l.status === LotStatus.AVAILABLE || l.status === LotStatus.BLOCKED)}
+                  disabled={!selectedLots.some(l =>
+                    multiSelectAction === 'block'
+                      ? l.status === LotStatus.AVAILABLE
+                      : l.status === LotStatus.BLOCKED
+                  )}
                   className="px-4 py-2 bg-white hover:bg-gray-100 text-gray-700 rounded-xl font-bold transition-all duration-200 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed text-sm cursor-pointer"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+                    {multiSelectAction === 'block' ? (
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+                    ) : (
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.5 10.5V6.75a4.5 4.5 0 119 0v3.75M3.75 21.75h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H3.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+                    )}
                   </svg>
-                  Confirmar
+                  {multiSelectAction === 'block' ? 'Confirmar Bloqueio' : 'Confirmar Desbloqueio'}
                 </button>
               )}
             </div>
@@ -2853,6 +2921,8 @@ export default function MapDetails() {
           <div className={`rounded-2xl shadow-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-center gap-4 min-w-[300px] sm:min-w-[400px] border-2 ${
             blockSelectAction === 'delete'
               ? 'bg-gradient-to-r from-red-600 to-red-700 border-red-400/30'
+              : blockSelectAction === 'unblock'
+              ? 'bg-gradient-to-r from-blue-600 to-blue-700 border-blue-400/30'
               : 'bg-gradient-to-r from-gray-600 to-gray-700 border-gray-400/30'
           }`}>
             {/* Contador de Quadras */}
@@ -2869,12 +2939,12 @@ export default function MapDetails() {
                     ? selectedBlockIds.map(id => blocks.find(b => b.id === id)?.name || '?').join(', ')
                     : (() => {
                         const allLots = allLotsInMap.filter(l => selectedBlockIds.includes(String(l.blockId)));
-                        const toBlock = allLots.filter(l => l.status === LotStatus.AVAILABLE).length;
-                        const toUnblock = allLots.filter(l => l.status === LotStatus.BLOCKED).length;
-                        const parts = [];
-                        if (toBlock > 0) parts.push(`${toBlock} bloquear`);
-                        if (toUnblock > 0) parts.push(`${toUnblock} desbloquear`);
-                        return parts.join(' | ') || 'sem lotes alteráveis';
+                        if (blockSelectAction === 'block') {
+                          const count = allLots.filter(l => l.status === LotStatus.AVAILABLE).length;
+                          return `${count} lote(s) a bloquear`;
+                        }
+                        const count = allLots.filter(l => l.status === LotStatus.BLOCKED).length;
+                        return `${count} lote(s) a desbloquear`;
                       })()
                   }
                 </p>
@@ -2908,15 +2978,19 @@ export default function MapDetails() {
                 </button>
               )}
 
-              {blockSelectAction === 'block' && (
+              {(blockSelectAction === 'block' || blockSelectAction === 'unblock') && (
                 <button
                   onClick={handleBulkBlockToggleAll}
                   className="px-4 py-2 bg-white hover:bg-gray-100 text-gray-700 rounded-xl font-bold transition-all duration-200 flex items-center gap-2 text-sm cursor-pointer"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+                    {blockSelectAction === 'block' ? (
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+                    ) : (
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.5 10.5V6.75a4.5 4.5 0 119 0v3.75M3.75 21.75h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H3.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+                    )}
                   </svg>
-                  Confirmar
+                  {blockSelectAction === 'block' ? 'Confirmar Bloqueio' : 'Confirmar Desbloqueio'}
                 </button>
               )}
             </div>
@@ -3145,7 +3219,7 @@ interface BlockCardProps {
   onRemoveLotPosition?: (lot: Lot) => void;
   onStartSequentialPlacing?: (blockId: string, lots?: Lot[]) => void;
   isSequentialPlacing?: boolean;
-  multiSelectAction?: 'delete' | 'block' | null;
+  multiSelectAction?: 'delete' | 'block' | 'unblock' | null;
 }
 
 function BlockCard({

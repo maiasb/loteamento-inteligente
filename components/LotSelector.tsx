@@ -24,7 +24,7 @@ interface LotSelectorProps {
   isAdminContext?: boolean; // True quando usado na página /admin/map-details para permitir edição de lotes bloqueados
   externalViewingLot?: Lot | null; // Lote para visualizar vindo de fora (ex: clique no mapa)
   onCloseExternalViewing?: () => void; // Callback para fechar visualização externa
-  multiSelectAction?: 'delete' | 'block' | null; // Tipo de ação em lote ativa
+  multiSelectAction?: 'delete' | 'block' | 'unblock' | null; // Tipo de ação em lote ativa
 }
 
 export default function LotSelector({
@@ -463,37 +463,44 @@ export default function LotSelector({
                   
                   {/* Indicador de seleção - apenas em modo multi-select */}
                   {allowMultipleSelection && (
-                    isAdminContext 
-                      ? (lot.status === LotStatus.AVAILABLE || lot.status === LotStatus.BLOCKED)
-                      : lot.status === LotStatus.AVAILABLE
+                    multiSelectAction === 'block'
+                      ? lot.status === LotStatus.AVAILABLE
+                      : multiSelectAction === 'unblock'
+                      ? lot.status === LotStatus.BLOCKED
+                      : multiSelectAction === 'delete'
+                      ? (isAdminContext
+                          ? (lot.status !== LotStatus.RESERVED && lot.status !== LotStatus.SOLD)
+                          : lot.status === LotStatus.AVAILABLE)
+                      : (isAdminContext
+                          ? (lot.status === LotStatus.AVAILABLE || lot.status === LotStatus.BLOCKED)
+                          : lot.status === LotStatus.AVAILABLE)
                   ) && (
                     multiSelectAction === 'block' ? (
-                      // Cadeado: fechado se vai bloquear (disponível), aberto se vai desbloquear (bloqueado)
+                      // Modo bloquear: cadeado fechado quando selecionado (só lotes disponíveis)
                       isSelected ? (
-                        <div className={`absolute top-0 right-0 w-5 h-5 rounded-bl-lg rounded-tr-lg flex items-center justify-center shadow-md transition-all duration-200 ${
-                          lot.status === LotStatus.AVAILABLE
-                            ? 'bg-gray-600'
-                            : 'bg-green-600'
-                        }`}>
-                          {lot.status === LotStatus.AVAILABLE ? (
-                            // Cadeado fechado - vai ser bloqueado
-                            <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
-                            </svg>
-                          ) : (
-                            // Cadeado aberto - vai ser desbloqueado
-                            <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 10.5V6.75a4.5 4.5 0 119 0v3.75M3.75 21.75h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H3.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
-                            </svg>
-                          )}
+                        <div className="absolute top-0 right-0 w-5 h-5 rounded-bl-lg rounded-tr-lg flex items-center justify-center shadow-md bg-gray-600">
+                          <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+                          </svg>
+                        </div>
+                      ) : (
+                        <div className="absolute top-0.5 right-0.5 w-4 h-4 rounded-full border-2 border-white/40 bg-white/10 backdrop-blur-sm transition-all duration-200" />
+                      )
+                    ) : multiSelectAction === 'unblock' ? (
+                      // Modo desbloquear: cadeado aberto quando selecionado (só lotes bloqueados)
+                      isSelected ? (
+                        <div className="absolute top-0 right-0 w-5 h-5 rounded-bl-lg rounded-tr-lg flex items-center justify-center shadow-md bg-blue-600">
+                          <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 10.5V6.75a4.5 4.5 0 119 0v3.75M3.75 21.75h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H3.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+                          </svg>
                         </div>
                       ) : (
                         <div className="absolute top-0.5 right-0.5 w-4 h-4 rounded-full border-2 border-white/40 bg-white/10 backdrop-blur-sm transition-all duration-200" />
                       )
                     ) : (
-                      // Modo delete: lixeira | modo padrão: checkmark
+                      // Modo delete ou padrão: lixeira ou checkmark
                       <div className={`absolute top-0.5 right-0.5 w-4 h-4 rounded-full border-2 border-white shadow-md transition-all duration-200 ${
-                        isSelected 
+                        isSelected
                           ? multiSelectAction === 'delete'
                             ? 'bg-red-500 border-red-500'
                             : 'bg-blue-500 border-blue-500'
