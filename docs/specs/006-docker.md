@@ -5,7 +5,7 @@
 
 ## Contexto e problema
 
-O banco original foi perdido e o ambiente depende de MariaDB/MySQL instalado na máquina. Não há forma reproduzível de subir app e banco.
+O banco original foi perdido e o ambiente depende de um MariaDB instalado na máquina. Não há forma reproduzível de subir app e banco.
 
 ## Objetivo
 

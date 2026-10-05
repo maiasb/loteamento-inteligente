@@ -12,13 +12,14 @@ com recursos limitados (PM2, uma instância, limite de memória de 1 GB).
 
 - Next.js 16 com App Router e React 19, em TypeScript estrito; front e API no mesmo projeto
   (`app/api`).
-- MySQL acessado por `mysql2` com SQL cru e migrations `.sql` próprias.
+- MariaDB (compatível com MySQL) acessado por `mysql2` com SQL cru e migrations `.sql` próprias.
+  A escolha do MariaDB como referência está no [ADR 002](002-docker-mariadb.md).
 - Tailwind v4 com tokens em variáveis CSS e tema claro/escuro.
 - Estado por Context API e hooks; chamadas à API com axios.
 - Cloudinary para imagens, Google Maps para overlay de lotes, `xlsx` para importação.
 - Autenticação própria por CPF e senha, com sessão em `localStorage`.
 - yarn como gerenciador de pacotes.
-- Deploy por GitHub Actions + SSH + PM2.
+- Deploy por GitHub Actions + SSH + PM2; ambiente local com Docker Compose (ADR 002).
 
 ## Alternativas consideradas
 
