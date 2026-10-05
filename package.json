@@ -6,7 +6,10 @@
     "dev": "next dev -H 0.0.0.0",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "typecheck": "tsc --noEmit",
+    "format": "prettier --write",
+    "prepare": "husky"
   },
   "dependencies": {
     "@react-google-maps/api": "^2.19.3",
@@ -21,6 +24,8 @@
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
+    "@commitlint/cli": "^19",
+    "@commitlint/config-conventional": "^19",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
@@ -28,11 +33,23 @@
     "eslint": "^9",
     "eslint-config-next": "16.0.1",
     "gh-pages": "^6.3.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^16",
+    "prettier": "^3.9.9",
     "tailwindcss": "^4",
     "ts-node": "^10.9.2",
     "typescript": "^5"
   },
   "resolutions": {
     "canvas": "npm:empty-npm-package@1.0.0"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,js,jsx,mjs}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{json,css,md,yml}": [
+      "prettier --write"
+    ]
   }
 }
