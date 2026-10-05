@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import mysql from 'mysql2/promise';
-import { dbConfig } from '@/lib/db';
+import mysql, { type RowDataPacket } from 'mysql2/promise';
+import { dbConfig, type QueryParam } from '@/lib/db';
 
 // Forçar rota dinâmica
 export const dynamic = 'force-dynamic';
@@ -11,19 +11,15 @@ export const dynamic = 'force-dynamic';
  */
 export async function GET(request: NextRequest) {
   let connection;
-  
+
   try {
     const { searchParams } = new URL(request.url);
     const mapId = searchParams.get('mapId');
     const blockId = searchParams.get('blockId');
 
     if (!mapId) {
-      return NextResponse.json(
-        { error: 'mapId é obrigatório' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'mapId é obrigatório' }, { status: 400 });
     }
-
 
     // Conectar ao banco de dados
     connection = await mysql.createConnection(dbConfig);
@@ -37,7 +33,7 @@ export async function GET(request: NextRequest) {
       LEFT JOIN blocks b ON l.block_id = b.id
       WHERE l.map_id = ?
     `;
-    const params: any[] = [mapId];
+    const params: QueryParam[] = [mapId];
 
     if (blockId) {
       query += ' AND l.block_id = ?';
@@ -47,25 +43,26 @@ export async function GET(request: NextRequest) {
     query += ' ORDER BY l.lot_number ASC';
 
     // Executar query
-    const [rows] = await connection.execute(query, params);
+    const [rows] = await connection.execute<RowDataPacket[]>(query, params);
 
     if (!Array.isArray(rows)) {
       return NextResponse.json([{ mapId, lots: [] }], { status: 200 });
     }
 
     // Formatar lotes (mesmo formato esperado pelo frontend)
-    const lots = rows.map((lot: any) => {
+    const lots = rows.map((lot) => {
       // Parse coordinates JSON para lat/lng
       let lat = null;
       let lng = null;
       if (lot.coordinates) {
         try {
-          const coords = typeof lot.coordinates === 'string' ? JSON.parse(lot.coordinates) : lot.coordinates;
+          const coords =
+            typeof lot.coordinates === 'string' ? JSON.parse(lot.coordinates) : lot.coordinates;
           if (coords && typeof coords.lat === 'number' && typeof coords.lng === 'number') {
             lat = coords.lat;
             lng = coords.lng;
           }
-        } catch (e) {
+        } catch {
           // ignore parse errors
         }
       }
@@ -94,16 +91,13 @@ export async function GET(request: NextRequest) {
       {
         mapId,
         lots,
-      }
+      },
     ];
 
     return NextResponse.json(response, { status: 200 });
   } catch (error) {
     console.error('[API /mapas/lotes GET] ❌ Erro:', error);
-    return NextResponse.json(
-      { error: 'Erro ao buscar lotes' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Erro ao buscar lotes' }, { status: 500 });
   } finally {
     if (connection) {
       await connection.end();

@@ -8,24 +8,17 @@ export const dynamic = 'force-dynamic';
 
 export async function PATCH(request: NextRequest) {
   let connection;
-  
+
   try {
     const body = await request.json();
     const { id, name, description } = body;
 
-
     if (!id) {
-      return NextResponse.json(
-        { error: 'ID do mapa é obrigatório' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'ID do mapa é obrigatório' }, { status: 400 });
     }
 
     if (!name || name.trim() === '') {
-      return NextResponse.json(
-        { error: 'Nome do mapa é obrigatório' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'Nome do mapa é obrigatório' }, { status: 400 });
     }
 
     connection = await mysql.createConnection(dbConfig);
@@ -38,19 +31,15 @@ export async function PATCH(request: NextRequest) {
 
     if (maps.length === 0) {
       console.error('[PATCH /mapas/atualizar] Mapa não encontrado:', id);
-      return NextResponse.json(
-        { error: 'Mapa não encontrado' },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: 'Mapa não encontrado' }, { status: 404 });
     }
 
-
     // Atualizar o mapa
-    const [result] = await connection.query(
-      'UPDATE maps SET name = ?, description = ? WHERE id = ?',
-      [name.trim(), description?.trim() || '', id]
-    );
-
+    await connection.query('UPDATE maps SET name = ?, description = ? WHERE id = ?', [
+      name.trim(),
+      description?.trim() || '',
+      id,
+    ]);
 
     return NextResponse.json({
       success: true,
@@ -58,13 +47,13 @@ export async function PATCH(request: NextRequest) {
       data: {
         id,
         name: name.trim(),
-        description: description?.trim() || ''
-      }
+        description: description?.trim() || '',
+      },
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error('[PATCH /mapas/atualizar] Erro:', error);
     return NextResponse.json(
-      { error: error.message || 'Erro ao atualizar mapa' },
+      { error: error instanceof Error ? error.message : 'Erro ao atualizar mapa' },
       { status: 500 }
     );
   } finally {

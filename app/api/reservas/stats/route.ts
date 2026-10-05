@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import mysql from 'mysql2/promise';
-import { dbConfig } from '@/lib/db';
+import mysql, { type RowDataPacket } from 'mysql2/promise';
+import { dbConfig, type QueryParam } from '@/lib/db';
 
 // Forçar rota dinâmica
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
   let connection;
-  
+
   try {
     connection = await mysql.createConnection(dbConfig);
 
@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
     const userId = searchParams.get('userId');
 
     let baseQuery = 'SELECT COUNT(*) as count, status FROM purchase_requests';
-    const params: any[] = [];
+    const params: QueryParam[] = [];
 
     // Aplicar filtro de usuário se necessário
     if (userId && userId !== 'undefined' && userId !== 'null') {
@@ -35,9 +35,9 @@ export async function GET(request: NextRequest) {
       cancelled: 0,
     };
 
-    (results as any[]).forEach((row) => {
+    (results as RowDataPacket[]).forEach((row) => {
       stats.total += row.count;
-      
+
       if (row.status === 'pending') {
         stats.pending = row.count;
       } else if (row.status === 'completed') {
@@ -48,13 +48,9 @@ export async function GET(request: NextRequest) {
     });
 
     return NextResponse.json(stats, { status: 200 });
-
   } catch (error) {
     console.error('[API /reservas/stats GET] Erro:', error);
-    return NextResponse.json(
-      { error: 'Erro ao buscar estatísticas' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Erro ao buscar estatísticas' }, { status: 500 });
   } finally {
     if (connection) await connection.end();
   }

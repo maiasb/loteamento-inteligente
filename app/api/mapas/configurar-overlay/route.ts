@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import mysql from 'mysql2/promise';
+import mysql, { type RowDataPacket } from 'mysql2/promise';
 import { dbConfig } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
@@ -12,35 +12,26 @@ export async function POST(request: NextRequest) {
     const { mapId, overlayConfig } = body;
 
     if (!mapId) {
-      return NextResponse.json(
-        { error: 'ID do mapa é obrigatório' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'ID do mapa é obrigatório' }, { status: 400 });
     }
 
     connection = await mysql.createConnection(dbConfig);
 
     // Verificar se o mapa existe
-    const [maps] = await connection.execute(
-      'SELECT id FROM maps WHERE id = ?',
-      [mapId]
-    );
+    const [maps] = await connection.execute('SELECT id FROM maps WHERE id = ?', [mapId]);
 
     if (!Array.isArray(maps) || maps.length === 0) {
-      return NextResponse.json(
-        { error: 'Mapa não encontrado' },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: 'Mapa não encontrado' }, { status: 404 });
     }
 
     // Verificar se a coluna overlay_config existe
-    const [columns] = await connection.execute(
+    const [columns] = await connection.execute<RowDataPacket[]>(
       `SELECT COLUMN_NAME 
        FROM INFORMATION_SCHEMA.COLUMNS 
        WHERE TABLE_SCHEMA = DATABASE() 
        AND TABLE_NAME = 'maps' 
        AND COLUMN_NAME = 'overlay_config'`
-    ) as any;
+    );
 
     const hasOverlayConfig = Array.isArray(columns) && columns.length > 0;
 
@@ -60,10 +51,7 @@ export async function POST(request: NextRequest) {
         );
       }
       if (!overlayConfig.bounds || typeof overlayConfig.bounds.north !== 'number') {
-        return NextResponse.json(
-          { error: 'bounds inválidos no overlayConfig' },
-          { status: 400 }
-        );
+        return NextResponse.json({ error: 'bounds inválidos no overlayConfig' }, { status: 400 });
       }
     }
 
@@ -84,13 +72,12 @@ export async function POST(request: NextRequest) {
       mapId,
       overlayConfig,
     });
-
-  } catch (error: any) {
+  } catch (error) {
     console.error('[API] Erro ao configurar overlay do mapa:', error);
     return NextResponse.json(
       {
         error: 'Erro ao configurar overlay do mapa',
-        details: error.message,
+        details: error instanceof Error ? error.message : String(error),
       },
       { status: 500 }
     );

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { executeQuery } from '@/lib/db';
+import type { RowDataPacket } from 'mysql2/promise';
 
 export async function POST(request: Request) {
   try {
@@ -13,12 +14,15 @@ export async function POST(request: Request) {
     }
 
     // Buscar usuário por CPF e email
-    const users = await executeQuery<any[]>(`
+    const users = await executeQuery<RowDataPacket[]>(
+      `
       SELECT id, name, email, cpf, role, status
       FROM users
       WHERE cpf = ? AND email = ?
-    `, [cpf, email.toLowerCase()]);
-    
+    `,
+      [cpf, email.toLowerCase()]
+    );
+
     const user = users.length > 0 ? users[0] : null;
 
     if (!user) {

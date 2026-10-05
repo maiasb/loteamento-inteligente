@@ -1,4 +1,6 @@
-import mysql from 'mysql2/promise';
+import mysql, { type RowDataPacket } from 'mysql2/promise';
+
+export type QueryParam = string | number | boolean | Date | null;
 
 export const dbConfig = {
   host: process.env.DB_HOST,
@@ -28,9 +30,9 @@ export async function createConnection() {
   return await getPool().getConnection();
 }
 
-export async function executeQuery<T = any>(
+export async function executeQuery<T = RowDataPacket[]>(
   query: string,
-  params?: any[]
+  params?: QueryParam[]
 ): Promise<T> {
   const connection = await createConnection();
   try {

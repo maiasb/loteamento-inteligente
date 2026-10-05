@@ -1,6 +1,7 @@
 import { createConnection } from './db';
 import fs from 'fs';
 import path from 'path';
+import type { RowDataPacket } from 'mysql2/promise';
 
 export interface Migration {
   id: number;
@@ -34,10 +35,10 @@ export async function createMigrationsTable() {
 export async function getExecutedMigrations(): Promise<string[]> {
   const connection = await createConnection();
   try {
-    const [rows] = await connection.execute<any[]>(
+    const [rows] = await connection.execute<RowDataPacket[]>(
       'SELECT name FROM migrations ORDER BY id ASC'
     );
-    return rows.map((row: any) => row.name);
+    return rows.map((row) => row.name);
   } finally {
     await connection.end();
   }
@@ -48,14 +49,14 @@ export async function getExecutedMigrations(): Promise<string[]> {
  */
 export function getAvailableMigrations(): string[] {
   const migrationsDir = path.join(process.cwd(), 'migrations');
-  
+
   if (!fs.existsSync(migrationsDir)) {
     return [];
   }
 
   return fs
     .readdirSync(migrationsDir)
-    .filter(file => file.endsWith('.sql'))
+    .filter((file) => file.endsWith('.sql'))
     .sort();
 }
 
@@ -65,7 +66,7 @@ export function getAvailableMigrations(): string[] {
 export async function getPendingMigrations(): Promise<string[]> {
   const available = getAvailableMigrations();
   const executed = await getExecutedMigrations();
-  return available.filter(migration => !executed.includes(migration));
+  return available.filter((migration) => !executed.includes(migration));
 }
 
 /**
@@ -81,8 +82,8 @@ export async function executeMigration(filename: string): Promise<void> {
     // Dividir em statements individuais (separados por ;)
     const statements = sql
       .split(';')
-      .map(stmt => stmt.trim())
-      .filter(stmt => stmt.length > 0 && !stmt.startsWith('--'));
+      .map((stmt) => stmt.trim())
+      .filter((stmt) => stmt.length > 0 && !stmt.startsWith('--'));
 
     // Executar cada statement
     for (const statement of statements) {
@@ -90,11 +91,7 @@ export async function executeMigration(filename: string): Promise<void> {
     }
 
     // Registrar migration como executada
-    await connection.execute(
-      'INSERT INTO migrations (name) VALUES (?)',
-      [filename]
-    );
-
+    await connection.execute('INSERT INTO migrations (name) VALUES (?)', [filename]);
   } catch (error) {
     console.error(`❌ Erro ao executar migration ${filename}:`, error);
     throw error;
@@ -117,7 +114,6 @@ export async function runPendingMigrations(): Promise<void> {
   for (const migration of pending) {
     await executeMigration(migration);
   }
-
 }
 
 /**
@@ -125,9 +121,4 @@ export async function runPendingMigrations(): Promise<void> {
  */
 export async function showMigrationsStatus(): Promise<void> {
   await createMigrationsTable();
-  
-  const available = getAvailableMigrations();
-  const executed = await getExecutedMigrations();
-  const pending = available.filter(m => !executed.includes(m));
-
 }

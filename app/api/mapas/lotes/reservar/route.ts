@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import mysql from 'mysql2/promise';
+import mysql, { type ResultSetHeader, type RowDataPacket } from 'mysql2/promise';
 import { dbConfig } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
   let connection;
-  
+
   try {
     const body = await request.json();
     const {
@@ -17,7 +17,6 @@ export async function POST(request: NextRequest) {
       customerPhone,
       customerCPF,
       message,
-      sellerId,
       userId,
       sellerName,
       sellerEmail,
@@ -36,21 +35,15 @@ export async function POST(request: NextRequest) {
     }
 
     if (!customerName) {
-      return NextResponse.json(
-        { error: 'Nome do cliente é obrigatório' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'Nome do cliente é obrigatório' }, { status: 400 });
     }
 
     if (!sellerName) {
-      return NextResponse.json(
-        { error: 'Nome do vendedor é obrigatório' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'Nome do vendedor é obrigatório' }, { status: 400 });
     }
 
     connection = await mysql.createConnection(dbConfig);
-    
+
     // Iniciar transação
     await connection.beginTransaction();
 
@@ -62,9 +55,9 @@ export async function POST(request: NextRequest) {
         lotIds
       );
 
-      const lotsArray = lotsCheck as any[];
-      const unavailableLots = lotsArray.filter((lot: any) => lot.status !== 'available');
-      
+      const lotsArray = lotsCheck as RowDataPacket[];
+      const unavailableLots = lotsArray.filter((lot) => lot.status !== 'available');
+
       if (unavailableLots.length > 0) {
         await connection.rollback();
         return NextResponse.json(
@@ -75,15 +68,8 @@ export async function POST(request: NextRequest) {
 
       if (lotsArray.length === 0) {
         await connection.rollback();
-        return NextResponse.json(
-          { error: 'Nenhum lote encontrado' },
-          { status: 404 }
-        );
+        return NextResponse.json({ error: 'Nenhum lote encontrado' }, { status: 404 });
       }
-
-      // Pegar o map_id do primeiro lote (todos devem ser do mesmo mapa)
-      const firstLot = lotsArray[0];
-      const mapId = firstLot.map_id;
 
       // 1. Criar um único registro em purchase_requests (sem first_payment e installments)
       const [purchaseResult] = await connection.execute(
@@ -105,11 +91,13 @@ export async function POST(request: NextRequest) {
           sellerPhone ? sellerPhone.replace(/\D/g, '') : null,
           sellerCPF ? sellerCPF.replace(/\D/g, '') : null,
           contract || null,
-          reservationDate ? new Date(reservationDate).toISOString().slice(0, 19).replace('T', ' ') : new Date().toISOString().slice(0, 19).replace('T', ' '),
+          reservationDate
+            ? new Date(reservationDate).toISOString().slice(0, 19).replace('T', ' ')
+            : new Date().toISOString().slice(0, 19).replace('T', ' '),
         ]
       );
 
-      const purchaseRequestId = (purchaseResult as any).insertId;
+      const purchaseRequestId = (purchaseResult as ResultSetHeader).insertId;
 
       // 2. Criar registros em purchase_request_lots para cada lote com agreed_price, first_payment e installments
       for (const lotDetail of lotDetails) {
@@ -123,7 +111,7 @@ export async function POST(request: NextRequest) {
             lotDetail.price || null,
             lotDetail.firstPayment || null,
             lotDetail.installments || null,
-            lotDetail.paymentMethod || null
+            lotDetail.paymentMethod || null,
           ]
         );
       }
@@ -153,7 +141,10 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('[API /mapas/lotes/reservar] ❌ Erro ao criar reserva:', error);
     return NextResponse.json(
-      { error: 'Erro ao criar reserva', details: error instanceof Error ? error.message : 'Erro desconhecido' },
+      {
+        error: 'Erro ao criar reserva',
+        details: error instanceof Error ? error.message : 'Erro desconhecido',
+      },
       { status: 500 }
     );
   } finally {

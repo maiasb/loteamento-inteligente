@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import mysql from 'mysql2/promise';
+import mysql, { type RowDataPacket, type ResultSetHeader } from 'mysql2/promise';
 import crypto from 'crypto';
 import { dbConfig } from '@/lib/db';
 
@@ -7,7 +7,7 @@ export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
   let connection;
-  
+
   try {
     const body = await request.json();
     const {
@@ -31,12 +31,9 @@ export async function POST(request: NextRequest) {
 
     const cleanCpf = cpf.replace(/\D/g, '');
     const cleanPhone = phone.replace(/\D/g, '');
-    
+
     // Hash MD5 da senha
-    const hashedPassword = crypto
-      .createHash('md5')
-      .update(password)
-      .digest('hex');
+    const hashedPassword = crypto.createHash('md5').update(password).digest('hex');
 
     connection = await mysql.createConnection(dbConfig);
 
@@ -46,9 +43,12 @@ export async function POST(request: NextRequest) {
       [cleanCpf, email]
     );
 
-    if (Array.isArray(existing) && existing[0] && (existing[0] as any).count > 0) {
+    if (Array.isArray(existing) && existing[0] && (existing[0] as RowDataPacket).count > 0) {
       return NextResponse.json(
-        { error: 'CPF ou email já cadastrado', message: 'Este CPF ou email já está cadastrado no sistema' },
+        {
+          error: 'CPF ou email já cadastrado',
+          message: 'Este CPF ou email já está cadastrado no sistema',
+        },
         { status: 409 }
       );
     }
@@ -72,7 +72,7 @@ export async function POST(request: NextRequest) {
       ]
     );
 
-    const userId = (result as any).insertId;
+    const userId = (result as ResultSetHeader).insertId;
 
     const newUser = {
       id: userId,
@@ -89,25 +89,31 @@ export async function POST(request: NextRequest) {
     };
 
     return NextResponse.json(
-      { 
+      {
         message: 'Usuário criado com sucesso. Aguarde aprovação do administrador.',
-        user: newUser 
-      }, 
+        user: newUser,
+      },
       { status: 201 }
     );
   } catch (error) {
     console.error('[API /usuarios/criar] ❌ Erro:', error);
-    
+
     // Verificar se é erro de duplicação do MySQL
-    if ((error as any).code === 'ER_DUP_ENTRY') {
+    if ((error as NodeJS.ErrnoException).code === 'ER_DUP_ENTRY') {
       return NextResponse.json(
-        { error: 'CPF ou email já cadastrado', message: 'Este CPF ou email já está cadastrado no sistema' },
+        {
+          error: 'CPF ou email já cadastrado',
+          message: 'Este CPF ou email já está cadastrado no sistema',
+        },
         { status: 409 }
       );
     }
-    
+
     return NextResponse.json(
-      { error: 'Erro ao criar usuário', message: 'Ocorreu um erro ao processar seu cadastro. Tente novamente.' },
+      {
+        error: 'Erro ao criar usuário',
+        message: 'Ocorreu um erro ao processar seu cadastro. Tente novamente.',
+      },
       { status: 500 }
     );
   } finally {

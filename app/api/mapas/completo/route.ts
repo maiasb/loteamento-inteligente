@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import mysql, { Connection } from 'mysql2/promise';
+import mysql, { Connection, type RowDataPacket } from 'mysql2/promise';
 import { dbConfig } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
@@ -11,23 +11,23 @@ export async function GET() {
     connection = await mysql.createConnection(dbConfig);
 
     // Buscar todos os mapas
-    const [maps]: any = await connection.execute(
+    const [maps] = await connection.execute<RowDataPacket[]>(
       'SELECT id as mapId, name, description, location, image_url as imageUrl, created_at, updated_at FROM maps ORDER BY created_at DESC'
     );
 
     // Para cada mapa, buscar quadras e lotes
     const mapsWithData = await Promise.all(
-      maps.map(async (map: any) => {
+      maps.map(async (map) => {
         // Buscar quadras do mapa
-        const [blocks]: any = await connection!.execute(
+        const [blocks] = await connection!.execute<RowDataPacket[]>(
           'SELECT id, name, identifier, description, createdAt, updatedAt FROM blocks WHERE mapId = ? ORDER BY name',
           [map.mapId]
         );
 
         // Para cada quadra, buscar seus lotes
         const blocksWithLots = await Promise.all(
-          blocks.map(async (block: any) => {
-            const [lots]: any = await connection!.execute(
+          blocks.map(async (block) => {
+            const [lots] = await connection!.execute<RowDataPacket[]>(
               `SELECT 
                 id, 
                 block_id as blockId, 
@@ -53,7 +53,7 @@ export async function GET() {
               blockDescription: block.description,
               createdAt: block.createdAt,
               updatedAt: block.updatedAt,
-              lots: lots.map((lot: any) => ({
+              lots: lots.map((lot) => ({
                 id: lot.id.toString(),
                 mapId: lot.mapId,
                 blockId: lot.blockId.toString(),

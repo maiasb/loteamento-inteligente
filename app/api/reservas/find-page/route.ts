@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import mysql from 'mysql2/promise';
-import { dbConfig } from '@/lib/db';
+import mysql, { type RowDataPacket } from 'mysql2/promise';
+import { dbConfig, type QueryParam } from '@/lib/db';
 
 // Forçar rota dinâmica
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
   let connection;
-  
+
   try {
     connection = await mysql.createConnection(dbConfig);
 
@@ -18,10 +18,7 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '10');
 
     if (!reservationId) {
-      return NextResponse.json(
-        { error: 'reservationId é obrigatório' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'reservationId é obrigatório' }, { status: 400 });
     }
 
     // Construir query para contar quantas reservas existem antes desta
@@ -30,9 +27,9 @@ export async function GET(request: NextRequest) {
       FROM purchase_requests 
       WHERE created_at >= (SELECT created_at FROM purchase_requests WHERE id = ?)
     `;
-    
+
     const whereConditions: string[] = [];
-    const filterParams: any[] = [reservationId];
+    const filterParams: QueryParam[] = [reservationId];
 
     // Aplicar os mesmos filtros que a listagem principal
     if (status && status !== 'all' && status !== 'undefined' && status !== 'null') {
@@ -50,23 +47,22 @@ export async function GET(request: NextRequest) {
     }
 
     const [result] = await connection.execute(countQuery, filterParams);
-    const position = (result as any[])[0].position;
+    const position = (result as RowDataPacket[])[0].position;
 
     // Calcular a página
     const page = Math.ceil(position / limit);
 
-    return NextResponse.json({ 
-      page,
-      position,
-      limit
-    }, { status: 200 });
-
+    return NextResponse.json(
+      {
+        page,
+        position,
+        limit,
+      },
+      { status: 200 }
+    );
   } catch (error) {
     console.error('[API /reservas/find-page GET] Erro:', error);
-    return NextResponse.json(
-      { error: 'Erro ao buscar página da reserva' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Erro ao buscar página da reserva' }, { status: 500 });
   } finally {
     if (connection) await connection.end();
   }
