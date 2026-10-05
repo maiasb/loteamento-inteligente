@@ -1,0 +1,7 @@
+.next
+node_modules
+out
+build
+yarn.lock
+public
+next-env.d.ts
