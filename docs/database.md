@@ -71,20 +71,33 @@ Views: `vw_map_statistics`, `vw_lot_details` (criadas na 001).
 
 ## Subir um banco novo
 
+Só Docker é necessário (sem Node, yarn ou MariaDB instalados):
+
 ```bash
-cp .env.example .env     # preencher DB_NAME, DB_USER (não root) e DB_PASSWORD
-docker compose up -d db  # volume vazio: executa migrations/*.sql em ordem
+cp .env.example .env     # preencher DB_PASSWORD e DEV_PASSWORD (demais campos têm padrão)
+docker compose up --build
 ```
 
-`DB_HOST_PORT` define a porta exposta no host (padrão 3306). Detalhes em
-[specs/006-docker.md](specs/006-docker.md). `docker compose down -v` apaga os dados.
+Com o volume vazio, `docker/db-init.sh` executa `migrations/*.sql` em ordem (falha interrompe a
+inicialização) e cria o usuário dev. `DB_HOST_PORT` define a porta do banco no host (padrão 3306).
+`docker compose down -v` apaga os dados e a próxima subida recria tudo. Detalhes em
+[specs/006-docker.md](specs/006-docker.md).
 
-Os `.sql` rodam pelo próprio MariaDB, fora do runner; a tabela `migrations` não é preenchida.
+Os `.sql` rodam fora do runner `lib/migrations.ts`; a tabela `migrations` não é preenchida.
 
-### Primeiro usuário
+### Usuário dev inicial
 
-Não há usuário inicial (e nenhuma senha fica no repositório). Cadastre-se em `/register` e promova
-manualmente:
+Criado na primeira subida, com as variáveis do `.env` (a senha nunca fica no repositório):
+
+| Variável       | Padrão                                                          |
+| -------------- | --------------------------------------------------------------- |
+| `DEV_CPF`      | `99999999998` (CPF de desenvolvimento aceito por `validateCPF`) |
+| `DEV_NAME`     | `Desenvolvedor`                                                 |
+| `DEV_EMAIL`    | `dev@valedoscarajas.local`                                      |
+| `DEV_PASSWORD` | obrigatória, sem padrão                                         |
+
+O usuário nasce `role = 'dev'`, `status = 'approved'`, `first_login = 0`; o login é pelo CPF. Para
+criar ou promover alguém depois, com o banco já existente:
 
 ```sql
 UPDATE users SET status = 'approved', role = 'dev' WHERE cpf = '<cpf só com dígitos>';

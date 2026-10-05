@@ -19,14 +19,13 @@ yarn typecheck      # tsc --noEmit
 yarn format <arquivos>  # Prettier nos arquivos informados (nunca no projeto todo)
 
 docker compose up -d db       # só o MariaDB (dev com `yarn dev` na máquina)
-docker compose up --build     # banco + app em container (http://localhost:3000)
+docker compose up --build     # banco + app em container (http://localhost:3000); exige .env
 ```
 
 - **Testes:** ainda não existem. Quando forem criados (etapa própria, com spec em `docs/specs/`),
   adicionar o script `test` e incluí-lo em `.husky/pre-push` e na definição de pronto.
-- **Banco:** MariaDB. Docker executa `migrations/*.sql` em volume vazio. Não há scripts `migrate`,
-  `migrate:status` nem seed no `package.json`, embora o deploy chame `npm run migrate`. Primeiro
-  usuário e regras de migration: [docs/database.md](docs/database.md).
+- **Banco:** MariaDB. Docker executa `migrations/*.sql` e cria o usuário dev (`DEV_*` no `.env`) em volume vazio. Não há scripts `migrate`,
+  `migrate:status` nem seed no `package.json`, embora o deploy chame `npm run migrate`. Regras de migration: [docs/database.md](docs/database.md).
 - **Variáveis de ambiente:** nomes em `.env.example`. Nunca ler, copiar ou expor valores de `.env*`.
 
 ## Estrutura e onde colocar cada coisa

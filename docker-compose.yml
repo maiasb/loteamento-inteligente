@@ -1,17 +1,22 @@
 services:
   db:
-    image: mariadb:11
+    image: mariadb:11.8
     restart: unless-stopped
     environment:
       MARIADB_RANDOM_ROOT_PASSWORD: '1'
-      MARIADB_DATABASE: ${DB_NAME:?defina DB_NAME no .env}
-      MARIADB_USER: ${DB_USER:?defina DB_USER no .env}
+      MARIADB_DATABASE: ${DB_NAME:-vale_dos_carajas}
+      MARIADB_USER: ${DB_USER:-vale}
       MARIADB_PASSWORD: ${DB_PASSWORD:?defina DB_PASSWORD no .env}
+      DEV_CPF: ${DEV_CPF:-99999999998}
+      DEV_NAME: ${DEV_NAME:-Desenvolvedor}
+      DEV_EMAIL: ${DEV_EMAIL:-dev@valedoscarajas.local}
+      DEV_PASSWORD: ${DEV_PASSWORD:?defina DEV_PASSWORD no .env}
     ports:
       - '${DB_HOST_PORT:-3306}:3306'
     volumes:
       - db_data:/var/lib/mysql
-      - ./migrations:/docker-entrypoint-initdb.d:ro
+      - ./migrations:/migrations:ro
+      - ./docker/db-init.sh:/docker-entrypoint-initdb.d/init.sh:ro
     healthcheck:
       test: ['CMD', 'healthcheck.sh', '--connect', '--innodb_initialized']
       interval: 5s
@@ -36,8 +41,8 @@ services:
     environment:
       DB_HOST: db
       DB_PORT: '3306'
-      DB_NAME: ${DB_NAME}
-      DB_USER: ${DB_USER}
+      DB_NAME: ${DB_NAME:-vale_dos_carajas}
+      DB_USER: ${DB_USER:-vale}
       DB_PASSWORD: ${DB_PASSWORD}
       CLOUDINARY_CLOUD_NAME: ${CLOUDINARY_CLOUD_NAME:-}
       CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY:-}
