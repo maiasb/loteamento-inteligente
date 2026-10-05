@@ -49,7 +49,7 @@ Autorização no servidor, tokens, recuperação por e-mail (não existem hoje).
 
 ## Impacto no banco
 
-`users`: ver `docs/database.md` (colunas usadas pelo código ausentes das migrations).
+`users`: `cpf`, `name`, `phone`, `creci`, `status` e `role` criados/ajustados pela migration 013.
 
 ## Impacto em telas e no design system
 

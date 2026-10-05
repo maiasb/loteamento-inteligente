@@ -44,7 +44,7 @@ Pagamento e emissão de contrato (só há texto de contrato).
 
 ## Impacto no banco
 
-`purchase_requests`, `purchase_request_lots`, `lots.status`; colunas `user_id`, `message` e `seller_*` só no código.
+`purchase_requests`, `purchase_request_lots`, `lots.status`; colunas `user_id`, `message` e `seller_*` criadas pela migration 013.
 
 ## Impacto em telas e no design system
 
@@ -53,5 +53,4 @@ Pagamento e emissão de contrato (só há texto de contrato).
 ## Riscos e dúvidas em aberto
 
 - O papel (`userRole`) vem do corpo da requisição, sem verificação no servidor.
-- `INSERT` não preenche `lot_id` e `map_id`, que são NOT NULL na migration 001.
 - Enum de status da reserva diverge entre banco (`approved`, `rejected`), tipo TS (`contacted`) e código (`pending`, `completed`, `cancelled`).

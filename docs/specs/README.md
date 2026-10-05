@@ -26,13 +26,15 @@ comportamento atual, inclusive problemas conhecidos; não são um pedido de muda
 
 ## Índice
 
-| Spec                                         | Módulo                           | Status       |
-| -------------------------------------------- | -------------------------------- | ------------ |
-| [001](001-autenticacao-usuarios.md)          | Autenticação e usuários          | implementada |
-| [002](002-mapas-importacao.md)               | Mapas e importação               | implementada |
-| [003](003-quadras-lotes.md)                  | Quadras e lotes                  | implementada |
-| [004](004-reservas.md)                       | Reservas                         | implementada |
-| [005](005-dashboard-visualizacao-publica.md) | Dashboard e visualização pública | implementada |
+| Spec                                         | Módulo                               | Status       |
+| -------------------------------------------- | ------------------------------------ | ------------ |
+| [001](001-autenticacao-usuarios.md)          | Autenticação e usuários              | implementada |
+| [002](002-mapas-importacao.md)               | Mapas e importação                   | implementada |
+| [003](003-quadras-lotes.md)                  | Quadras e lotes                      | implementada |
+| [004](004-reservas.md)                       | Reservas                             | implementada |
+| [005](005-dashboard-visualizacao-publica.md) | Dashboard e visualização pública     | implementada |
+| [006](006-docker.md)                         | Ambiente com Docker                  | implementada |
+| [007](007-reconciliacao-schema.md)           | Reconciliação do schema com o código | implementada |
 
 ## Testes
 

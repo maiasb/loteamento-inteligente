@@ -74,6 +74,12 @@ Exemplo: reservar lotes (`LotSelector` / `PurchaseModal`).
 - `.github/workflows/deploy.yml` (GitHub Pages, publica `out/`): **legado**. O projeto não usa
   `output: export`, então esse workflow não corresponde ao app atual.
 
+## Ambiente local com Docker
+
+`docker-compose.yml` sobe `db` (MariaDB 11, migrations executadas na primeira subida) e `app` (build
+de produção do `Dockerfile`, Node 20). Ver [specs/006-docker.md](specs/006-docker.md). O deploy
+de produção continua sendo o workflow com SSH e PM2.
+
 ## Decisões relevantes
 
 - `next.config.ts`: `trailingSlash: true`, imagens sem otimização, `bodySizeLimit` de 500 MB nas

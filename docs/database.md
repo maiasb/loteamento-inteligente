@@ -1,102 +1,112 @@
 # Banco de dados
 
-MySQL (InnoDB, `utf8mb4_unicode_ci`), acessado com `mysql2` e SQL cru. Configuração em `lib/db.ts`
-(`DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`; pool de 5 conexões).
+**MariaDB** (InnoDB, `utf8mb4_unicode_ci`), acessado com `mysql2` e SQL cru. As migrations usam
+`ADD COLUMN IF NOT EXISTS` e `DROP ... IF EXISTS`, sintaxe que o MySQL 8 não aceita; o ambiente
+Docker usa `mariadb:11`. Configuração em `lib/db.ts` (`DB_HOST`, `DB_PORT`, `DB_USER`,
+`DB_PASSWORD`, `DB_NAME`; pool de 5 conexões).
 
-## Aviso: migrations ≠ schema que o código usa
+## Origem do schema
 
-O banco original foi perdido e **não há dump**. As migrations em `migrations/` não criam todas as
-colunas que o código consulta. Aplicar só as migrations produz um banco que **quebra** partes do
-app (login, mapas, reservas). A tabela abaixo separa o que está nas migrations do que o código
-espera. A coluna "só no código" foi deduzida das queries em `app/api/**` e pode estar incompleta.
+O banco original foi perdido e não há dump. O schema atual é o resultado das migrations 001–013.
+As migrations 001–012 não bastavam para o código; a **013** (spec
+[007](specs/007-reconciliacao-schema.md)) alinha o schema ao que as rotas de `app/api` consultam.
+Se o banco original diferia disso, a fonte de verdade passa a ser a 013.
 
-Reconciliar o schema exige uma migration nova, com spec aprovada. Não editar as migrations já
-numeradas.
+Validado em 2026-10-05: num MariaDB vazio, 001 → 013 rodam sem erro, a 013 pode ser reexecutada, e
+cadastro, login, criação de mapa, quadra e lote, reserva e dashboard funcionam.
 
 ## Tabelas
 
-| Tabela                  | Papel                                                              | Relacionamentos                                        |
-| ----------------------- | ------------------------------------------------------------------ | ------------------------------------------------------ |
-| `users`                 | Usuários do sistema                                                | 1:N com `purchase_requests` (`user_id`, só no código)  |
-| `maps`                  | Loteamentos                                                        | 1:N `blocks`, 1:N `lots`                               |
-| `blocks`                | Quadras                                                            | N:1 `maps` (`mapId`, ON DELETE CASCADE)                |
-| `lots`                  | Lotes                                                              | N:1 `maps` (`map_id`) e `blocks` (`block_id`), CASCADE |
-| `purchase_requests`     | Reserva/solicitação de compra                                      | N:N com `lots` via `purchase_request_lots`             |
-| `purchase_request_lots` | Lotes de cada reserva, com valores por lote                        | FK `purchase_request_id`, `lot_id`                     |
-| `migrations`            | Controle de migrations executadas (criada por `lib/migrations.ts`) | —                                                      |
+| Tabela                  | Papel                                                             | Relacionamentos                                           |
+| ----------------------- | ----------------------------------------------------------------- | --------------------------------------------------------- |
+| `users`                 | Usuários do sistema                                               | 1:N `purchase_requests` (`user_id`, `ON DELETE SET NULL`) |
+| `maps`                  | Loteamentos (`id BIGINT`, gerado pela aplicação com `Date.now()`) | 1:N `blocks`, 1:N `lots`                                  |
+| `blocks`                | Quadras                                                           | N:1 `maps` (`mapId`, CASCADE)                             |
+| `lots`                  | Lotes                                                             | N:1 `maps` (`map_id`) e `blocks` (`block_id`), CASCADE    |
+| `purchase_requests`     | Reserva/solicitação de compra                                     | N:N com `lots` via `purchase_request_lots`                |
+| `purchase_request_lots` | Lotes de cada reserva, com valores por lote                       | FK `purchase_request_id`, `lot_id`                        |
+| `migrations`            | Controle do runner `lib/migrations.ts` (criada por ele)           | —                                                         |
 
-Views em `001`: `vw_map_statistics`, `vw_lot_details`.
+Views: `vw_map_statistics`, `vw_lot_details` (criadas na 001).
 
-### Colunas
+### Colunas principais
 
-**users**
-
-- Nas migrations: `id`, `username`, `password`, `email`, `first_name`, `last_name`,
-  `role ENUM('admin','user')`, `first_login`, `created_at`, `updated_at`, `active` (005),
-  `theme_preference ENUM('light','dark')` (006).
-- Só no código: `cpf` (login), `name`, `phone`, `creci`, `status` (`pending|approved|rejected`) e
-  `role` com valores `dev|admin|vendedor`. `username`, `first_name` e `last_name` não são usados.
-
-**maps**
-
-- Nas migrations: `id INT AUTO_INCREMENT`, `name`, `description`, `location`, `total_area`,
-  `pdf_url`, `image_url`, `status`, timestamps.
-- Só no código: `width`, `height`, `address`, `overlay_config` (JSON). O `id` é informado pela
-  aplicação no `INSERT` (valor tipo timestamp, ver `app/api/mapas/criar/route.ts`).
-
-**blocks**: `id`, `mapId`, `name`, `identifier` (NOT NULL, mas o `INSERT` do código não o preenche),
-`description`, `createdAt`, `updatedAt`. Usa camelCase, diferente das demais tabelas.
-
-**lots**: `id BIGINT UNSIGNED`, `block_id`, `map_id`, `lot_number`, `size`, `price`, `status`,
-`description`, `features` (JSON), `coordinates` (JSON, 012), timestamps.
-
-- Migration: `status ENUM('available','reserved','sold','unavailable')`.
-- Código: usa também `'blocked'`, valor fora do ENUM. Ver "Inconsistências".
-
-**purchase_requests**
-
-- Nas migrations: `id`, `lot_id`, `map_id`, `customer_*`, `payment_method`, `status`, `notes`,
-  `contract` (002), `installments` (004, removida na 007), timestamps.
-- Só no código: `user_id`, `message`, `seller_name`, `seller_email`, `seller_phone`, `seller_cpf`.
-  O `INSERT` não preenche `lot_id` nem `map_id`, ambos NOT NULL nas migrations.
-
-**purchase_request_lots**: `id`, `purchase_request_id`, `lot_id`, `agreed_price` (004),
-`first_payment` e `installments` (007), `created_at`.
+- **users:** `id`, `cpf` (único, só dígitos; é o login), `name`, `email` (único), `phone`, `creci`,
+  `password` (hash), `role` (`dev|admin|vendedor`), `status` (`pending|approved|rejected`),
+  `active`, `first_login`, `theme_preference` (`light|dark`), timestamps. `username`,
+  `first_name`, `last_name` vêm da 001, são opcionais e o código não os usa.
+- **maps:** `id`, `name`, `description`, `image_url`, `width`, `height`, `address`,
+  `overlay_config` (JSON), `status`, `location`, `total_area`, `pdf_url`, timestamps.
+- **blocks:** `id`, `mapId`, `name`, `identifier` (opcional), `description`, `createdAt`,
+  `updatedAt`. Usa camelCase, diferente das demais tabelas.
+- **lots:** `id BIGINT UNSIGNED`, `map_id`, `block_id` (opcional), `lot_number`, `size`, `price`,
+  `status` (`available|reserved|sold|unavailable|blocked`), `description`, `features` (JSON),
+  `coordinates` (JSON), timestamps.
+- **purchase_requests:** `id`, `user_id`, `customer_name`, `customer_email`, `customer_phone`,
+  `customer_cpf`, `message`, `payment_method`, `seller_name`, `seller_email`, `seller_phone`,
+  `seller_cpf`, `contract`, `status` (`pending|approved|rejected|completed|cancelled`),
+  timestamps. `lot_id` e `map_id` existem mas são opcionais e o código não os preenche (a ligação
+  com lotes é feita por `purchase_request_lots`).
+- **purchase_request_lots:** `purchase_request_id`, `lot_id`, `agreed_price`, `first_payment`,
+  `installments`, `payment_method` (texto, formas separadas por vírgula).
 
 ## Convenções
 
 - Tabelas em snake_case, plural, inglês. Colunas em snake_case, exceto `blocks` (camelCase).
-- PKs `id` com `AUTO_INCREMENT`; FKs `<entidade>_id`, `ON DELETE CASCADE` nas relações de mapa.
-- Timestamps `created_at` e `updated_at`.
-- Valores monetários em `DECIMAL`. CPF e telefone gravados só com dígitos.
+- FKs `<entidade>_id`, `ON DELETE CASCADE` nas relações de mapa.
+- Timestamps `created_at` e `updated_at`. Valores monetários em `DECIMAL`.
+- CPF e telefone gravados só com dígitos.
 
 ## Inconsistências encontradas
 
-| Caso                                                                | Recomendação                                                             |
-| ------------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| Código usa colunas ausentes das migrations (ver acima)              | Criar migration de reconciliação, com spec, antes de recriar o banco     |
-| Status `blocked` no código e `unavailable` no ENUM                  | Escolher um valor único; recomendação: o do banco, ajustando `LotStatus` |
-| `blocks` em camelCase                                               | Manter em código existente; em tabelas novas usar snake_case             |
-| Numeração 001–007 e depois 012; datas dos comentários fora de ordem | Próxima migration: 013                                                   |
-| Quatro formas de acessar o banco                                    | Padrão: `executeQuery` de `lib/db.ts`                                    |
-| Senhas em MD5                                                       | Spec própria de autenticação                                             |
+| Caso                                                                               | Recomendação                                                 |
+| ---------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| `lots.status` aceita `unavailable` (001) e `blocked` (013); o código usa `blocked` | Unificar em `blocked` numa spec, ajustando dados e ENUM      |
+| `blocks` em camelCase                                                              | Manter em código existente; em tabelas novas usar snake_case |
+| Numeração 001–007 e depois 012, 013; datas dos comentários fora de ordem           | Próxima migration: 014                                       |
+| `purchase_requests.lot_id`/`map_id` e `users.username` sem uso                     | Remover numa spec futura, após confirmar                     |
+| Quatro formas de acessar o banco                                                   | Padrão: `executeQuery` de `lib/db.ts`                        |
+| Hash de senha MD5 (login) e SHA-256 (`password/reset`)                             | Spec própria de autenticação                                 |
+| `POST /api/usuarios/criar` aceita `role` e `status` do corpo                       | Spec própria de autenticação                                 |
+
+## Subir um banco novo
+
+```bash
+cp .env.example .env     # preencher DB_NAME, DB_USER (não root) e DB_PASSWORD
+docker compose up -d db  # volume vazio: executa migrations/*.sql em ordem
+```
+
+`DB_HOST_PORT` define a porta exposta no host (padrão 3306). Detalhes em
+[specs/006-docker.md](specs/006-docker.md). `docker compose down -v` apaga os dados.
+
+Os `.sql` rodam pelo próprio MariaDB, fora do runner; a tabela `migrations` não é preenchida.
+
+### Primeiro usuário
+
+Não há usuário inicial (e nenhuma senha fica no repositório). Cadastre-se em `/register` e promova
+manualmente:
+
+```sql
+UPDATE users SET status = 'approved', role = 'dev' WHERE cpf = '<cpf só com dígitos>';
+```
 
 ## Migrations
 
-- Arquivos `migrations/NNN_descricao.sql`, executados em ordem alfabética; cada um é dividido em
-  statements por `;` (evite `;` dentro de strings ou procedures).
-- `lib/migrations.ts` expõe `runPendingMigrations`, `getPendingMigrations` e registra cada arquivo
-  na tabela `migrations`. **Não existe script de linha de comando** no `package.json`, apesar de o
-  deploy chamar `npm run migrate` e `npm run migrate:status`.
-- Escreva migrations idempotentes (`IF NOT EXISTS`) como as existentes; documente cada uma em
+- Arquivos `migrations/NNN_descricao.sql`, executados em ordem alfabética. `lib/migrations.ts`
+  divide cada arquivo por `;` (evite `;` dentro de strings ou procedures).
+- **Não existe script de linha de comando** no `package.json`, apesar de o deploy chamar
+  `npm run migrate` e `npm run migrate:status`.
+- Escreva migrations idempotentes (`IF NOT EXISTS`/`IF EXISTS`) e documente cada uma em
   `migrations/CHANGELOG.md`.
-- Nunca editar uma migration já aplicada em algum ambiente.
+- Não editar migration já aplicada. Exceção registrada: a 007 foi corrigida porque nunca concluía
+  num banco novo.
+- Antes de alterar tipos de chave ou FKs num banco com dados, faça backup.
 
 ## Cuidados com dados
 
 - Sempre SQL parametrizado (`?`). Usar transação (`beginTransaction`) quando alterar mais de uma
   tabela, como em `lotes/reservar`.
 - Excluir mapa, quadra ou lote apaga em cascata lotes e reservas ligados. As rotas de exclusão de
-  quadra recusam quando há lotes `reserved` ou `sold`.
+  quadra e de lote recusam quando há lotes `reserved` ou `sold`.
 - Dados de clientes (CPF, e-mail, telefone) são pessoais; não registrar em logs.
-- Sem dump nem backup versionado: definir rotina de backup antes de usar em produção.
+- Sem rotina de backup versionada: definir uma antes de usar em produção.

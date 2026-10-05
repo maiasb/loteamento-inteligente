@@ -23,7 +23,7 @@ Admin e dev (telas `/map-details`, `/lot-management`); vendedor só consulta.
 
 1. Quadra pertence a um mapa e tem nome único por mapa (`unique_block_per_map`).
 2. Lote tem número, área, preço, descrição, características (JSON) e `coordinates` (JSON); número único por mapa e quadra.
-3. Status do lote: `available`, `reserved`, `sold` e `blocked` (no banco, o ENUM define `unavailable`; ver `docs/database.md`).
+3. Status do lote: `available`, `reserved`, `sold` e `blocked` (o ENUM aceita `blocked` desde a migration 013, mantendo `unavailable`).
 4. Excluir quadra é recusado se houver lote `reserved` ou `sold` (`DELETE /api/mapas/quadras/deletar`).
 5. Excluir lote é recusado se estiver `reserved` ou `sold`; a mensagem orienta cancelar na página de Reservas.
 6. Criar, atualizar e listar: `/api/mapas/lotes/*` e `/api/mapas/quadras/*`; `lotes/valido` e `verificar-lotes-reservados` auxiliam validações.
@@ -48,6 +48,5 @@ Edição em `MapDetails`/`LotManagement`; seleção múltipla com barra flutuant
 
 ## Riscos e dúvidas em aberto
 
-- Valor `blocked` fora do ENUM do banco.
-- `blocks.identifier` é obrigatório no schema, mas não é preenchido pelo código.
+- `unavailable` e `blocked` coexistem no ENUM; unificar exige spec.
 - Regra recente de bloqueio e desbloqueio (último commit) sem spec; registrar os detalhes ao revisar esta spec.

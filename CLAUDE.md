@@ -4,7 +4,7 @@ Plataforma web da Imobiliária Vale dos Carajás para gerenciar loteamentos: map
 reservas de lotes por vendedores e usuários com papéis (dev, admin, vendedor). Também há uma
 visualização pública dos mapas.
 
-**Stack:** Next.js 16 (App Router) · React 19 · TypeScript estrito · Tailwind v4 · MySQL via `mysql2`
+**Stack:** Next.js 16 (App Router) · React 19 · TypeScript estrito · Tailwind v4 · MariaDB (compatível com MySQL) via `mysql2`
 (SQL cru, sem ORM) · axios no cliente · Cloudinary · Google Maps. Gerenciador de pacotes: **yarn**.
 Detalhes e motivos: [docs/decisions/001-stack.md](docs/decisions/001-stack.md).
 
@@ -17,13 +17,16 @@ yarn build          # build de produção
 yarn lint           # ESLint
 yarn typecheck      # tsc --noEmit
 yarn format <arquivos>  # Prettier nos arquivos informados (nunca no projeto todo)
+
+docker compose up -d db       # só o MariaDB (dev com `yarn dev` na máquina)
+docker compose up --build     # banco + app em container (http://localhost:3000)
 ```
 
 - **Testes:** ainda não existem. Quando forem criados (etapa própria, com spec em `docs/specs/`),
   adicionar o script `test` e incluí-lo em `.husky/pre-push` e na definição de pronto.
-- **Migrations / seed:** não há scripts `migrate`, `migrate:status` nem seed no `package.json`,
-  embora o workflow de deploy chame `npm run migrate`. O runner está em `lib/migrations.ts`. Ver
-  [docs/database.md](docs/database.md).
+- **Banco:** MariaDB. Docker executa `migrations/*.sql` em volume vazio. Não há scripts `migrate`,
+  `migrate:status` nem seed no `package.json`, embora o deploy chame `npm run migrate`. Primeiro
+  usuário e regras de migration: [docs/database.md](docs/database.md).
 - **Variáveis de ambiente:** nomes em `.env.example`. Nunca ler, copiar ou expor valores de `.env*`.
 
 ## Estrutura e onde colocar cada coisa

@@ -40,7 +40,7 @@ Admin e dev gerenciam (telas `/map-details`, `/import-map`). A restrição é fe
 
 ## Impacto no banco
 
-`maps`, `blocks`, `lots`, `purchase_requests`; `maps.overlay_config`, `width`, `height`, `address` só no código.
+`maps`, `blocks`, `lots`, `purchase_requests`; `maps.overlay_config`, `width`, `height`, `address` e `id BIGINT` criados pela migration 013.
 
 ## Impacto em telas e no design system
 
