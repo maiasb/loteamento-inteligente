@@ -14,7 +14,7 @@ Servidor Next.js 16 (App Router)
   app/api/**/route.ts regras de negócio + SQL
         │
         ▼
-mysql2 (lib/db.ts)  →  MySQL
+mysql2 (lib/db.ts)  →  MariaDB
 Serviços externos: Cloudinary (imagens/SVG), Google Maps (overlay de lotes)
 ```
 
