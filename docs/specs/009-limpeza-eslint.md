@@ -1,6 +1,6 @@
 # 009 – Limpeza dos erros de ESLint do código legado
 
-**Status:** aprovada
+**Status:** implementada
 **Autor / data:** Caio Maia / 2026-10-05
 
 ## Contexto e problema
@@ -34,10 +34,10 @@ Corrigir uma área → `yarn lint`, `yarn typecheck`, `yarn test` → commit.
 
 ## Critérios de aceite
 
-- [ ] `yarn lint` termina com 0 erros e 0 avisos.
-- [ ] `yarn typecheck` e `yarn test` passam.
-- [ ] A aplicação sobe no Docker e as telas principais carregam (login, dashboard, mapas, reservas, usuários).
-- [ ] Nenhum `eslint-disable`, `@ts-ignore` ou `@ts-expect-error` novo.
+- [x] `yarn lint` termina com 0 erros e 0 avisos.
+- [x] `yarn typecheck` e `yarn test` passam.
+- [x] A aplicação sobe no Docker e as telas principais carregam (login, dashboard, mapas, reservas, usuários).
+- [x] Nenhum `eslint-disable`, `@ts-ignore` ou `@ts-expect-error` novo.
 
 ## Impacto no banco
 
@@ -54,4 +54,15 @@ Nenhum visual. Apenas ajustes de tipos e de texto JSX (`&quot;`, `&apos;`).
 
 ## Resultado
 
-(a preencher ao concluir)
+`yarn lint` passa com 0 erros e 0 avisos (antes: 162 erros e 92 avisos em 58 arquivos); `yarn typecheck`, `yarn test` e o build de produção no Docker passam. Nenhum `eslint-disable`, `@ts-ignore` ou `@ts-expect-error` foi adicionado.
+
+**Pendência herdada:** o código já tinha 14 comentários `eslint-disable` (12 de `react-hooks/exhaustive-deps`, 1 de `no-img-element`, 1 de `no-unused-vars`, 1 de `no-explicit-any` em `lib/storage.ts`). Eles continuam e escondem alertas; removê-los exige revisar cada efeito e fica para uma spec própria.
+
+**Mudanças que tocam comportamento** (verificadas só por tipos, testes e smoke test HTTP, **sem teste visual no navegador**; conferir manualmente):
+
+1. `LotForm` (em `MapDetails.tsx`): o submit agora usa sempre a descrição e o status atuais. Antes, a função enviada ao pai ficava desatualizada se a descrição ou o status fossem alterados depois do número, área e preço. É uma correção de bug.
+2. `SharedLayout`, `ThemeContext`: o valor de "montado" vem de `useSyncExternalStore` (`hooks/useIsMounted.ts`); o menu "Gestão de lotes" é derivado da rota e do `localStorage`; a sidebar mobile fecha ao mudar de rota por ajuste de estado na renderização. Mesmo resultado, sem `setState` em efeito.
+3. `useInteractiveMap`: o reset de zoom e posição ao trocar a URL da imagem passou do efeito para a renderização. Mesmas condições (URL vazia, PDF, imagem normal).
+4. `useMapSelection`: `loadBlocksForMap` e `loadLotsForBlock` agora são `useCallback` estáveis; a lista de quadras usada como fallback vem de uma ref.
+5. Quatro `<img>` viraram `next/image` (logo do login, logo da sidebar, prévia do `import-map`, overlay do `SVGOverlayEditor`). Conferir tamanhos e proporção.
+6. Código morto removido: `drawLot` e `isPointInPolygon` (`useInteractiveMap`), `handleDelete` e `deleteLotFromAPI` (`LotManagement`), `getActiveBadge` (`users/page`), `showMigrationsStatus` ficou só criando a tabela de controle.

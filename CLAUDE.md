@@ -89,9 +89,9 @@ docker compose up --build     # banco + app em container (http://localhost:3000)
   `chore:`…), validados pelo commitlint no hook `commit-msg`.
 - **pre-commit** (lint-staged): ESLint `--fix` + Prettier só nos arquivos em stage.
 - **pre-push:** `yarn typecheck` e `yarn test`.
-- Atenção: o código legado tem erros de ESLint (principalmente `any`). Ao tocar num arquivo
-  legado, o pre-commit pode bloquear até esses erros serem resolvidos naquele arquivo. Não use
-  `--no-verify`.
+- `yarn lint` está limpo (0 erros, 0 avisos). Não use `--no-verify` nem adicione `eslint-disable`;
+  corrija a causa. Os 14 `eslint-disable` que já existiam estão registrados na
+  [spec 009](docs/specs/009-limpeza-eslint.md).
 
 ## Definição de pronto
 

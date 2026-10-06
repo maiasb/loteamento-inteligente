@@ -36,6 +36,7 @@ comportamento atual, inclusive problemas conhecidos; não são um pedido de muda
 | [006](006-docker.md)                         | Ambiente com Docker                  | implementada |
 | [007](007-reconciliacao-schema.md)           | Reconciliação do schema com o código | implementada |
 | [008](008-testes-automatizados.md)           | Testes automatizados                 | implementada |
+| [009](009-limpeza-eslint.md)                 | Limpeza dos erros de ESLint          | implementada |
 
 ## Testes
 
