@@ -107,7 +107,7 @@ UPDATE users SET status = 'approved', role = 'dev' WHERE cpf = '<cpf só com dí
 
 - Arquivos `migrations/NNN_descricao.sql`, executados em ordem alfabética. `lib/migrations.ts`
   divide cada arquivo por `;` (evite `;` dentro de strings ou procedures).
-- **Não existe script de linha de comando** no `package.json`, apesar de o deploy chamar
+- **Não existe script de linha de comando** no `package.json`, apesar de o antigo deploy chamar
   `npm run migrate` e `npm run migrate:status`.
 - Escreva migrations idempotentes (`IF NOT EXISTS`/`IF EXISTS`) e documente cada uma em
   `migrations/CHANGELOG.md`.

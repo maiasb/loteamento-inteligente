@@ -20,5 +20,5 @@ Usar `mariadb:11` como banco de referência e Docker Compose (`db` + `app`) para
 ## Consequências
 
 - Ambiente reproduzível com um comando; scripts do código assumem MariaDB.
-- Se a produção rodar MySQL, as migrations precisam de revisão antes do deploy.
+- Se a produção rodar MySQL, as migrations precisam de revisão antes de qualquer deploy.
 - Imagem grande (copia `node_modules`).

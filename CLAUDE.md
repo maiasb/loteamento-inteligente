@@ -26,8 +26,10 @@ docker compose up --build     # banco + app em container (http://localhost:3000)
 - **Testes:** Vitest em `tests/` (`tests/api` para rotas, com `mysql2` mockado via
   `tests/helpers/db.ts`). Bug corrigido e regra nova ganham teste. Spec:
   [docs/specs/008-testes-automatizados.md](docs/specs/008-testes-automatizados.md).
-- **Banco:** MariaDB. Docker executa `migrations/*.sql` e cria o usuário dev (`DEV_*` no `.env`) em volume vazio. Não há scripts `migrate`,
-  `migrate:status` nem seed no `package.json`, embora o deploy chame `npm run migrate`. Regras de migration: [docs/database.md](docs/database.md).
+- **Banco:** MariaDB. Docker executa `migrations/*.sql` e cria o usuário dev (`DEV_*` no `.env`) em
+  volume vazio. Não há scripts `migrate` nem `migrate:status` no `package.json`. Regras de migration:
+  [docs/database.md](docs/database.md).
+- **Deploy:** nenhum configurado (removido em 2026-10-06); ver [docs/architecture.md](docs/architecture.md).
 - **Variáveis de ambiente:** nomes em `.env.example`. Nunca ler, copiar ou expor valores de `.env*`.
 
 ## Estrutura e onde colocar cada coisa
