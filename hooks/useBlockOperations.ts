@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import axios from 'axios';
-import { Block } from '@/types';
+import { Block, BlockApiItem } from '@/types';
 
 const API_URL = '/api';
 
@@ -22,7 +22,7 @@ export function useBlockOperations() {
       });
 
       const blocksData = response.data || [];
-      const formattedBlocks: Block[] = blocksData.map((block: any) => ({
+      const formattedBlocks: Block[] = (blocksData as BlockApiItem[]).map((block) => ({
         id: block.id,
         mapId: block.mapId,
         name: block.name,
@@ -43,76 +43,88 @@ export function useBlockOperations() {
   /**
    * Cria uma nova quadra
    */
-  const createBlock = useCallback(async (block: Omit<Block, 'id' | 'createdAt' | 'updatedAt'>) => {
-    try {
-      const newBlock = {
-        ...block,
-        id: Date.now().toString(),
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      };
+  const createBlock = useCallback(
+    async (block: Omit<Block, 'id' | 'createdAt' | 'updatedAt'>) => {
+      try {
+        const newBlock = {
+          ...block,
+          id: Date.now().toString(),
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        };
 
-      await axios.post(`${API_URL}/mapas/quadras/criar`, newBlock, {
-        headers: { 'Content-Type': 'application/json' },
-        timeout: 10000,
-      });
+        await axios.post(`${API_URL}/mapas/quadras/criar`, newBlock, {
+          headers: { 'Content-Type': 'application/json' },
+          timeout: 10000,
+        });
 
-      await loadBlocks(block.mapId);
-    } catch (error) {
-      console.error('[useBlockOperations] ❌ Erro ao criar quadra:', error);
-      throw error;
-    }
-  }, [loadBlocks]);
+        await loadBlocks(block.mapId);
+      } catch (error) {
+        console.error('[useBlockOperations] ❌ Erro ao criar quadra:', error);
+        throw error;
+      }
+    },
+    [loadBlocks]
+  );
 
   /**
    * Atualiza uma quadra existente
    */
-  const updateBlock = useCallback(async (block: Block) => {
-    try {
-      const updatedBlock = {
-        ...block,
-        updatedAt: new Date(),
-      };
+  const updateBlock = useCallback(
+    async (block: Block) => {
+      try {
+        const updatedBlock = {
+          ...block,
+          updatedAt: new Date(),
+        };
 
-      await axios.patch(`${API_URL}/mapas/quadras/atualizar`, updatedBlock, {
-        headers: { 'Content-Type': 'application/json' },
-        timeout: 10000,
-      });
+        await axios.patch(`${API_URL}/mapas/quadras/atualizar`, updatedBlock, {
+          headers: { 'Content-Type': 'application/json' },
+          timeout: 10000,
+        });
 
-      await loadBlocks(block.mapId);
-    } catch (error) {
-      console.error('[useBlockOperations] ❌ Erro ao atualizar quadra:', error);
-      throw error;
-    }
-  }, [loadBlocks]);
+        await loadBlocks(block.mapId);
+      } catch (error) {
+        console.error('[useBlockOperations] ❌ Erro ao atualizar quadra:', error);
+        throw error;
+      }
+    },
+    [loadBlocks]
+  );
 
   /**
    * Deleta uma quadra
    */
-  const deleteBlock = useCallback(async (blockId: string, mapId: string) => {
-    try {
-      await axios.delete(`${API_URL}/mapas/quadras/deletar`, {
-        params: { blockId },
-        timeout: 10000,
-      });
+  const deleteBlock = useCallback(
+    async (blockId: string, mapId: string) => {
+      try {
+        await axios.delete(`${API_URL}/mapas/quadras/deletar`, {
+          params: { blockId },
+          timeout: 10000,
+        });
 
-      await loadBlocks(mapId);
-    } catch (error: any) {
-      console.error('[useBlockOperations] ❌ Erro ao deletar quadra:', error);
-      // Repassar mensagem de erro do backend
-      if (error.response?.data) {
-        throw error.response.data;
+        await loadBlocks(mapId);
+      } catch (error) {
+        console.error('[useBlockOperations] ❌ Erro ao deletar quadra:', error);
+        // Repassar mensagem de erro do backend
+        if (axios.isAxiosError(error) && error.response?.data) {
+          throw error.response.data;
+        }
+        throw error;
       }
-      throw error;
-    }
-  }, [loadBlocks]);
+    },
+    [loadBlocks]
+  );
 
   /**
    * Busca uma quadra pelo ID
    */
-  const getBlockById = useCallback((blockId: string): Block | undefined => {
-    return blocks.find(block => block.id === blockId);
-  }, [blocks]);
+  const getBlockById = useCallback(
+    (blockId: string): Block | undefined => {
+      return blocks.find((block) => block.id === blockId);
+    },
+    [blocks]
+  );
 
   return {
     blocks,

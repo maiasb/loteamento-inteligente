@@ -29,18 +29,18 @@ export enum LotStatus {
 export interface Lot {
   id: string;
   mapId: string;
-  blockId?: string; // ID da quadra/bloco (opcional)
-  blockName?: string; // Nome da quadra associada (opcional)
+  blockId?: string | null; // ID da quadra/bloco (opcional)
+  blockName?: string | null; // Nome da quadra associada (opcional)
   mapName?: string; // Nome do mapa associado (opcional)
   lotNumber: string;
   status: LotStatus;
   price: number;
-  pricePerM2?: number; // Preço por metro quadrado
+  pricePerM2?: number | null; // Preço por metro quadrado
   size: number; // Área em m²
   description?: string;
   features?: string[];
-  lat?: number; // Latitude do centro do círculo no mapa
-  lng?: number; // Longitude do centro do círculo no mapa
+  lat?: number | null; // Latitude do centro do círculo no mapa
+  lng?: number | null; // Longitude do centro do círculo no mapa
   createdAt: Date;
   updatedAt: Date;
 }
@@ -118,4 +118,66 @@ export interface User {
   theme_preference?: 'light' | 'dark';
   createdAt: Date;
   updatedAt: Date;
+}
+
+/** Formatos JSON devolvidos pelas rotas /api/mapas (datas chegam como string). */
+export interface MapApiItem {
+  mapId?: string;
+  id?: string;
+  name?: string;
+  description?: string;
+  imageUrl?: string;
+  width?: number;
+  height?: number;
+  address?: string;
+  overlayConfig?: OverlayConfig | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface BlockApiItem {
+  id: string;
+  mapId: string;
+  name: string;
+  description?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface LotApiItem {
+  id: string;
+  mapId: string;
+  blockId: string | null;
+  blockName: string | null;
+  lotNumber: string;
+  status: LotStatus;
+  price: number;
+  pricePerM2: number | null;
+  size: number;
+  description: string;
+  features: string[];
+  lat: number | null;
+  lng: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Lote dentro de uma reserva, como devolvido por /api/reservas. */
+export interface ReservationLotSummary {
+  id: string | number;
+  lot_id?: string | number;
+  agreed_price?: number | string | null;
+  first_payment?: number | string | null;
+  installments?: number | null;
+  payment_method?: string | null;
+}
+
+/** Reserva resumida, como devolvida por /api/reservas. */
+export interface ReservationSummary {
+  id: string | number;
+  customer_name: string;
+  seller_name: string;
+  status: string;
+  created_at: string;
+  lots?: ReservationLotSummary[];
 }

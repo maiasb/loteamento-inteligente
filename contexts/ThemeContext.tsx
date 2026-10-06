@@ -1,6 +1,7 @@
 'use client';
 
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { useIsMounted } from '@/hooks/useIsMounted';
 
 type Theme = 'light' | 'dark';
 
@@ -14,10 +15,9 @@ const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setThemeState] = useState<Theme>('light');
-  const [mounted, setMounted] = useState(false);
+  const mounted = useIsMounted();
 
   useEffect(() => {
-    setMounted(true);
     // Aplicar tema padrão ao montar
     document.documentElement.setAttribute('data-theme', 'light');
   }, []);
@@ -50,10 +50,10 @@ export function useTheme() {
   const context = useContext(ThemeContext);
   if (context === undefined) {
     // Retornar valor padrão em vez de lançar erro
-    return { 
-      theme: 'light' as Theme, 
-      toggleTheme: () => 'light' as Theme, 
-      setTheme: () => {} 
+    return {
+      theme: 'light' as Theme,
+      toggleTheme: () => 'light' as Theme,
+      setTheme: () => {},
     };
   }
   return context;
