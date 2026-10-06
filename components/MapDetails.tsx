@@ -3,17 +3,19 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import axios from 'axios';
-import { Map, Block, Lot, LotStatus, OverlayConfig } from '@/types';
+import { Map, Block, Lot, LotStatus, OverlayConfig, MapApiItem, ReservationSummary } from '@/types';
 import { useBlockOperations } from '@/hooks/useBlockOperations';
-import { loadPdfJs } from '@/lib/pdfjs-wrapper';
 import LotSelector from '@/components/LotSelector';
-import InteractiveMap from '@/components/InteractiveMap';
 import PublicMapViewer from '@/components/PublicMapViewer';
 import SVGOverlayEditor from '@/components/SVGOverlayEditor';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCustomAlert } from '@/hooks/useCustomAlert';
 
 const API_URL = '/api';
+
+/** Mensagem de erro devolvida pela API (campo error) ou o texto padrão. */
+const apiErrorMessage = (error: unknown, fallback: string): string =>
+  (axios.isAxiosError(error) && error.response?.data?.error) || fallback;
 
 export default function MapDetails() {
   const searchParams = useSearchParams();
@@ -27,15 +29,15 @@ export default function MapDetails() {
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingStats, setIsLoadingStats] = useState(true);
   const [refreshTrigger, setRefreshTrigger] = useState(0); // Trigger para forçar refresh dos cards
-  
+
   // Estados para estatísticas
   const [lotStats, setLotStats] = useState({
     available: 0,
     reserved: 0,
     sold: 0,
-    blocked: 0
+    blocked: 0,
   });
-  
+
   // Estados para modais
   const [isAddingBlock, setIsAddingBlock] = useState(false);
   const [isAddingLot, setIsAddingLot] = useState(false);
@@ -44,31 +46,34 @@ export default function MapDetails() {
   const [canSubmitLot, setCanSubmitLot] = useState(false);
   const [submitLotFn, setSubmitLotFn] = useState<(() => void) | null>(null);
   const [selectedBlockId, setSelectedBlockId] = useState<string>('');
-  const [reservations, setReservations] = useState<any[]>([]);
+  const [reservations, setReservations] = useState<ReservationSummary[]>([]);
   const [selectedBlockLots, setSelectedBlockLots] = useState<Lot[]>([]); // Lotes da quadra selecionada
   const [isLoadingBlockLots, setIsLoadingBlockLots] = useState(false);
   const [allLotsInMap, setAllLotsInMap] = useState<Lot[]>([]); // Todos os lotes do mapa para validação
-  
+
   // Estados para seleção múltipla de lotes
   const [multiSelectMode, setMultiSelectMode] = useState(false);
   const [selectedLots, setSelectedLots] = useState<Lot[]>([]);
-  const [showBulkActions, setShowBulkActions] = useState(false);
-  const [multiSelectAction, setMultiSelectAction] = useState<'delete' | 'block' | 'unblock' | null>(null);
-  
+  const [multiSelectAction, setMultiSelectAction] = useState<'delete' | 'block' | 'unblock' | null>(
+    null
+  );
+
   // Estados para seleção múltipla de quadras
-  const [blockSelectAction, setBlockSelectAction] = useState<'delete' | 'block' | 'unblock' | null>(null);
+  const [blockSelectAction, setBlockSelectAction] = useState<'delete' | 'block' | 'unblock' | null>(
+    null
+  );
   const [selectedBlockIds, setSelectedBlockIds] = useState<string[]>([]);
-  
+
   // Estados para criar novo mapa
   const [isCreatingMap, setIsCreatingMap] = useState(false);
   const [newMapName, setNewMapName] = useState('');
   const [newMapDescription, setNewMapDescription] = useState('');
   const [isSubmittingMap, setIsSubmittingMap] = useState(false);
-  
+
   // Estados para deletar mapa
   const [isDeletingMap, setIsDeletingMap] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  
+
   // Estados para editar mapa
   const [isEditingMap, setIsEditingMap] = useState(false);
   const [editMapName, setEditMapName] = useState('');
@@ -77,7 +82,7 @@ export default function MapDetails() {
 
   // Estado para configurar overlay SVG
   const [isConfiguringOverlay, setIsConfiguringOverlay] = useState(false);
-  
+
   // Estados para posicionamento de lotes no mapa
   const [isPlacingLot, setIsPlacingLot] = useState(false); // Modo de posicionar lote
   const [placingLotId, setPlacingLotId] = useState<string | null>(null); // ID do lote sendo posicionado
@@ -97,31 +102,27 @@ export default function MapDetails() {
   const sequentialQueueRef = useRef<string[]>([]);
 
   // Sincronizar refs com o estado
-  useEffect(() => { isSequentialPlacingRef.current = isSequentialPlacing; }, [isSequentialPlacing]);
-  useEffect(() => { sequentialQueueRef.current = sequentialQueue; }, [sequentialQueue]);
+  useEffect(() => {
+    isSequentialPlacingRef.current = isSequentialPlacing;
+  }, [isSequentialPlacing]);
+  useEffect(() => {
+    sequentialQueueRef.current = sequentialQueue;
+  }, [sequentialQueue]);
 
-  
   // Estados para controlar visualização filtrada no mapa principal
-  const [focusedBlockId, setFocusedBlockId] = useState<string | null>(null);
-  const [focusedLotId, setFocusedLotId] = useState<string | null>(null);
 
   const { blocks, loadBlocks, createBlock, updateBlock, deleteBlock } = useBlockOperations();
 
   // Função para alternar seleção de lote
   const handleToggleLotSelection = (lot: Lot) => {
-    setSelectedLots(prev => {
-      const isSelected = prev.some(l => l.id === lot.id);
+    setSelectedLots((prev) => {
+      const isSelected = prev.some((l) => l.id === lot.id);
       if (isSelected) {
-        return prev.filter(l => l.id !== lot.id);
+        return prev.filter((l) => l.id !== lot.id);
       } else {
         return [...prev, lot];
       }
     });
-  };
-
-  // Função para verificar se lote está selecionado
-  const isLotSelected = (lotId: string) => {
-    return selectedLots.some(l => l.id === lotId);
   };
 
   // Função para limpar seleção
@@ -148,7 +149,7 @@ export default function MapDetails() {
     if (!multiSelectMode) {
       setSelectedLots([]);
     }
-  }, [selectedBlockId]);
+  }, [selectedBlockId, multiSelectMode]);
 
   // Função para buscar reservas de uma quadra específica
   const fetchReservations = useCallback(async (blockId?: string) => {
@@ -163,49 +164,55 @@ export default function MapDetails() {
   }, []);
 
   // Função para carregar lotes de uma quadra específica
-  const loadLotsForBlock = useCallback(async (blockId: string) => {
-    if (!mapId) return [];
+  const loadLotsForBlock = useCallback(
+    async (blockId: string) => {
+      if (!mapId) return [];
 
-    try {
-      const response = await axios.get(`${API_URL}/mapas/lotes`, {
-        params: { mapId, blockId },
-        timeout: 30000,
-      });
+      try {
+        const response = await axios.get(`${API_URL}/mapas/lotes`, {
+          params: { mapId, blockId },
+          timeout: 30000,
+        });
 
-      const data = response.data[0];
-      if (data && data.lots && Array.isArray(data.lots)) {
-        return data.lots.map((lot: Lot) => ({
-          ...lot,
-          mapId: data.mapId || mapId,
-          createdAt: new Date(lot.createdAt),
-          updatedAt: new Date(lot.updatedAt),
-        }));
+        const data = response.data[0];
+        if (data && data.lots && Array.isArray(data.lots)) {
+          return data.lots.map((lot: Lot) => ({
+            ...lot,
+            mapId: data.mapId || mapId,
+            createdAt: new Date(lot.createdAt),
+            updatedAt: new Date(lot.updatedAt),
+          }));
+        }
+        return [];
+      } catch (error) {
+        console.error('[MapDetails] ❌ Erro ao buscar lotes da quadra:', error);
+        return [];
       }
-      return [];
-    } catch (error) {
-      console.error('[MapDetails] ❌ Erro ao buscar lotes da quadra:', error);
-      return [];
-    }
-  }, [mapId]);
+    },
+    [mapId]
+  );
 
   // Função para carregar lotes apenas da quadra selecionada
-  const loadSelectedBlockLots = useCallback(async (blockId: string) => {
-    if (!mapId || !blockId) {
-      setSelectedBlockLots([]);
-      return;
-    }
+  const loadSelectedBlockLots = useCallback(
+    async (blockId: string) => {
+      if (!mapId || !blockId) {
+        setSelectedBlockLots([]);
+        return;
+      }
 
-    setIsLoadingBlockLots(true);
-    try {
-      const lots = await loadLotsForBlock(blockId);
-      setSelectedBlockLots(lots);
-    } catch (error) {
-      console.error('[MapDetails] ❌ Erro ao carregar lotes da quadra:', error);
-      setSelectedBlockLots([]);
-    } finally {
-      setIsLoadingBlockLots(false);
-    }
-  }, [mapId, loadLotsForBlock]);
+      setIsLoadingBlockLots(true);
+      try {
+        const lots = await loadLotsForBlock(blockId);
+        setSelectedBlockLots(lots);
+      } catch (error) {
+        console.error('[MapDetails] ❌ Erro ao carregar lotes da quadra:', error);
+        setSelectedBlockLots([]);
+      } finally {
+        setIsLoadingBlockLots(false);
+      }
+    },
+    [mapId, loadLotsForBlock]
+  );
 
   // Função para carregar todos os lotes do mapa (para validação de exclusão)
   const loadAllLotsInMap = useCallback(async () => {
@@ -219,7 +226,7 @@ export default function MapDetails() {
 
       // A API retorna [{ mapId, lots: [...] }] ou diretamente [...]
       let lotsArray: Lot[] = [];
-      
+
       if (response.data && Array.isArray(response.data)) {
         if (response.data.length > 0 && response.data[0].lots) {
           // Formato: [{ mapId, lots: [...] }]
@@ -228,7 +235,7 @@ export default function MapDetails() {
           // Formato: [...]
           lotsArray = response.data;
         }
-        
+
         setAllLotsInMap(lotsArray);
       } else {
         setAllLotsInMap([]);
@@ -245,7 +252,7 @@ export default function MapDetails() {
 
     try {
       setIsLoadingStats(true);
-      
+
       const response = await axios.get(`${API_URL}/mapas/lotes/stats`, {
         params: { mapId },
         timeout: 30000,
@@ -256,7 +263,7 @@ export default function MapDetails() {
           available: response.data.available || 0,
           reserved: response.data.reserved || 0,
           sold: response.data.sold || 0,
-          blocked: response.data.blocked || 0
+          blocked: response.data.blocked || 0,
         });
       }
     } catch (error) {
@@ -266,7 +273,7 @@ export default function MapDetails() {
         available: 0,
         reserved: 0,
         sold: 0,
-        blocked: 0
+        blocked: 0,
       });
     } finally {
       setIsLoadingStats(false);
@@ -275,81 +282,86 @@ export default function MapDetails() {
 
   // loadMapImage REMOVIDO - imageUrl já vem na resposta de /api/mapas (loadMapData)
 
-  const loadMapData = useCallback(async (currentMapId?: string) => {
-    const targetMapId = currentMapId || mapId;
-    try {
-      // Buscar mapas completos
-      const response = await axios.get(`${API_URL}/mapas`, {
-        timeout: 30000,
-      });
+  const loadMapData = useCallback(
+    async (currentMapId?: string) => {
+      const targetMapId = currentMapId || mapId;
+      try {
+        // Buscar mapas completos
+        const response = await axios.get(`${API_URL}/mapas`, {
+          timeout: 30000,
+        });
 
-      const mapsData = response.data;
-      const formattedMaps: Map[] = mapsData.map((m: any) => ({
-        id: m.mapId || m.id,
-        name: m.name || `Mapa ${m.mapId || m.id}`,
-        description: m.description || '',
-        imageUrl: m.imageUrl || m.image_url || '',
-        imageType: 'image',
-        width: m.width || 800,
-        height: m.height || 600,
-        address: m.address || '',
-        overlayConfig: m.overlayConfig || null,
-        createdAt: m.createdAt ? new Date(m.createdAt) : new Date(),
-        updatedAt: m.updatedAt ? new Date(m.updatedAt) : new Date(),
-      }));
-      
-      setAllMaps(formattedMaps);
+        const mapsData = response.data;
+        const formattedMaps: Map[] = mapsData.map((m: MapApiItem & { image_url?: string }) => ({
+          id: m.mapId || m.id,
+          name: m.name || `Mapa ${m.mapId || m.id}`,
+          description: m.description || '',
+          imageUrl: m.imageUrl || m.image_url || '',
+          imageType: 'image',
+          width: m.width || 800,
+          height: m.height || 600,
+          address: m.address || '',
+          overlayConfig: m.overlayConfig || null,
+          createdAt: m.createdAt ? new Date(m.createdAt) : new Date(),
+          updatedAt: m.updatedAt ? new Date(m.updatedAt) : new Date(),
+        }));
 
-      // Se tem mapId, buscar o mapa específico
-      if (targetMapId) {
-        const data = mapsData.find((m: any) => m.mapId === targetMapId || m.id === targetMapId);
-        
-        if (data) {
-          const mapObj: Map = {
-            id: data.mapId || data.id || targetMapId,
-            name: data.name || `Mapa ${data.mapId || targetMapId}`,
-            description: data.description || '',
-            imageUrl: data.imageUrl || data.image_url || '',
-            imageType: 'image',
-            width: data.width || 800,
-            height: data.height || 600,
-            address: data.address || '',
-            overlayConfig: data.overlayConfig || null,
-            createdAt: data.createdAt ? new Date(data.createdAt) : new Date(),
-            updatedAt: data.updatedAt ? new Date(data.updatedAt) : new Date(),
-          };
-          setMap(mapObj);
+        setAllMaps(formattedMaps);
+
+        // Se tem mapId, buscar o mapa específico
+        if (targetMapId) {
+          const data = mapsData.find(
+            (m: MapApiItem) => m.mapId === targetMapId || m.id === targetMapId
+          );
+
+          if (data) {
+            const mapObj: Map = {
+              id: data.mapId || data.id || targetMapId,
+              name: data.name || `Mapa ${data.mapId || targetMapId}`,
+              description: data.description || '',
+              imageUrl: data.imageUrl || data.image_url || '',
+              imageType: 'image',
+              width: data.width || 800,
+              height: data.height || 600,
+              address: data.address || '',
+              overlayConfig: data.overlayConfig || null,
+              createdAt: data.createdAt ? new Date(data.createdAt) : new Date(),
+              updatedAt: data.updatedAt ? new Date(data.updatedAt) : new Date(),
+            };
+            setMap(mapObj);
+          } else {
+            setMap(null);
+          }
         } else {
-          setMap(null);
+          // Se não tem mapId, selecionar o primeiro mapa
+          if (formattedMaps.length > 0) {
+            const firstMap = formattedMaps[0];
+            router.push(`/map-details?mapId=${firstMap.id}`);
+          } else {
+            setMap(null);
+          }
         }
-      } else {
-        // Se não tem mapId, selecionar o primeiro mapa
-        if (formattedMaps.length > 0) {
-          const firstMap = formattedMaps[0];
-          router.push(`/map-details?mapId=${firstMap.id}`);
-        } else {
-          setMap(null);
-        }
+      } catch (error) {
+        console.error('[MapDetails] ❌ Erro ao buscar dados:', error);
+        // Em caso de erro, cria um mapa padrão
+        const defaultMap: Map = {
+          id: targetMapId,
+          name: `Mapa ${targetMapId}`,
+          description: '',
+          imageUrl: '',
+          imageType: 'image',
+          width: 800,
+          height: 600,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        };
+        setMap(defaultMap);
+      } finally {
+        setIsLoading(false);
       }
-    } catch (error) {
-      console.error('[MapDetails] ❌ Erro ao buscar dados:', error);
-      // Em caso de erro, cria um mapa padrão
-      const defaultMap: Map = {
-        id: targetMapId,
-        name: `Mapa ${targetMapId}`,
-        description: '',
-        imageUrl: '',
-        imageType: 'image',
-        width: 800,
-        height: 600,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      };
-      setMap(defaultMap);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [mapId, router]);
+    },
+    [mapId, router]
+  );
 
   // Flag para controlar se já inicializou
   const hasInitialized = useRef(false);
@@ -359,10 +371,10 @@ export default function MapDetails() {
   useEffect(() => {
     if (hasInitialized.current) return;
     hasInitialized.current = true;
-    
+
     const initializeData = async () => {
       await loadMapData(mapId);
-      
+
       // Após carregar mapas, se tem mapId, carregar dados específicos
       if (mapId && mapId.trim() !== '') {
         loadBlocks(mapId);
@@ -370,7 +382,7 @@ export default function MapDetails() {
         loadAllLotsInMap();
       }
     };
-    
+
     initializeData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -381,24 +393,24 @@ export default function MapDetails() {
     if (!hasInitialized.current) return;
     // Só executar quando mapId realmente mudou (não na montagem)
     if (previousMapIdRef.current === mapId) return;
-    
+
     const prevId = previousMapIdRef.current;
     previousMapIdRef.current = mapId;
-    
+
     // Limpar estado anterior se houve mapa antes
     if (prevId) {
       setSelectedBlockLots([]);
       setSelectedBlockId('');
       setReservations([]);
     }
-    
+
     // Carregar dados do novo mapa
     if (mapId && mapId.trim() !== '') {
-      const selectedMap = allMaps.find(m => m.id === mapId);
+      const selectedMap = allMaps.find((m) => m.id === mapId);
       if (selectedMap) {
         setMap(selectedMap);
       }
-      
+
       loadBlocks(mapId);
       loadLotStats();
       loadAllLotsInMap();
@@ -491,41 +503,43 @@ export default function MapDetails() {
     try {
       // Busca lotes da quadra para informar o usuário
       const lotsInBlock = await loadLotsForBlock(blockId);
-      
-      const message = lotsInBlock.length > 0
-        ? `Esta quadra possui ${lotsInBlock.length} lote(s) cadastrado(s) que serão excluídos.\n\nTem certeza que deseja continuar?`
-        : 'Tem certeza que deseja excluir esta quadra?';
+
+      const message =
+        lotsInBlock.length > 0
+          ? `Esta quadra possui ${lotsInBlock.length} lote(s) cadastrado(s) que serão excluídos.\n\nTem certeza que deseja continuar?`
+          : 'Tem certeza que deseja excluir esta quadra?';
 
       if (await customAlert.confirm(message)) {
         await deleteBlock(blockId, mapId);
-        
+
         // Recarregar quadras para atualizar o mapa
         await loadBlocks(mapId);
-        
+
         // Recarregar todos os lotes do mapa
         await loadAllLotsInMap();
-        
+
         // Se a quadra excluída estava selecionada, limpar seleção
         if (selectedBlockId === blockId) {
           setSelectedBlockId('');
           setSelectedBlockLots([]);
         }
-        
+
         customAlert.success('Quadra excluída com sucesso!');
       }
-    } catch (error: any) {
-      console.error('Erro ao deletar quadra:', error);
-      
+    } catch (thrown) {
+      console.error('Erro ao deletar quadra:', thrown);
+      const error = thrown as { error?: string; count?: number };
+
       // Tratar erro de lotes reservados/vendidos
       if (error.error && error.count) {
         customAlert.error(
           `Não é possível excluir esta quadra\n\n` +
-          `Existem ${error.count} lote(s) com reservas ou vendas ativas.\n\n` +
-          `📋 O que fazer:\n` +
-          `1. Acesse a página de Reservas\n` +
-          `2. Cancele as reservas/vendas dos lotes desta quadra\n` +
-          `3. Tente excluir a quadra novamente\n\n` +
-          `💡 Dica: Você pode identificar os lotes pelos status "Reservado" ou "Vendido"`
+            `Existem ${error.count} lote(s) com reservas ou vendas ativas.\n\n` +
+            `📋 O que fazer:\n` +
+            `1. Acesse a página de Reservas\n` +
+            `2. Cancele as reservas/vendas dos lotes desta quadra\n` +
+            `3. Tente excluir a quadra novamente\n\n` +
+            `💡 Dica: Você pode identificar os lotes pelos status "Reservado" ou "Vendido"`
         );
       } else if (error.error) {
         customAlert.error(`Erro ao excluir quadra\n\n${error.error}`);
@@ -536,21 +550,21 @@ export default function MapDetails() {
   };
 
   // Funções de validação para exclusão
-  const hasReservedOrSoldLotsInBlock = (blockId: string): boolean => {    
-    const lotsInBlock = allLotsInMap.filter(lot => String(lot.blockId) === String(blockId));
-    const hasReservedOrSold = lotsInBlock.some(lot => 
-      lot.status === LotStatus.RESERVED || lot.status === LotStatus.SOLD
+  const hasReservedOrSoldLotsInBlock = (blockId: string): boolean => {
+    const lotsInBlock = allLotsInMap.filter((lot) => String(lot.blockId) === String(blockId));
+    const hasReservedOrSold = lotsInBlock.some(
+      (lot) => lot.status === LotStatus.RESERVED || lot.status === LotStatus.SOLD
     );
-    
+
     return hasReservedOrSold;
   };
 
   // Funções para seleção múltipla de quadras
   const handleToggleBlockSelection = (blockId: string) => {
     const id = String(blockId);
-    setSelectedBlockIds(prev => {
+    setSelectedBlockIds((prev) => {
       if (prev.includes(id)) {
-        return prev.filter(i => i !== id);
+        return prev.filter((i) => i !== id);
       }
       return [...prev, id];
     });
@@ -563,46 +577,55 @@ export default function MapDetails() {
 
   const handleBulkBlockDelete = async () => {
     if (selectedBlockIds.length === 0) return;
-    
+
     // Verificar quais podem ser excluídas
-    const deletable = selectedBlockIds.filter(id => !hasReservedOrSoldLotsInBlock(id));
-    const notDeletable = selectedBlockIds.filter(id => hasReservedOrSoldLotsInBlock(id));
-    
+    const deletable = selectedBlockIds.filter((id) => !hasReservedOrSoldLotsInBlock(id));
+    const notDeletable = selectedBlockIds.filter((id) => hasReservedOrSoldLotsInBlock(id));
+
     if (deletable.length === 0) {
-      customAlert.error('Nenhuma quadra selecionada pode ser excluída. Todas possuem lotes reservados ou vendidos.');
+      customAlert.error(
+        'Nenhuma quadra selecionada pode ser excluída. Todas possuem lotes reservados ou vendidos.'
+      );
       return;
     }
 
     if (notDeletable.length > 0) {
-      const names = notDeletable.map(id => blocks.find(b => String(b.id) === id)?.name || '?').join(', ');
-      customAlert.warning(`Quadra(s) ${names} não pode(m) ser excluída(s) por possuir lotes reservados/vendidos. Será(o) ignorada(s).`);
+      const names = notDeletable
+        .map((id) => blocks.find((b) => String(b.id) === id)?.name || '?')
+        .join(', ');
+      customAlert.warning(
+        `Quadra(s) ${names} não pode(m) ser excluída(s) por possuir lotes reservados/vendidos. Será(o) ignorada(s).`
+      );
     }
 
     const totalLots = deletable.reduce((acc, id) => {
-      return acc + allLotsInMap.filter(l => String(l.blockId) === id).length;
+      return acc + allLotsInMap.filter((l) => String(l.blockId) === id).length;
     }, 0);
-    
-    const blockNames = deletable.map(id => blocks.find(b => String(b.id) === id)?.name || '?').join(', ');
-    const msg = totalLots > 0
-      ? `Deseja EXCLUIR ${deletable.length} quadra(s) (${blockNames}) e seus ${totalLots} lote(s)? Esta ação não pode ser desfeita!`
-      : `Deseja EXCLUIR ${deletable.length} quadra(s) (${blockNames})? Esta ação não pode ser desfeita!`;
 
-    if (!await customAlert.confirm(msg)) return;
+    const blockNames = deletable
+      .map((id) => blocks.find((b) => String(b.id) === id)?.name || '?')
+      .join(', ');
+    const msg =
+      totalLots > 0
+        ? `Deseja EXCLUIR ${deletable.length} quadra(s) (${blockNames}) e seus ${totalLots} lote(s)? Esta ação não pode ser desfeita!`
+        : `Deseja EXCLUIR ${deletable.length} quadra(s) (${blockNames})? Esta ação não pode ser desfeita!`;
+
+    if (!(await customAlert.confirm(msg))) return;
 
     try {
       for (const blockId of deletable) {
         await deleteBlock(blockId, mapId);
       }
-      
+
       await loadBlocks(mapId);
       await loadAllLotsInMap();
       loadLotStats();
-      
+
       if (selectedBlockId && deletable.includes(selectedBlockId)) {
         setSelectedBlockId('');
         setSelectedBlockLots([]);
       }
-      
+
       handleClearBlockSelection();
       customAlert.success(`${deletable.length} quadra(s) excluída(s) com sucesso!`);
     } catch (error) {
@@ -613,7 +636,7 @@ export default function MapDetails() {
 
   const handleBulkBlockToggleAll = async () => {
     if (selectedBlockIds.length === 0) return;
-    
+
     if (!mapId) {
       customAlert.error('Erro: ID do mapa não encontrado');
       return;
@@ -642,7 +665,7 @@ export default function MapDetails() {
       freshLots = allLotsInMap;
     }
 
-    const lotsToToggle = freshLots.filter(lot => {
+    const lotsToToggle = freshLots.filter((lot) => {
       if (!selectedBlockIds.includes(String(lot.blockId))) return false;
       if (blockSelectAction === 'block') return lot.status === LotStatus.AVAILABLE;
       if (blockSelectAction === 'unblock') return lot.status === LotStatus.BLOCKED;
@@ -653,33 +676,45 @@ export default function MapDetails() {
       selectedBlockIds,
       blockSelectAction,
       freshLotsCount: freshLots.length,
-      freshLotsBlockIds: [...new Set(freshLots.map(l => `${l.blockId} (${typeof l.blockId})`))],
-      freshLotsStatuses: [...new Set(freshLots.map(l => l.status))],
+      freshLotsBlockIds: [...new Set(freshLots.map((l) => `${l.blockId} (${typeof l.blockId})`))],
+      freshLotsStatuses: [...new Set(freshLots.map((l) => l.status))],
       lotsToToggleCount: lotsToToggle.length,
     });
 
     if (lotsToToggle.length === 0) {
-      const msg = blockSelectAction === 'block'
-        ? 'Nenhum lote disponível para bloquear nas quadras selecionadas.'
-        : blockSelectAction === 'unblock'
-        ? 'Nenhum lote bloqueado para desbloquear nas quadras selecionadas.'
-        : 'Nenhum lote disponível ou bloqueado para alterar nas quadras selecionadas.';
+      const msg =
+        blockSelectAction === 'block'
+          ? 'Nenhum lote disponível para bloquear nas quadras selecionadas.'
+          : blockSelectAction === 'unblock'
+            ? 'Nenhum lote bloqueado para desbloquear nas quadras selecionadas.'
+            : 'Nenhum lote disponível ou bloqueado para alterar nas quadras selecionadas.';
       customAlert.warning(msg);
       return;
     }
 
-    const toBlock = blockSelectAction !== 'unblock' ? lotsToToggle.filter(l => l.status === LotStatus.AVAILABLE) : [];
-    const toUnblock = blockSelectAction !== 'block' ? lotsToToggle.filter(l => l.status === LotStatus.BLOCKED) : [];
+    const toBlock =
+      blockSelectAction !== 'unblock'
+        ? lotsToToggle.filter((l) => l.status === LotStatus.AVAILABLE)
+        : [];
+    const toUnblock =
+      blockSelectAction !== 'block'
+        ? lotsToToggle.filter((l) => l.status === LotStatus.BLOCKED)
+        : [];
 
     const parts = [];
     if (toBlock.length > 0) parts.push(`bloquear ${toBlock.length}`);
     if (toUnblock.length > 0) parts.push(`desbloquear ${toUnblock.length}`);
 
-    if (!await customAlert.confirm(`Deseja ${parts.join(' e ')} lote(s) nas ${selectedBlockIds.length} quadra(s) selecionada(s)?`)) return;
+    if (
+      !(await customAlert.confirm(
+        `Deseja ${parts.join(' e ')} lote(s) nas ${selectedBlockIds.length} quadra(s) selecionada(s)?`
+      ))
+    )
+      return;
 
     try {
       await Promise.all([
-        ...toBlock.map(lot =>
+        ...toBlock.map((lot) =>
           axios.patch('/api/mapas/lotes/atualizar', {
             id: lot.id,
             mapId: lot.mapId || mapId,
@@ -692,7 +727,7 @@ export default function MapDetails() {
             features: lot.features,
           })
         ),
-        ...toUnblock.map(lot =>
+        ...toUnblock.map((lot) =>
           axios.patch('/api/mapas/lotes/atualizar', {
             id: lot.id,
             mapId: lot.mapId || mapId,
@@ -711,9 +746,9 @@ export default function MapDetails() {
       if (toBlock.length > 0) msgs.push(`${toBlock.length} bloqueado(s)`);
       if (toUnblock.length > 0) msgs.push(`${toUnblock.length} desbloqueado(s)`);
       customAlert.success(`Lotes atualizados: ${msgs.join(', ')}!`);
-      
+
       handleClearBlockSelection();
-      
+
       // Recarregar dados
       if (selectedBlockId) {
         const lots = await loadLotsForBlock(selectedBlockId);
@@ -733,9 +768,9 @@ export default function MapDetails() {
       return;
     }
 
-    const lotsInBlock = allLotsInMap.filter(l => String(l.blockId) === String(blockId));
-    const toBlock = lotsInBlock.filter(l => l.status === LotStatus.AVAILABLE);
-    const toUnblock = lotsInBlock.filter(l => l.status === LotStatus.BLOCKED);
+    const lotsInBlock = allLotsInMap.filter((l) => String(l.blockId) === String(blockId));
+    const toBlock = lotsInBlock.filter((l) => l.status === LotStatus.AVAILABLE);
+    const toUnblock = lotsInBlock.filter((l) => l.status === LotStatus.BLOCKED);
 
     if (toBlock.length === 0 && toUnblock.length === 0) {
       customAlert.warning('Nenhum lote disponível ou bloqueado para alterar nesta quadra.');
@@ -745,13 +780,14 @@ export default function MapDetails() {
     const parts = [];
     if (toBlock.length > 0) parts.push(`bloquear ${toBlock.length}`);
     if (toUnblock.length > 0) parts.push(`desbloquear ${toUnblock.length}`);
-    const blockName = blocks.find(b => String(b.id) === String(blockId))?.name ?? blockId;
+    const blockName = blocks.find((b) => String(b.id) === String(blockId))?.name ?? blockId;
 
-    if (!await customAlert.confirm(`Deseja ${parts.join(' e ')} lote(s) na quadra ${blockName}?`)) return;
+    if (!(await customAlert.confirm(`Deseja ${parts.join(' e ')} lote(s) na quadra ${blockName}?`)))
+      return;
 
     try {
       await Promise.all([
-        ...toBlock.map(lot =>
+        ...toBlock.map((lot) =>
           axios.patch('/api/mapas/lotes/atualizar', {
             id: lot.id,
             mapId: lot.mapId || mapId,
@@ -764,7 +800,7 @@ export default function MapDetails() {
             features: lot.features,
           })
         ),
-        ...toUnblock.map(lot =>
+        ...toUnblock.map((lot) =>
           axios.patch('/api/mapas/lotes/atualizar', {
             id: lot.id,
             mapId: lot.mapId || mapId,
@@ -797,7 +833,7 @@ export default function MapDetails() {
   };
 
   const hasReservedOrSoldLotsInMap = (): boolean => {
-    return (lotStats.reserved > 0 || lotStats.sold > 0);
+    return lotStats.reserved > 0 || lotStats.sold > 0;
   };
 
   const handleAddLotToBlock = (blockId: string) => {
@@ -808,7 +844,6 @@ export default function MapDetails() {
 
   const handleSaveLot = async (lot: Lot) => {
     try {
-      
       if (!lot.lotNumber || lot.lotNumber.trim() === '') {
         customAlert.error('Número do lote é obrigatório');
         return;
@@ -840,28 +875,32 @@ export default function MapDetails() {
       };
 
       if (lot.id && lot.id !== '') {
-        const response = await axios.patch(`${API_URL}/mapas/lotes/atualizar`, lotToSave, {
+        await axios.patch(`${API_URL}/mapas/lotes/atualizar`, lotToSave, {
           headers: { 'Content-Type': 'application/json' },
           timeout: 30000,
         });
       } else {
-        const response = await axios.post(`${API_URL}/mapas/lotes/criar`, {
-          ...lotToSave,
-          id: Date.now().toString(),
-        }, {
-          headers: { 'Content-Type': 'application/json' },
-          timeout: 30000,
-        });
+        await axios.post(
+          `${API_URL}/mapas/lotes/criar`,
+          {
+            ...lotToSave,
+            id: Date.now().toString(),
+          },
+          {
+            headers: { 'Content-Type': 'application/json' },
+            timeout: 30000,
+          }
+        );
       }
 
       // Força refresh apenas dos cards de quadra
-      setRefreshTrigger(prev => prev + 1);
+      setRefreshTrigger((prev) => prev + 1);
       setIsAddingLot(false);
       setSelectedBlockForLot('');
       customAlert.success('Lote salvo com sucesso!');
-    } catch (error: any) {
+    } catch (error) {
       console.error('[MapDetails] ❌ Erro ao salvar lote:', error);
-      const errorMessage = error.response?.data?.error || 'Erro ao salvar lote. Tente novamente.';
+      const errorMessage = apiErrorMessage(error, 'Erro ao salvar lote. Tente novamente.');
       customAlert.error(errorMessage);
     }
   };
@@ -869,7 +908,7 @@ export default function MapDetails() {
   const handleEditLot = async (lot: Lot) => {
     await handleSaveLot(lot);
     // Força refresh dos cards após editar lote
-    setRefreshTrigger(prev => prev + 1);
+    setRefreshTrigger((prev) => prev + 1);
   };
 
   // Handler para posicionar lote no mapa (clique no mapa)
@@ -878,8 +917,9 @@ export default function MapDetails() {
 
     try {
       // Buscar o lote nos dados locais (usar String() para garantir comparação correta de tipos)
-      const lot = allLotsInMap.find(l => String(l.id) === String(placingLotId)) 
-        || selectedBlockLots.find(l => String(l.id) === String(placingLotId));
+      const lot =
+        allLotsInMap.find((l) => String(l.id) === String(placingLotId)) ||
+        selectedBlockLots.find((l) => String(l.id) === String(placingLotId));
       if (!lot) {
         customAlert.error('Lote não encontrado');
         setIsPlacingLot(false);
@@ -888,30 +928,36 @@ export default function MapDetails() {
       }
 
       // Atualizar via API
-      await axios.patch(`${API_URL}/mapas/lotes/atualizar`, {
-        id: lot.id,
-        mapId: lot.mapId,
-        lat,
-        lng,
-      }, {
-        headers: { 'Content-Type': 'application/json' },
-        timeout: 30000,
-      });
+      await axios.patch(
+        `${API_URL}/mapas/lotes/atualizar`,
+        {
+          id: lot.id,
+          mapId: lot.mapId,
+          lat,
+          lng,
+        },
+        {
+          headers: { 'Content-Type': 'application/json' },
+          timeout: 30000,
+        }
+      );
 
       // Atualizar estado local
-      setAllLotsInMap(prev => prev.map(l => 
-        String(l.id) === String(placingLotId) ? { ...l, lat, lng } : l
-      ));
-      setSelectedBlockLots(prev => prev.map(l => 
-        String(l.id) === String(placingLotId) ? { ...l, lat, lng } : l
-      ));
+      setAllLotsInMap((prev) =>
+        prev.map((l) => (String(l.id) === String(placingLotId) ? { ...l, lat, lng } : l))
+      );
+      setSelectedBlockLots((prev) =>
+        prev.map((l) => (String(l.id) === String(placingLotId) ? { ...l, lat, lng } : l))
+      );
 
       customAlert.success(`Lote ${lot.lotNumber} posicionado!`);
 
       // Se estiver em modo sequencial, avançar para o próximo lote na fila
       // Usa refs para evitar problema de stale closure em callback async
       if (isSequentialPlacingRef.current && sequentialQueueRef.current.length > 0) {
-        const currentIdx = sequentialQueueRef.current.findIndex(id => String(id) === String(placingLotId));
+        const currentIdx = sequentialQueueRef.current.findIndex(
+          (id) => String(id) === String(placingLotId)
+        );
         const nextIdx = currentIdx + 1;
 
         if (nextIdx < sequentialQueueRef.current.length) {
@@ -932,7 +978,7 @@ export default function MapDetails() {
         setIsPlacingLot(false);
         setPlacingLotId(null);
       }
-    } catch (error: any) {
+    } catch (error) {
       console.error('[MapDetails] ❌ Erro ao posicionar lote:', error);
       customAlert.error('Erro ao posicionar lote no mapa');
     }
@@ -956,7 +1002,7 @@ export default function MapDetails() {
 
   // Handler para iniciar posicionamento sequencial de todos os lotes disponíveis de uma quadra
   const startSequentialPlacing = (blockId: string, lotsFromBlock?: Lot[]) => {
-    const block = blocks.find(b => b.id === blockId);
+    const block = blocks.find((b) => b.id === blockId);
     if (!block) return;
 
     // Usar lotes passados diretamente (do BlockCard) ou buscar de allLotsInMap como fallback
@@ -964,7 +1010,7 @@ export default function MapDetails() {
 
     // Filtrar lotes da quadra que ainda não possuem marcação no mapa
     const availableLots = sourceLots
-      .filter(l => String(l.blockId) === String(blockId) && (l.lat == null || l.lng == null))
+      .filter((l) => String(l.blockId) === String(blockId) && (l.lat == null || l.lng == null))
       .sort((a, b) => {
         const numA = parseInt(a.lotNumber) || 0;
         const numB = parseInt(b.lotNumber) || 0;
@@ -976,7 +1022,7 @@ export default function MapDetails() {
       return;
     }
 
-    const lotIds = availableLots.map(l => l.id);
+    const lotIds = availableLots.map((l) => l.id);
     setSequentialQueue(lotIds);
     setSequentialCurrentIndex(0);
     setSequentialBlockName(block.name);
@@ -988,26 +1034,30 @@ export default function MapDetails() {
   // Handler para remover a posição de um lote do mapa
   const handleRemoveLotPosition = async (lot: Lot) => {
     try {
-      await axios.patch(`${API_URL}/mapas/lotes/atualizar`, {
-        id: lot.id,
-        mapId: lot.mapId,
-        lat: null,
-        lng: null,
-      }, {
-        headers: { 'Content-Type': 'application/json' },
-        timeout: 30000,
-      });
+      await axios.patch(
+        `${API_URL}/mapas/lotes/atualizar`,
+        {
+          id: lot.id,
+          mapId: lot.mapId,
+          lat: null,
+          lng: null,
+        },
+        {
+          headers: { 'Content-Type': 'application/json' },
+          timeout: 30000,
+        }
+      );
 
       // Atualizar estado local
-      setAllLotsInMap(prev => prev.map(l => 
-        l.id === lot.id ? { ...l, lat: undefined, lng: undefined } : l
-      ));
-      setSelectedBlockLots(prev => prev.map(l => 
-        l.id === lot.id ? { ...l, lat: undefined, lng: undefined } : l
-      ));
+      setAllLotsInMap((prev) =>
+        prev.map((l) => (l.id === lot.id ? { ...l, lat: undefined, lng: undefined } : l))
+      );
+      setSelectedBlockLots((prev) =>
+        prev.map((l) => (l.id === lot.id ? { ...l, lat: undefined, lng: undefined } : l))
+      );
 
       customAlert.success(`Marcação do lote ${lot.lotNumber} removida do mapa`);
-    } catch (error: any) {
+    } catch (error) {
       console.error('[MapDetails] ❌ Erro ao remover posição do lote:', error);
       customAlert.error('Erro ao remover marcação do lote');
     }
@@ -1022,7 +1072,8 @@ export default function MapDetails() {
         throw new Error('Lote não encontrado');
       }
 
-      const newStatus = currentStatus === LotStatus.BLOCKED ? LotStatus.AVAILABLE : LotStatus.BLOCKED;
+      const newStatus =
+        currentStatus === LotStatus.BLOCKED ? LotStatus.AVAILABLE : LotStatus.BLOCKED;
 
       // Atualizar via API
       await axios.patch(`${API_URL}/mapas/lotes/atualizar`, {
@@ -1038,7 +1089,7 @@ export default function MapDetails() {
       });
 
       // Força refresh dos cards após alterar status
-      setRefreshTrigger(prev => prev + 1);
+      setRefreshTrigger((prev) => prev + 1);
     } catch (error) {
       console.error('Erro ao alterar status do lote:', error);
       throw error;
@@ -1047,7 +1098,6 @@ export default function MapDetails() {
 
   const handleDeleteLot = async (lotId: string) => {
     try {
-      
       // Buscar o lote apenas na quadra selecionada
       const lot = selectedBlockLots.find((l: Lot) => l.id === lotId);
 
@@ -1059,16 +1109,16 @@ export default function MapDetails() {
       if (lot.status === LotStatus.RESERVED || lot.status === LotStatus.SOLD) {
         customAlert.error(
           `Não é possível excluir este lote\n\n` +
-          `O lote está ${lot.status === LotStatus.RESERVED ? 'reservado' : 'vendido'}.\n\n` +
-          `📋 O que fazer:\n` +
-          `1. Acesse a página de Reservas\n` +
-          `2. Cancele a ${lot.status === LotStatus.RESERVED ? 'reserva' : 'venda'}\n` +
-          `3. Tente excluir o lote novamente`
+            `O lote está ${lot.status === LotStatus.RESERVED ? 'reservado' : 'vendido'}.\n\n` +
+            `📋 O que fazer:\n` +
+            `1. Acesse a página de Reservas\n` +
+            `2. Cancele a ${lot.status === LotStatus.RESERVED ? 'reserva' : 'venda'}\n` +
+            `3. Tente excluir o lote novamente`
         );
         return;
       }
 
-      const response = await axios.delete(`${API_URL}/mapas/lotes/deletar?lotId=${lotId}`, {
+      await axios.delete(`${API_URL}/mapas/lotes/deletar?lotId=${lotId}`, {
         timeout: 30000,
       });
 
@@ -1077,16 +1127,16 @@ export default function MapDetails() {
         const updatedLots = await loadLotsForBlock(selectedBlockId);
         setSelectedBlockLots(updatedLots);
       }
-      
+
       // Recarregar todos os lotes do mapa para atualizar visualização
       await loadAllLotsInMap();
-      
+
       // Força refresh dos cards após excluir lote
-      setRefreshTrigger(prev => prev + 1);
+      setRefreshTrigger((prev) => prev + 1);
       customAlert.success('Lote excluído com sucesso!');
-    } catch (error: any) {
+    } catch (error) {
       console.error('[MapDetails] ❌ Erro ao excluir lote:', error);
-      const errorMessage = error.response?.data?.error || 'Erro ao excluir lote. Tente novamente.';
+      const errorMessage = apiErrorMessage(error, 'Erro ao excluir lote. Tente novamente.');
       customAlert.error(errorMessage);
       throw error;
     }
@@ -1094,7 +1144,7 @@ export default function MapDetails() {
 
   const saveOverlayConfig = async (overlayConfig: OverlayConfig | null) => {
     if (!mapId || !map) return;
-    
+
     try {
       let configToSave = overlayConfig;
 
@@ -1120,15 +1170,17 @@ export default function MapDetails() {
         mapId,
         overlayConfig: configToSave,
       });
-      
-      customAlert.success(configToSave ? 'Overlay configurado com sucesso!' : 'Overlay removido com sucesso!');
+
+      customAlert.success(
+        configToSave ? 'Overlay configurado com sucesso!' : 'Overlay removido com sucesso!'
+      );
       setIsConfiguringOverlay(false);
-      
-      setMap(prev => {
+
+      setMap((prev) => {
         if (!prev) return prev;
         return { ...prev, overlayConfig: configToSave };
       });
-      
+
       await loadMapData(mapId);
     } catch (error) {
       console.error('Erro ao salvar overlay:', error);
@@ -1144,34 +1196,38 @@ export default function MapDetails() {
 
     setIsSubmittingMap(true);
     try {
-      const response = await axios.post('/api/mapas/criar', {
-        name: newMapName,
-        description: newMapDescription,
-        imageUrl: '',
-        width: 800,
-        height: 600,
-      }, {
-        headers: {
-          'Content-Type': 'application/json',
+      const response = await axios.post(
+        '/api/mapas/criar',
+        {
+          name: newMapName,
+          description: newMapDescription,
+          imageUrl: '',
+          width: 800,
+          height: 600,
         },
-        timeout: 30000,
-      });
+        {
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          timeout: 30000,
+        }
+      );
 
       const newMapId = response.data.mapId || response.data.id;
-      
+
       customAlert.success('Loteamento criado com sucesso!');
       setIsCreatingMap(false);
       setNewMapName('');
       setNewMapDescription('');
-      
+
       // Recarregar lista de mapas
       await loadMapData();
-      
+
       // Redirecionar para o novo mapa
       router.push(`/map-details?mapId=${newMapId}`);
-    } catch (error: any) {
+    } catch (error) {
       console.error('Erro ao criar mapa:', error);
-      customAlert.error(error.response?.data?.error || 'Erro ao criar loteamento. Tente novamente.');
+      customAlert.error(apiErrorMessage(error, 'Erro ao criar loteamento. Tente novamente.'));
     } finally {
       setIsSubmittingMap(false);
     }
@@ -1179,7 +1235,7 @@ export default function MapDetails() {
 
   const handleDeleteMap = async () => {
     if (!mapId) return;
-    
+
     setIsDeletingMap(true);
     try {
       await axios.delete(`${API_URL}/mapas/deletar?mapId=${mapId}`, {
@@ -1188,13 +1244,13 @@ export default function MapDetails() {
 
       customAlert.success('Loteamento excluído com sucesso!');
       setShowDeleteConfirm(false);
-      
+
       // Recarregar lista de mapas
       await loadMapData();
-      
+
       // Redirecionar para o primeiro mapa ou página inicial
       if (allMaps.length > 1) {
-        const nextMap = allMaps.find(m => m.id !== mapId);
+        const nextMap = allMaps.find((m) => m.id !== mapId);
         if (nextMap) {
           router.push(`/map-details?mapId=${nextMap.id}`);
         } else {
@@ -1203,9 +1259,9 @@ export default function MapDetails() {
       } else {
         router.push('/map-details');
       }
-    } catch (error: any) {
+    } catch (error) {
       console.error('Erro ao deletar mapa:', error);
-      const errorMsg = error.response?.data?.error || 'Erro ao excluir loteamento. Tente novamente.';
+      const errorMsg = apiErrorMessage(error, 'Erro ao excluir loteamento. Tente novamente.');
       customAlert.error(errorMsg);
     } finally {
       setIsDeletingMap(false);
@@ -1217,23 +1273,23 @@ export default function MapDetails() {
       customAlert.error('O nome do loteamento é obrigatório');
       return;
     }
-    
+
     setIsSubmittingMapEdit(true);
     try {
       await axios.put(`${API_URL}/mapas/editar`, {
         mapId,
         name: editMapName.trim(),
-        description: editMapDescription.trim()
+        description: editMapDescription.trim(),
       });
 
       customAlert.success('Loteamento atualizado com sucesso!');
       setIsEditingMap(false);
-      
+
       // Recarregar dados do mapa
       await loadMapData();
-    } catch (error: any) {
+    } catch (error) {
       console.error('Erro ao editar mapa:', error);
-      const errorMsg = error.response?.data?.error || 'Erro ao atualizar loteamento. Tente novamente.';
+      const errorMsg = apiErrorMessage(error, 'Erro ao atualizar loteamento. Tente novamente.');
       customAlert.error(errorMsg);
     } finally {
       setIsSubmittingMapEdit(false);
@@ -1243,25 +1299,28 @@ export default function MapDetails() {
   // Funções para ações em lote
   const handleBulkBlockToggle = async () => {
     if (selectedLots.length === 0) return;
-    
+
     if (!mapId) {
       customAlert.error('Erro: ID do mapa não encontrado');
       return;
     }
-    
-    const lotsToBlock = multiSelectAction !== 'unblock'
-      ? selectedLots.filter(lot => lot.status === LotStatus.AVAILABLE)
-      : [];
-    const lotsToUnblock = multiSelectAction !== 'block'
-      ? selectedLots.filter(lot => lot.status === LotStatus.BLOCKED)
-      : [];
-    
+
+    const lotsToBlock =
+      multiSelectAction !== 'unblock'
+        ? selectedLots.filter((lot) => lot.status === LotStatus.AVAILABLE)
+        : [];
+    const lotsToUnblock =
+      multiSelectAction !== 'block'
+        ? selectedLots.filter((lot) => lot.status === LotStatus.BLOCKED)
+        : [];
+
     if (lotsToBlock.length === 0 && lotsToUnblock.length === 0) {
-      const msg = multiSelectAction === 'block'
-        ? 'Nenhum lote disponível selecionado para bloquear'
-        : multiSelectAction === 'unblock'
-        ? 'Nenhum lote bloqueado selecionado para desbloquear'
-        : 'Nenhum lote disponível ou bloqueado para alterar';
+      const msg =
+        multiSelectAction === 'block'
+          ? 'Nenhum lote disponível selecionado para bloquear'
+          : multiSelectAction === 'unblock'
+            ? 'Nenhum lote bloqueado selecionado para desbloquear'
+            : 'Nenhum lote disponível ou bloqueado para alterar';
       customAlert.warning(msg);
       return;
     }
@@ -1269,11 +1328,11 @@ export default function MapDetails() {
     const parts = [];
     if (lotsToBlock.length > 0) parts.push(`bloquear ${lotsToBlock.length}`);
     if (lotsToUnblock.length > 0) parts.push(`desbloquear ${lotsToUnblock.length}`);
-    if (!await customAlert.confirm(`Deseja ${parts.join(' e ')} lote(s)?`)) return;
+    if (!(await customAlert.confirm(`Deseja ${parts.join(' e ')} lote(s)?`))) return;
 
-    try {      
+    try {
       await Promise.all([
-        ...lotsToBlock.map(lot =>
+        ...lotsToBlock.map((lot) =>
           axios.patch('/api/mapas/lotes/atualizar', {
             id: lot.id,
             mapId: lot.mapId || mapId,
@@ -1286,7 +1345,7 @@ export default function MapDetails() {
             features: lot.features,
           })
         ),
-        ...lotsToUnblock.map(lot =>
+        ...lotsToUnblock.map((lot) =>
           axios.patch('/api/mapas/lotes/atualizar', {
             id: lot.id,
             mapId: lot.mapId || mapId,
@@ -1308,16 +1367,16 @@ export default function MapDetails() {
       setSelectedLots([]);
       setMultiSelectMode(false);
       setMultiSelectAction(null);
-      
+
       // Recarregar lotes da quadra atual
       if (selectedBlockId) {
         const lots = await loadLotsForBlock(selectedBlockId);
         setSelectedBlockLots(lots);
       }
-      
+
       // Recarregar todos os lotes do mapa
       await loadAllLotsInMap();
-      
+
       // Recarregar estatísticas
       loadLotStats();
     } catch (error) {
@@ -1328,50 +1387,61 @@ export default function MapDetails() {
 
   const handleBulkDelete = async () => {
     if (selectedLots.length === 0) return;
-    
+
     if (!mapId) {
       customAlert.error('Erro: ID do mapa não encontrado');
       return;
     }
-    
-    const deletableLots = selectedLots.filter(lot => 
-      lot.status !== LotStatus.RESERVED && lot.status !== LotStatus.SOLD
+
+    const deletableLots = selectedLots.filter(
+      (lot) => lot.status !== LotStatus.RESERVED && lot.status !== LotStatus.SOLD
     );
-    
+
     if (deletableLots.length === 0) {
-      customAlert.error('Nenhum lote pode ser excluído. Lotes reservados ou vendidos não podem ser excluídos.');
+      customAlert.error(
+        'Nenhum lote pode ser excluído. Lotes reservados ou vendidos não podem ser excluídos.'
+      );
       return;
     }
 
     if (deletableLots.length < selectedLots.length) {
-      customAlert.warning(`${selectedLots.length - deletableLots.length} lote(s) não pode(m) ser excluído(s) por estar(em) reservado(s) ou vendido(s).`);
+      customAlert.warning(
+        `${selectedLots.length - deletableLots.length} lote(s) não pode(m) ser excluído(s) por estar(em) reservado(s) ou vendido(s).`
+      );
     }
 
-    if (!await customAlert.confirm(`Deseja EXCLUIR ${deletableLots.length} lote(s)? Esta ação não pode ser desfeita!`)) return;
+    if (
+      !(await customAlert.confirm(
+        `Deseja EXCLUIR ${deletableLots.length} lote(s)? Esta ação não pode ser desfeita!`
+      ))
+    )
+      return;
 
     try {
-      await Promise.all(deletableLots.map(lot =>
-        axios.delete(`${API_URL}/mapas/lotes/deletar`, {
-          params: {
-            lotId: lot.id
-          }
-        })
-      ));
+      await Promise.all(
+        deletableLots.map((lot) =>
+          axios.delete(`${API_URL}/mapas/lotes/deletar`, {
+            params: {
+              lotId: lot.id,
+            },
+          })
+        )
+      );
 
       customAlert.success(`${deletableLots.length} lote(s) excluído(s) com sucesso!`);
       setSelectedLots([]);
       setMultiSelectMode(false);
       setMultiSelectAction(null);
-      
+
       // Recarregar lotes da quadra atual
       if (selectedBlockId) {
         const lots = await loadLotsForBlock(selectedBlockId);
         setSelectedBlockLots(lots);
       }
-      
+
       // Recarregar todos os lotes do mapa
       await loadAllLotsInMap();
-      
+
       // Recarregar estatísticas
       loadLotStats();
     } catch (error) {
@@ -1385,24 +1455,45 @@ export default function MapDetails() {
     return (
       <div className="min-h-screen bg-[var(--background)] p-6">
         <div className="mb-6">
-          <h1 className="text-3xl font-bold text-[var(--foreground)] mb-6">Gerenciar Loteamentos</h1>
-          
+          <h1 className="text-3xl font-bold text-[var(--foreground)] mb-6">
+            Gerenciar Loteamentos
+          </h1>
+
           {allMaps.length === 0 ? (
             <div className="text-center py-12 bg-[var(--card-bg)] rounded-2xl border-2 border-dashed border-[var(--accent)]/40 shadow-[var(--shadow-md)]">
               <div className="inline-flex items-center justify-center w-16 h-16 bg-[var(--accent)]/20 rounded-full mb-4 shadow-md">
-                <svg className="w-8 h-8 text-[var(--accent)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+                <svg
+                  className="w-8 h-8 text-[var(--accent)]"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2.5}
+                    d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"
+                  />
                 </svg>
               </div>
-              <p className="text-[var(--foreground)] text-lg font-semibold mb-2">Nenhum loteamento cadastrado</p>
-              <p className="text-[var(--foreground)]/80 text-sm font-medium mb-4">Importe ou crie um novo loteamento para começar</p>
+              <p className="text-[var(--foreground)] text-lg font-semibold mb-2">
+                Nenhum loteamento cadastrado
+              </p>
+              <p className="text-[var(--foreground)]/80 text-sm font-medium mb-4">
+                Importe ou crie um novo loteamento para começar
+              </p>
               <div className="flex gap-3 justify-center">
                 <button
                   onClick={() => router.push('/import-map')}
                   className="px-6 py-3 bg-[var(--accent)] text-[#1c1c1c] font-semibold rounded-lg hover:bg-[var(--accent-light)] transition-colors inline-flex items-center gap-2"
                 >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"
+                    />
                   </svg>
                   Importar Loteamento
                 </button>
@@ -1414,7 +1505,12 @@ export default function MapDetails() {
                   className="px-6 py-3 bg-[var(--primary)] text-white font-semibold rounded-lg hover:bg-[var(--primary-dark)] transition-colors inline-flex items-center gap-2"
                 >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M12 4v16m8-8H4"
+                    />
                   </svg>
                   Novo Loteamento
                 </button>
@@ -1422,7 +1518,9 @@ export default function MapDetails() {
             </div>
           ) : (
             <div className="text-center py-12 bg-[var(--card-bg)] rounded-2xl shadow-[var(--shadow-md)]">
-              <p className="text-white font-semibold mb-2">Selecione um loteamento para gerenciar</p>
+              <p className="text-white font-semibold mb-2">
+                Selecione um loteamento para gerenciar
+              </p>
             </div>
           )}
         </div>
@@ -1430,7 +1528,7 @@ export default function MapDetails() {
         {/* Modal de Criar Novo Loteamento */}
         {isCreatingMap && (
           <div className="fixed inset-0 bg-[var(--foreground)]/40 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
-            <div 
+            <div
               className="bg-[var(--card-bg)] rounded-2xl shadow-[var(--shadow-xl)] w-full max-w-md p-6 animate-in zoom-in-95 duration-200"
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !isSubmittingMap && newMapName.trim()) {
@@ -1440,7 +1538,9 @@ export default function MapDetails() {
               }}
             >
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-2xl font-bold text-[var(--foreground)]">Criar Novo Loteamento</h2>
+                <h2 className="text-2xl font-bold text-[var(--foreground)]">
+                  Criar Novo Loteamento
+                </h2>
                 <button
                   onClick={() => {
                     setIsCreatingMap(false);
@@ -1450,7 +1550,12 @@ export default function MapDetails() {
                   className="text-[var(--foreground)]/60 hover:text-[var(--foreground)] transition-colors"
                 >
                   <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M6 18L18 6M6 6l12 12"
+                    />
                   </svg>
                 </button>
               </div>
@@ -1507,8 +1612,18 @@ export default function MapDetails() {
                       </>
                     ) : (
                       <>
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        <svg
+                          className="w-5 h-5"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2.5}
+                            d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                          />
                         </svg>
                         Criar Loteamento
                       </>
@@ -1528,15 +1643,17 @@ export default function MapDetails() {
     return (
       <div className="min-h-screen bg-[var(--background)] p-6">
         <div className="mb-6">
-          <h1 className="text-3xl font-bold text-[var(--foreground)] mb-4">Gerenciar Loteamentos</h1>
-          
+          <h1 className="text-3xl font-bold text-[var(--foreground)] mb-4">
+            Gerenciar Loteamentos
+          </h1>
+
           <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-3 mb-6">
             {/* Skeleton do Seletor de Mapas */}
             <div className="w-full lg:w-96">
               <div className="h-5 w-40 bg-[var(--surface)] rounded animate-pulse mb-2"></div>
               <div className="h-12 w-full bg-[var(--surface)] rounded-xl animate-pulse"></div>
             </div>
-            
+
             {/* Skeleton dos Botões */}
             <div className="flex flex-col sm:flex-row gap-3 lg:flex-shrink-0 w-full lg:w-auto">
               <div className="h-12 w-full lg:w-44 bg-[var(--primary)]/30 rounded-xl animate-pulse"></div>
@@ -1550,9 +1667,12 @@ export default function MapDetails() {
             { color: 'from-green-500 to-green-600' },
             { color: 'from-orange-500 to-orange-600' },
             { color: 'from-red-500 to-red-600' },
-            { color: 'from-gray-500 to-gray-600' }
+            { color: 'from-gray-500 to-gray-600' },
           ].map((item, i) => (
-            <div key={i} className={`bg-gradient-to-br ${item.color} rounded-2xl p-6 shadow-[var(--shadow-lg)]`}>
+            <div
+              key={i}
+              className={`bg-gradient-to-br ${item.color} rounded-2xl p-6 shadow-[var(--shadow-lg)]`}
+            >
               <div className="flex items-center justify-between mb-2">
                 <div className="w-10 h-10 bg-white/20 rounded-xl animate-pulse"></div>
               </div>
@@ -1568,10 +1688,13 @@ export default function MapDetails() {
             <div className="h-7 w-32 bg-[var(--surface)] rounded animate-pulse"></div>
             <div className="h-11 w-40 bg-[var(--success)]/30 rounded-xl animate-pulse"></div>
           </div>
-          
+
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
-            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(i => (
-              <div key={i} className="bg-[var(--surface)] rounded-xl border-2 border-[var(--border)] p-4">
+            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((i) => (
+              <div
+                key={i}
+                className="bg-[var(--surface)] rounded-xl border-2 border-[var(--border)] p-4"
+              >
                 <div className="h-3 w-16 bg-[var(--border)] rounded animate-pulse mb-2"></div>
                 <div className="h-6 w-20 bg-[var(--border)] rounded animate-pulse mb-1"></div>
                 <div className="h-3 w-full bg-[var(--border)] rounded animate-pulse"></div>
@@ -1599,7 +1722,7 @@ export default function MapDetails() {
       {/* Header com Seletor de Mapas */}
       <div className="mb-6">
         <h1 className="text-3xl font-bold text-[var(--foreground)] mb-4">Gerenciar Loteamentos</h1>
-        
+
         {/* Botão Novo Loteamento - Separado */}
         <div className="mb-4">
           <button
@@ -1610,7 +1733,12 @@ export default function MapDetails() {
             className="w-full lg:w-auto px-6 py-3.5 bg-gradient-to-r from-[var(--primary)] to-[var(--primary-dark)] text-white font-bold rounded-xl hover:from-[var(--primary-dark)] hover:to-[var(--primary)] shadow-lg transition-all hover:shadow-xl hover:-translate-y-0.5 cursor-pointer flex items-center justify-center gap-3 border-2 border-[var(--primary)]/30"
           >
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2.5}
+                d="M12 4v16m8-8H4"
+              />
             </svg>
             <span>Criar Novo Loteamento</span>
           </button>
@@ -1640,13 +1768,13 @@ export default function MapDetails() {
                   ))}
                 </select>
               </div>
-              
+
               {mapId && (
                 <button
                   onClick={() => {
                     clearActiveOperations();
                     // Buscar dados do mapa atual do estado map ou da lista allMaps
-                    const currentMap = map || allMaps.find(m => m.id === mapId);
+                    const currentMap = map || allMaps.find((m) => m.id === mapId);
                     setEditMapName(currentMap?.name || '');
                     setEditMapDescription(currentMap?.description || '');
                     setIsEditingMap(true);
@@ -1654,13 +1782,18 @@ export default function MapDetails() {
                   className="w-full sm:w-auto px-5 py-3 bg-yellow-500 text-white font-semibold rounded-xl hover:bg-yellow-600 shadow-md transition-all hover:shadow-lg hover:-translate-y-0.5 cursor-pointer flex items-center justify-center gap-2"
                 >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                    />
                   </svg>
                   Editar Loteamento
                 </button>
               )}
             </div>
-            
+
             {/* Botão Excluir */}
             {mapId && (
               <button
@@ -1673,20 +1806,29 @@ export default function MapDetails() {
                 disabled={hasReservedOrSoldLotsInMap()}
                 style={hasReservedOrSoldLotsInMap() ? { pointerEvents: 'none' } : {}}
                 className={`w-full lg:w-auto px-5 py-3 text-white font-semibold rounded-xl shadow-md transition-all flex items-center justify-center gap-2 ${
-                  hasReservedOrSoldLotsInMap() 
-                    ? 'bg-gray-400 cursor-not-allowed opacity-60' 
+                  hasReservedOrSoldLotsInMap()
+                    ? 'bg-gray-400 cursor-not-allowed opacity-60'
                     : 'bg-red-500 hover:bg-red-600 hover:shadow-lg hover:-translate-y-0.5 cursor-pointer'
                 }`}
-                title={hasReservedOrSoldLotsInMap() ? 'Não é possível excluir o loteamento pois possui lotes reservados ou vendidos' : 'Excluir Loteamento'}
+                title={
+                  hasReservedOrSoldLotsInMap()
+                    ? 'Não é possível excluir o loteamento pois possui lotes reservados ou vendidos'
+                    : 'Excluir Loteamento'
+                }
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                  />
                 </svg>
                 Excluir Loteamento
               </button>
             )}
           </div>
-          
+
           {map?.description && (
             <p className="text-[var(--foreground)]/70 mt-3 text-sm">{map.description}</p>
           )}
@@ -1698,8 +1840,18 @@ export default function MapDetails() {
         <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-2xl p-6 shadow-[var(--shadow-lg)]">
           <div className="flex items-center justify-between mb-2">
             <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center">
-              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              <svg
+                className="w-6 h-6 text-white"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M5 13l4 4L19 7"
+                />
               </svg>
             </div>
           </div>
@@ -1707,17 +1859,25 @@ export default function MapDetails() {
           {isLoadingStats ? (
             <div className="h-10 w-16 bg-white/20 rounded-lg animate-pulse"></div>
           ) : (
-            <p className="text-white text-4xl font-bold">
-              {lotStats.available}
-            </p>
+            <p className="text-white text-4xl font-bold">{lotStats.available}</p>
           )}
         </div>
 
         <div className="bg-gradient-to-br from-orange-500 to-orange-600 rounded-2xl p-6 shadow-[var(--shadow-lg)]">
           <div className="flex items-center justify-between mb-2">
             <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center">
-              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              <svg
+                className="w-6 h-6 text-white"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                />
               </svg>
             </div>
           </div>
@@ -1725,17 +1885,25 @@ export default function MapDetails() {
           {isLoadingStats ? (
             <div className="h-10 w-16 bg-white/20 rounded-lg animate-pulse"></div>
           ) : (
-            <p className="text-white text-4xl font-bold">
-              {lotStats.reserved}
-            </p>
+            <p className="text-white text-4xl font-bold">{lotStats.reserved}</p>
           )}
         </div>
 
         <div className="bg-gradient-to-br from-red-500 to-red-600 rounded-2xl p-6 shadow-[var(--shadow-lg)]">
           <div className="flex items-center justify-between mb-2">
             <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center">
-              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              <svg
+                className="w-6 h-6 text-white"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                />
               </svg>
             </div>
           </div>
@@ -1743,17 +1911,25 @@ export default function MapDetails() {
           {isLoadingStats ? (
             <div className="h-10 w-16 bg-white/20 rounded-lg animate-pulse"></div>
           ) : (
-            <p className="text-white text-4xl font-bold">
-              {lotStats.sold}
-            </p>
+            <p className="text-white text-4xl font-bold">{lotStats.sold}</p>
           )}
         </div>
 
         <div className="bg-gradient-to-br from-gray-500 to-gray-600 rounded-2xl p-6 shadow-[var(--shadow-lg)]">
           <div className="flex items-center justify-between mb-2">
             <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center">
-              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+              <svg
+                className="w-6 h-6 text-white"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"
+                />
               </svg>
             </div>
           </div>
@@ -1761,9 +1937,7 @@ export default function MapDetails() {
           {isLoadingStats ? (
             <div className="h-10 w-16 bg-white/20 rounded-lg animate-pulse"></div>
           ) : (
-            <p className="text-white text-4xl font-bold">
-              {lotStats.blocked}
-            </p>
+            <p className="text-white text-4xl font-bold">{lotStats.blocked}</p>
           )}
         </div>
       </div>
@@ -1771,18 +1945,25 @@ export default function MapDetails() {
       {/* Seleção de Quadras com Botões (estilo maps/page.tsx) */}
       <div className="mb-8">
         <div className="flex items-center justify-between mb-3">
-          <label className="block text-sm font-bold text-[var(--foreground)] opacity-80">Selecione uma Quadra</label>
+          <label className="block text-sm font-bold text-[var(--foreground)] opacity-80">
+            Selecione uma Quadra
+          </label>
           <div className="flex items-center gap-3">
             <button
               onClick={handleAddBlock}
               className="px-4 py-2 bg-[var(--success)] text-white font-semibold rounded-xl hover:bg-green-600 shadow-[var(--shadow-md)] transition-all hover:shadow-[var(--shadow-lg)] cursor-pointer flex items-center gap-2"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2.5}
+                  d="M12 4v16m8-8H4"
+                />
               </svg>
               Adicionar Quadra
             </button>
-            
+
             {blocks && blocks.length > 0 && (
               <>
                 <button
@@ -1806,7 +1987,12 @@ export default function MapDetails() {
                   }`}
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                    />
                   </svg>
                   Excluir
                 </button>
@@ -1830,7 +2016,12 @@ export default function MapDetails() {
                   }`}
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z"
+                    />
                   </svg>
                   Bloquear
                 </button>
@@ -1854,7 +2045,12 @@ export default function MapDetails() {
                   }`}
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.5 10.5V6.75a4.5 4.5 0 119 0v3.75M3.75 21.75h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H3.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M13.5 10.5V6.75a4.5 4.5 0 119 0v3.75M3.75 21.75h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H3.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z"
+                    />
                   </svg>
                   Desbloquear
                 </button>
@@ -1862,11 +2058,14 @@ export default function MapDetails() {
             )}
           </div>
         </div>
-        
+
         {isLoading ? (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
-            {[1, 2, 3, 4, 5, 6].map(i => (
-              <div key={i} className="bg-[var(--surface)] rounded-xl border-2 border-[var(--border)] p-4">
+            {[1, 2, 3, 4, 5, 6].map((i) => (
+              <div
+                key={i}
+                className="bg-[var(--surface)] rounded-xl border-2 border-[var(--border)] p-4"
+              >
                 <div className="h-3 w-16 bg-[var(--border)] rounded animate-pulse mb-2"></div>
                 <div className="h-6 w-20 bg-[var(--border)] rounded animate-pulse mb-1"></div>
                 <div className="h-3 w-full bg-[var(--border)] rounded animate-pulse"></div>
@@ -1876,30 +2075,52 @@ export default function MapDetails() {
         ) : !blocks || blocks.length === 0 ? (
           <div className="text-center py-12 bg-[var(--card-bg)] rounded-2xl border-2 border-dashed border-[var(--accent)]/40 shadow-[var(--shadow-md)]">
             <div className="inline-flex items-center justify-center w-16 h-16 bg-[var(--accent)]/20 rounded-full mb-4 shadow-md">
-              <svg className="w-8 h-8 text-[var(--accent)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+              <svg
+                className="w-8 h-8 text-[var(--accent)]"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2.5}
+                  d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
+                />
               </svg>
             </div>
-            <p className="text-[var(--foreground)] text-lg font-semibold mb-2">Nenhuma quadra cadastrada</p>
-            <p className="text-[var(--foreground)]/80 text-sm font-medium mb-4">Clique em "Adicionar Quadra" acima para começar a organizar seus lotes</p>
+            <p className="text-[var(--foreground)] text-lg font-semibold mb-2">
+              Nenhuma quadra cadastrada
+            </p>
+            <p className="text-[var(--foreground)]/80 text-sm font-medium mb-4">
+              Clique em &quot;Adicionar Quadra&quot; acima para começar a organizar seus lotes
+            </p>
           </div>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
-              {blocks.map((block) => {
-                const isBlockDeletionDisabled = hasReservedOrSoldLotsInBlock(block.id);
-                const isBlockSelected = selectedBlockIds.includes(String(block.id));
-                const lotsInThisBlock = allLotsInMap.filter(l => String(l.blockId) === String(block.id));
-                const blockableCount = lotsInThisBlock.filter(l => l.status === LotStatus.AVAILABLE).length;
-                const unblocableCount = lotsInThisBlock.filter(l => l.status === LotStatus.BLOCKED).length;
-                
-                return (
+            {blocks.map((block) => {
+              const isBlockDeletionDisabled = hasReservedOrSoldLotsInBlock(block.id);
+              const isBlockSelected = selectedBlockIds.includes(String(block.id));
+              const lotsInThisBlock = allLotsInMap.filter(
+                (l) => String(l.blockId) === String(block.id)
+              );
+              const blockableCount = lotsInThisBlock.filter(
+                (l) => l.status === LotStatus.AVAILABLE
+              ).length;
+              const unblocableCount = lotsInThisBlock.filter(
+                (l) => l.status === LotStatus.BLOCKED
+              ).length;
+
+              return (
                 <div
                   key={block.id}
                   onClick={() => {
                     if (blockSelectAction) {
                       // Em modo de seleção de quadras
                       if (blockSelectAction === 'delete' && isBlockDeletionDisabled) {
-                        customAlert.warning(`Quadra ${block.name} possui lotes reservados/vendidos e não pode ser excluída.`);
+                        customAlert.warning(
+                          `Quadra ${block.name} possui lotes reservados/vendidos e não pode ser excluída.`
+                        );
                         return;
                       }
                       handleToggleBlockSelection(block.id);
@@ -1909,8 +2130,6 @@ export default function MapDetails() {
                     if (selectedBlockId !== block.id) {
                       setSelectedBlockId(block.id);
                     }
-                    setFocusedBlockId(block.id);
-                    setFocusedLotId(null);
                   }}
                   className={`p-4 rounded-xl font-semibold transition-all relative group cursor-pointer border-2 ${
                     blockSelectAction
@@ -1931,136 +2150,231 @@ export default function MapDetails() {
                   {block.description && (
                     <div className="text-xs mt-1 opacity-70 truncate">{block.description}</div>
                   )}
-                  
+
                   {/* Indicador de seleção para operações em lote de quadras */}
-                  {blockSelectAction && !(blockSelectAction === 'delete' && isBlockDeletionDisabled) && (
-                    isBlockSelected ? (
+                  {blockSelectAction &&
+                    !(blockSelectAction === 'delete' && isBlockDeletionDisabled) &&
+                    (isBlockSelected ? (
                       blockSelectAction === 'delete' ? (
                         <div className="absolute top-1 right-1 w-6 h-6 rounded-lg bg-red-500 flex items-center justify-center shadow-md">
-                          <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          <svg
+                            className="w-3.5 h-3.5 text-white"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                            strokeWidth={2.5}
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                            />
                           </svg>
                         </div>
                       ) : blockSelectAction === 'block' ? (
                         <div className="absolute top-1 right-1 w-6 h-6 rounded-lg bg-gray-600 flex items-center justify-center shadow-md">
-                          <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+                          <svg
+                            className="w-3.5 h-3.5 text-white"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                            strokeWidth={2.5}
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z"
+                            />
                           </svg>
                         </div>
                       ) : (
                         <div className="absolute top-1 right-1 w-6 h-6 rounded-lg bg-blue-500 flex items-center justify-center shadow-md">
-                          <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 10.5V6.75a4.5 4.5 0 119 0v3.75M3.75 21.75h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H3.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+                          <svg
+                            className="w-3.5 h-3.5 text-white"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                            strokeWidth={2.5}
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              d="M13.5 10.5V6.75a4.5 4.5 0 119 0v3.75M3.75 21.75h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H3.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z"
+                            />
                           </svg>
                         </div>
                       )
                     ) : (
                       <div className="absolute top-1 right-1 w-6 h-6 rounded-lg border-2 border-[var(--border)] bg-[var(--surface-hover)]" />
-                    )
-                  )}
-                  
+                    ))}
+
                   {/* Botões de ação no hover e focus (funcionalidades do MapDetails) */}
                   {!blockSelectAction && (
-                    <div className={`absolute top-1 right-1 flex gap-1 transition-opacity ${
-                      selectedBlockId === block.id 
-                        ? 'opacity-100' 
-                        : 'opacity-0 group-hover:opacity-100'
-                    }`}>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setEditingBlock(block);
-                        setIsAddingBlock(true);
-                      }}
-                      className="p-1.5 bg-yellow-500/80 hover:bg-yellow-600 rounded-lg backdrop-blur-sm cursor-pointer"
-                      title="Editar quadra"
-                    >
-                      <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                      </svg>
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (blockableCount === 0 && unblocableCount === 0) return;
-                        handleToggleSingleBlockLots(String(block.id));
-                      }}
-                      disabled={blockableCount === 0 && unblocableCount === 0}
-                      style={blockableCount === 0 && unblocableCount === 0 ? { pointerEvents: 'none' } : {}}
-                      className={`p-1.5 rounded-lg transition-all ${
-                        blockableCount === 0 && unblocableCount === 0
-                          ? 'bg-gray-400/60 cursor-not-allowed opacity-40'
-                          : 'bg-gray-600/80 hover:bg-gray-700 cursor-pointer'
+                    <div
+                      className={`absolute top-1 right-1 flex gap-1 transition-opacity ${
+                        selectedBlockId === block.id
+                          ? 'opacity-100'
+                          : 'opacity-0 group-hover:opacity-100'
                       }`}
-                      title={
-                        blockableCount === 0 && unblocableCount === 0
-                          ? 'Nenhum lote disponível ou bloqueado nesta quadra'
-                          : blockableCount > 0 && unblocableCount > 0
-                          ? `Bloquear ${blockableCount} e desbloquear ${unblocableCount} lote(s)`
-                          : blockableCount > 0
-                          ? `Bloquear ${blockableCount} lote(s) disponível(is)`
-                          : `Desbloquear ${unblocableCount} lote(s) bloqueado(s)`
-                      }
                     >
-                      {blockableCount > 0 ? (
-                        <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEditingBlock(block);
+                          setIsAddingBlock(true);
+                        }}
+                        className="p-1.5 bg-yellow-500/80 hover:bg-yellow-600 rounded-lg backdrop-blur-sm cursor-pointer"
+                        title="Editar quadra"
+                      >
+                        <svg
+                          className="w-3 h-3 text-white"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                          />
                         </svg>
-                      ) : (
-                        <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 10.5V6.75a4.5 4.5 0 119 0v3.75M3.75 21.75h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H3.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
-                        </svg>
-                      )}
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (isBlockDeletionDisabled) {
-                          return;
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (blockableCount === 0 && unblocableCount === 0) return;
+                          handleToggleSingleBlockLots(String(block.id));
+                        }}
+                        disabled={blockableCount === 0 && unblocableCount === 0}
+                        style={
+                          blockableCount === 0 && unblocableCount === 0
+                            ? { pointerEvents: 'none' }
+                            : {}
                         }
-                        handleDeleteBlock(block.id);
-                      }}
-                      disabled={isBlockDeletionDisabled}
-                      style={isBlockDeletionDisabled ? { pointerEvents: 'none' } : {}}
-                      className={`p-1.5 rounded-lg transition-all ${
-                        isBlockDeletionDisabled
-                          ? 'bg-gray-400/60 cursor-not-allowed opacity-40'
-                          : 'bg-red-500/80 hover:bg-red-600 cursor-pointer'
-                      }`}
-                      title={isBlockDeletionDisabled ? 'Não é possível excluir a quadra pois possui lotes reservados ou vendidos' : 'Excluir quadra'}
-                    >
-                      <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                      </svg>
-                    </button>
-                  </div>
+                        className={`p-1.5 rounded-lg transition-all ${
+                          blockableCount === 0 && unblocableCount === 0
+                            ? 'bg-gray-400/60 cursor-not-allowed opacity-40'
+                            : 'bg-gray-600/80 hover:bg-gray-700 cursor-pointer'
+                        }`}
+                        title={
+                          blockableCount === 0 && unblocableCount === 0
+                            ? 'Nenhum lote disponível ou bloqueado nesta quadra'
+                            : blockableCount > 0 && unblocableCount > 0
+                              ? `Bloquear ${blockableCount} e desbloquear ${unblocableCount} lote(s)`
+                              : blockableCount > 0
+                                ? `Bloquear ${blockableCount} lote(s) disponível(is)`
+                                : `Desbloquear ${unblocableCount} lote(s) bloqueado(s)`
+                        }
+                      >
+                        {blockableCount > 0 ? (
+                          <svg
+                            className="w-3 h-3 text-white"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                            strokeWidth={2}
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z"
+                            />
+                          </svg>
+                        ) : (
+                          <svg
+                            className="w-3 h-3 text-white"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                            strokeWidth={2}
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              d="M13.5 10.5V6.75a4.5 4.5 0 119 0v3.75M3.75 21.75h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H3.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z"
+                            />
+                          </svg>
+                        )}
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (isBlockDeletionDisabled) {
+                            return;
+                          }
+                          handleDeleteBlock(block.id);
+                        }}
+                        disabled={isBlockDeletionDisabled}
+                        style={isBlockDeletionDisabled ? { pointerEvents: 'none' } : {}}
+                        className={`p-1.5 rounded-lg transition-all ${
+                          isBlockDeletionDisabled
+                            ? 'bg-gray-400/60 cursor-not-allowed opacity-40'
+                            : 'bg-red-500/80 hover:bg-red-600 cursor-pointer'
+                        }`}
+                        title={
+                          isBlockDeletionDisabled
+                            ? 'Não é possível excluir a quadra pois possui lotes reservados ou vendidos'
+                            : 'Excluir quadra'
+                        }
+                      >
+                        <svg
+                          className="w-3 h-3 text-white"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                          />
+                        </svg>
+                      </button>
+                    </div>
                   )}
                 </div>
               );
-              })}
-            </div>
+            })}
+          </div>
         )}
       </div>
 
       {/* Visualização dos Lotes da Quadra Selecionada */}
-      {selectedBlockId && blocks.find(b => b.id === selectedBlockId) && (
+      {selectedBlockId && blocks.find((b) => b.id === selectedBlockId) && (
         <div className="mb-8">
           <div className="bg-[var(--card-bg)] rounded-2xl shadow-[var(--shadow-lg)] p-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-2xl font-bold text-[var(--foreground)] opacity-80 flex items-center gap-2">
-                <svg className="w-7 h-7 text-[var(--accent)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                <svg
+                  className="w-7 h-7 text-[var(--accent)]"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2.5}
+                    d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"
+                  />
                 </svg>
-                Lotes - {blocks.find(b => b.id === selectedBlockId)?.name}
+                Lotes - {blocks.find((b) => b.id === selectedBlockId)?.name}
               </h2>
-              
+
               <div className="flex items-center gap-3">
                 <button
                   onClick={() => handleAddLotToBlock(selectedBlockId)}
                   className="px-5 py-2.5 bg-[var(--success)] hover:bg-green-600 text-white font-semibold rounded-xl transition-all shadow-md hover:shadow-lg flex items-center gap-2 cursor-pointer"
                 >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2.5}
+                      d="M12 4v16m8-8H4"
+                    />
                   </svg>
                   Adicionar Lote
                 </button>
@@ -2088,8 +2402,18 @@ export default function MapDetails() {
                           : 'bg-red-500/30 border-2 border-red-400/60 text-red-200 hover:bg-red-500/45 hover:border-red-300/70'
                       }`}
                     >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      <svg
+                        className="w-4 h-4"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                        />
                       </svg>
                       Excluir
                     </button>
@@ -2113,8 +2437,18 @@ export default function MapDetails() {
                           : 'bg-gray-500/30 border-2 border-gray-400/60 text-gray-200 hover:bg-gray-500/45 hover:border-gray-300/70'
                       }`}
                     >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+                      <svg
+                        className="w-4 h-4"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z"
+                        />
                       </svg>
                       Bloquear
                     </button>
@@ -2138,8 +2472,18 @@ export default function MapDetails() {
                           : 'bg-blue-500/20 border-2 border-blue-400/50 text-blue-200 hover:bg-blue-500/35 hover:border-blue-300/70'
                       }`}
                     >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.5 10.5V6.75a4.5 4.5 0 119 0v3.75M3.75 21.75h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H3.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+                      <svg
+                        className="w-4 h-4"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M13.5 10.5V6.75a4.5 4.5 0 119 0v3.75M3.75 21.75h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H3.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z"
+                        />
                       </svg>
                       Desbloquear
                     </button>
@@ -2149,7 +2493,7 @@ export default function MapDetails() {
             </div>
             <BlockCard
               key={`${selectedBlockId}-${refreshTrigger}`}
-              block={blocks.find(b => b.id === selectedBlockId)!}
+              block={blocks.find((b) => b.id === selectedBlockId)!}
               mapId={mapId}
               blockLots={selectedBlockLots}
               isLoadingBlockLots={isLoadingBlockLots}
@@ -2179,7 +2523,9 @@ export default function MapDetails() {
       {/* Visualização do Mapa no Google Maps */}
       <div className="mb-8">
         <div className="flex items-center justify-between mb-3">
-          <label className="block text-sm font-bold text-[var(--foreground)] opacity-80">Visualização do Mapa</label>
+          <label className="block text-sm font-bold text-[var(--foreground)] opacity-80">
+            Visualização do Mapa
+          </label>
           <button
             onClick={() => {
               clearActiveOperations();
@@ -2192,7 +2538,12 @@ export default function MapDetails() {
             }`}
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+              />
             </svg>
             {map?.overlayConfig ? 'Editar SVG' : 'Editar SVG'}
           </button>
@@ -2207,30 +2558,47 @@ export default function MapDetails() {
                 className="px-3 py-1.5 bg-red-500 hover:bg-red-600 text-white rounded-lg text-xs font-semibold cursor-pointer flex items-center gap-1.5 transition-colors"
               >
                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
                 </svg>
                 {isSequentialPlacing ? 'Parar Sequência' : 'Cancelar Posicionamento'}
               </button>
               {isSequentialPlacing && (
                 <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-500/20 border border-blue-500/40 rounded-lg">
-                  <svg className="w-4 h-4 text-blue-400 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  <svg
+                    className="w-4 h-4 text-blue-400 animate-pulse"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M13 10V3L4 14h7v7l9-11h-7z"
+                    />
                   </svg>
                   <span className="text-xs font-bold text-blue-300">
                     Sequencial: {sequentialBlockName}
                   </span>
                   <span className="text-xs text-blue-200">
                     {(() => {
-                      const lot = allLotsInMap.find(l => l.id === placingLotId);
+                      const lot = allLotsInMap.find((l) => l.id === placingLotId);
                       return lot ? `Lote ${lot.lotNumber}` : '';
-                    })()}
-                    {' '}({sequentialCurrentIndex + 1}/{sequentialQueue.length})
+                    })()}{' '}
+                    ({sequentialCurrentIndex + 1}/{sequentialQueue.length})
                   </span>
                   {/* Barra de progresso */}
                   <div className="w-20 h-1.5 bg-blue-900 rounded-full overflow-hidden">
-                    <div 
+                    <div
                       className="h-full bg-blue-400 rounded-full transition-all duration-300"
-                      style={{ width: `${((sequentialCurrentIndex) / sequentialQueue.length) * 100}%` }}
+                      style={{
+                        width: `${(sequentialCurrentIndex / sequentialQueue.length) * 100}%`,
+                      }}
                     />
                   </div>
                 </div>
@@ -2238,7 +2606,7 @@ export default function MapDetails() {
               {!isSequentialPlacing && placingLotId && (
                 <span className="text-xs text-[var(--foreground)] opacity-70">
                   {(() => {
-                    const lot = allLotsInMap.find(l => l.id === placingLotId);
+                    const lot = allLotsInMap.find((l) => l.id === placingLotId);
                     return lot ? `Posicionando Lote ${lot.lotNumber}` : '';
                   })()}
                 </span>
@@ -2249,12 +2617,13 @@ export default function MapDetails() {
               Clique em &quot;Posicionar&quot; em um lote para colocá-lo no mapa
             </div>
           )}
-          
+
           <div className="ml-auto text-xs text-[var(--foreground)] opacity-60">
-            {allLotsInMap.filter(l => l.lat != null && l.lng != null).length} / {allLotsInMap.length} lotes posicionados
+            {allLotsInMap.filter((l) => l.lat != null && l.lng != null).length} /{' '}
+            {allLotsInMap.length} lotes posicionados
           </div>
         </div>
-        
+
         {isLoading ? (
           <div className="bg-[var(--card-bg)] border-2 border-[var(--border)] rounded-2xl p-6">
             <div className="aspect-video bg-[var(--surface)] rounded-xl animate-pulse"></div>
@@ -2269,7 +2638,7 @@ export default function MapDetails() {
                 {/* Toggles de visibilidade */}
                 {map?.overlayConfig && (
                   <button
-                    onClick={() => setShowOverlay(prev => !prev)}
+                    onClick={() => setShowOverlay((prev) => !prev)}
                     className={`px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-1.5 transition-all cursor-pointer border ${
                       showOverlay
                         ? 'bg-cyan-500/20 border-cyan-500/50 text-cyan-300 hover:bg-cyan-500/30'
@@ -2277,18 +2646,33 @@ export default function MapDetails() {
                     }`}
                     title={showOverlay ? 'Ocultar SVG' : 'Exibir SVG'}
                   >
-                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg
+                      className="w-3.5 h-3.5"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
                       {showOverlay ? (
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M15 12a3 3 0 11-6 0 3 3 0 016 0z M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+                        />
                       ) : (
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.878 9.878L3 3m6.878 6.878l4.242 4.242M21 21l-4.35-4.35" />
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.878 9.878L3 3m6.878 6.878l4.242 4.242M21 21l-4.35-4.35"
+                        />
                       )}
                     </svg>
                     {showOverlay ? 'Ocultar SVG' : 'Exibir SVG'}
                   </button>
                 )}
                 <button
-                  onClick={() => setShowMarkers(prev => !prev)}
+                  onClick={() => setShowMarkers((prev) => !prev)}
                   className={`px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-1.5 transition-all cursor-pointer border ${
                     showMarkers
                       ? 'bg-green-500/20 border-green-500/50 text-green-300 hover:bg-green-500/30'
@@ -2296,11 +2680,26 @@ export default function MapDetails() {
                   }`}
                   title={showMarkers ? 'Ocultar marcações' : 'Exibir marcações'}
                 >
-                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg
+                    className="w-3.5 h-3.5"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
                     {showMarkers ? (
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M15 12a3 3 0 11-6 0 3 3 0 016 0z M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+                      />
                     ) : (
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.878 9.878L3 3m6.878 6.878l4.242 4.242M21 21l-4.35-4.35" />
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.878 9.878L3 3m6.878 6.878l4.242 4.242M21 21l-4.35-4.35"
+                      />
                     )}
                   </svg>
                   {showMarkers ? 'Ocultar Marcações' : 'Exibir Marcações'}
@@ -2308,32 +2707,43 @@ export default function MapDetails() {
               </div>
               <div className="flex gap-2 flex-wrap">
                 {/* Botão de marcação múltipla sequencial */}
-                {selectedBlockId && (() => {
-                  const unpositionedCount = selectedBlockLots.filter(
-                    l => (l.lat == null || l.lng == null)
-                  ).length;
-                  if (unpositionedCount === 0) return null;
-                  return (
-                    <button
-                      onClick={() => {
-                        clearActiveOperations();
-                        startSequentialPlacing(selectedBlockId, selectedBlockLots);
-                      }}
-                      disabled={isSequentialPlacing}
-                      className={`px-4 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 transition-all cursor-pointer ${
-                        isSequentialPlacing
-                          ? 'bg-gray-500 text-gray-300 cursor-not-allowed'
-                          : 'bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white'
-                      }`}
-                      title={`Posicionar ${unpositionedCount} lotes sequencialmente no mapa`}
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                      </svg>
-                      Marcação Múltipla ({unpositionedCount})
-                    </button>
-                  );
-                })()}
+                {selectedBlockId &&
+                  (() => {
+                    const unpositionedCount = selectedBlockLots.filter(
+                      (l) => l.lat == null || l.lng == null
+                    ).length;
+                    if (unpositionedCount === 0) return null;
+                    return (
+                      <button
+                        onClick={() => {
+                          clearActiveOperations();
+                          startSequentialPlacing(selectedBlockId, selectedBlockLots);
+                        }}
+                        disabled={isSequentialPlacing}
+                        className={`px-4 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 transition-all cursor-pointer ${
+                          isSequentialPlacing
+                            ? 'bg-gray-500 text-gray-300 cursor-not-allowed'
+                            : 'bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white'
+                        }`}
+                        title={`Posicionar ${unpositionedCount} lotes sequencialmente no mapa`}
+                      >
+                        <svg
+                          className="w-4 h-4"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M13 10V3L4 14h7v7l9-11h-7z"
+                          />
+                        </svg>
+                        Marcação Múltipla ({unpositionedCount})
+                      </button>
+                    );
+                  })()}
                 {map?.overlayConfig && map.overlayConfig.bounds && (
                   <button
                     onClick={() => {
@@ -2356,15 +2766,20 @@ export default function MapDetails() {
                   title="Abrir mapa de visualização pública"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+                    />
                   </svg>
                   Mapa de Visualização
                 </button>
               </div>
             </div>
-            
+
             <div className="bg-gradient-to-br from-[var(--surface)] to-[var(--background)] rounded-xl overflow-hidden h-[600px]">
-              <PublicMapViewer 
+              <PublicMapViewer
                 address={map?.address}
                 blocks={blocks}
                 lots={allLotsInMap}
@@ -2373,14 +2788,18 @@ export default function MapDetails() {
                 onMapClick={handleMapClickForPlacement}
                 showOverlay={showOverlay}
                 showMarkers={showMarkers}
-                placingLotLabel={placingLotId ? (() => {
-                  const lot = allLotsInMap.find(l => l.id === placingLotId);
-                  if (!lot) return undefined;
-                  if (isSequentialPlacing) {
-                    return `Lote ${lot.lotNumber} (${sequentialCurrentIndex + 1}/${sequentialQueue.length}) - ${sequentialBlockName}`;
-                  }
-                  return `Lote ${lot.lotNumber}`;
-                })() : undefined}
+                placingLotLabel={
+                  placingLotId
+                    ? (() => {
+                        const lot = allLotsInMap.find((l) => l.id === placingLotId);
+                        if (!lot) return undefined;
+                        if (isSequentialPlacing) {
+                          return `Lote ${lot.lotNumber} (${sequentialCurrentIndex + 1}/${sequentialQueue.length}) - ${sequentialBlockName}`;
+                        }
+                        return `Lote ${lot.lotNumber}`;
+                      })()
+                    : undefined
+                }
               />
               {map?.address && (
                 <p className="text-[var(--foreground)]/60 text-xs mt-3 px-4 pb-4 text-center">
@@ -2395,7 +2814,7 @@ export default function MapDetails() {
       {/* Modal de Adicionar/Editar Quadra */}
       {isAddingBlock && editingBlock && (
         <div className="fixed inset-0 bg-[var(--foreground)]/40 backdrop-blur-sm flex items-center justify-center z-50 p-2 sm:p-4 animate-in fade-in duration-200 overflow-y-auto">
-          <div 
+          <div
             className="bg-[var(--card-bg)] rounded-2xl w-full max-w-md max-h-[95vh] sm:max-h-[90vh] my-auto overflow-y-auto shadow-[var(--shadow-xl)] border border-[var(--border)]"
             onKeyDown={(e) => {
               if (e.key === 'Enter' && editingBlock.name.trim()) {
@@ -2408,12 +2827,24 @@ export default function MapDetails() {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 sm:gap-3">
                   <div className="w-10 h-10 sm:w-12 sm:h-12 bg-white/15 backdrop-blur-sm rounded-xl flex items-center justify-center">
-                    <svg className="w-5 h-5 sm:w-7 sm:h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                    <svg
+                      className="w-5 h-5 sm:w-7 sm:h-7"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2.5}
+                        d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
+                      />
                     </svg>
                   </div>
                   <div>
-                    <h2 className="text-lg sm:text-2xl font-bold">{editingBlock.id ? 'Editar Quadra' : 'Adicionar Quadra'}</h2>
+                    <h2 className="text-lg sm:text-2xl font-bold">
+                      {editingBlock.id ? 'Editar Quadra' : 'Adicionar Quadra'}
+                    </h2>
                   </div>
                 </div>
                 <button
@@ -2425,7 +2856,12 @@ export default function MapDetails() {
                   type="button"
                 >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M6 18L18 6M6 6l12 12"
+                    />
                   </svg>
                 </button>
               </div>
@@ -2451,7 +2887,9 @@ export default function MapDetails() {
                   </label>
                   <textarea
                     value={editingBlock.description || ''}
-                    onChange={(e) => setEditingBlock({ ...editingBlock, description: e.target.value })}
+                    onChange={(e) =>
+                      setEditingBlock({ ...editingBlock, description: e.target.value })
+                    }
                     className="w-full px-4 py-2.5 bg-[var(--surface)] border-2 border-[var(--border)] rounded-lg text-[var(--foreground)] focus:ring-2 focus:ring-[var(--primary)] focus:border-[var(--primary)] placeholder-[var(--foreground)]/40"
                     placeholder="Descrição opcional da quadra"
                     rows={3}
@@ -2485,7 +2923,7 @@ export default function MapDetails() {
       {/* Modal de Adicionar Lote */}
       {isAddingLot && (
         <div className="fixed inset-0 bg-[var(--foreground)]/40 backdrop-blur-sm flex items-center justify-center z-50 p-2 sm:p-4 animate-in fade-in duration-200 overflow-y-auto">
-          <div 
+          <div
             className="bg-[var(--card-bg)] rounded-2xl w-full max-w-md max-h-[95vh] sm:max-h-[90vh] my-auto overflow-y-auto shadow-[var(--shadow-xl)] border border-[var(--border)] [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
             onKeyDown={(e) => {
               if (e.key === 'Enter' && canSubmitLot && submitLotFn) {
@@ -2498,8 +2936,18 @@ export default function MapDetails() {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 sm:gap-3">
                   <div className="w-10 h-10 sm:w-12 sm:h-12 bg-white/15 backdrop-blur-sm rounded-xl flex items-center justify-center">
-                    <svg className="w-5 h-5 sm:w-7 sm:h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+                    <svg
+                      className="w-5 h-5 sm:w-7 sm:h-7 text-white"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2.5}
+                        d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"
+                      />
                     </svg>
                   </div>
                   <div>
@@ -2515,7 +2963,12 @@ export default function MapDetails() {
                   type="button"
                 >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M6 18L18 6M6 6l12 12"
+                    />
                   </svg>
                 </button>
               </div>
@@ -2523,7 +2976,7 @@ export default function MapDetails() {
             <div className="p-4 sm:p-6">
               <LotForm
                 blockId={selectedBlockForLot}
-                blockName={blocks.find(b => b.id === selectedBlockForLot)?.name || ''}
+                blockName={blocks.find((b) => b.id === selectedBlockForLot)?.name || ''}
                 onSave={handleSaveLot}
                 onCancel={() => {
                   setIsAddingLot(false);
@@ -2560,7 +3013,7 @@ export default function MapDetails() {
           </div>
         </div>
       )}
-      
+
       {/* Modal de Confirmação de Exclusão */}
       {showDeleteConfirm && (
         <div className="fixed inset-0 bg-[var(--foreground)]/40 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
@@ -2568,8 +3021,18 @@ export default function MapDetails() {
             <div className="bg-gradient-to-r from-red-500 to-red-600 text-white p-6 rounded-t-2xl">
               <div className="flex items-center gap-3">
                 <div className="w-12 h-12 bg-white/15 backdrop-blur-sm rounded-xl flex items-center justify-center">
-                  <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  <svg
+                    className="w-7 h-7 text-white"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                    />
                   </svg>
                 </div>
                 <div>
@@ -2584,7 +3047,8 @@ export default function MapDetails() {
                 Tem certeza que deseja excluir o loteamento <strong>{map?.name}</strong>?
               </p>
               <p className="text-[var(--foreground)]/70 text-sm">
-                Todos os dados relacionados (quadras, lotes disponíveis) serão permanentemente removidos.
+                Todos os dados relacionados (quadras, lotes disponíveis) serão permanentemente
+                removidos.
               </p>
             </div>
 
@@ -2604,15 +3068,31 @@ export default function MapDetails() {
                 {isDeletingMap ? (
                   <>
                     <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                      ></circle>
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                      ></path>
                     </svg>
                     Excluindo...
                   </>
                 ) : (
                   <>
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                      />
                     </svg>
                     Confirmar Exclusão
                   </>
@@ -2631,8 +3111,18 @@ export default function MapDetails() {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div className="w-12 h-12 bg-white/15 backdrop-blur-sm rounded-xl flex items-center justify-center">
-                    <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                    <svg
+                      className="w-7 h-7 text-white"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                      />
                     </svg>
                   </div>
                   <div>
@@ -2646,7 +3136,12 @@ export default function MapDetails() {
                   className="p-2 hover:bg-white/10 rounded-lg transition-colors disabled:opacity-50"
                 >
                   <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M6 18L18 6M6 6l12 12"
+                    />
                   </svg>
                 </button>
               </div>
@@ -2696,15 +3191,31 @@ export default function MapDetails() {
                 {isSubmittingMapEdit ? (
                   <>
                     <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                      ></circle>
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                      ></path>
                     </svg>
                     Salvando...
                   </>
                 ) : (
                   <>
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M5 13l4 4L19 7"
+                      />
                     </svg>
                     Salvar Alterações
                   </>
@@ -2723,8 +3234,18 @@ export default function MapDetails() {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div className="w-12 h-12 bg-white/15 backdrop-blur-sm rounded-xl flex items-center justify-center">
-                    <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+                    <svg
+                      className="w-7 h-7 text-white"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2.5}
+                        d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"
+                      />
                     </svg>
                   </div>
                   <div>
@@ -2742,7 +3263,12 @@ export default function MapDetails() {
                   className="w-9 h-9 flex items-center justify-center rounded-lg bg-white/10 hover:bg-white/20 transition-colors cursor-pointer disabled:opacity-50"
                 >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M6 18L18 6M6 6l12 12"
+                    />
                   </svg>
                 </button>
               </div>
@@ -2799,15 +3325,31 @@ export default function MapDetails() {
                 {isSubmittingMap ? (
                   <>
                     <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                      ></circle>
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                      ></path>
                     </svg>
                     Criando...
                   </>
                 ) : (
                   <>
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2.5}
+                        d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                      />
                     </svg>
                     Criar Loteamento
                   </>
@@ -2821,13 +3363,15 @@ export default function MapDetails() {
       {/* Barra de Ação Flutuante para Seleção Múltipla */}
       {multiSelectAction && selectedLots.length > 0 && (
         <div className="fixed bottom-8 left-1/2 transform -translate-x-1/2 z-50 animate-slide-up">
-          <div className={`rounded-2xl shadow-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-center gap-4 min-w-[300px] sm:min-w-[400px] border-2 ${
-            multiSelectAction === 'delete'
-              ? 'bg-gradient-to-r from-red-600 to-red-700 border-red-400/30'
-              : multiSelectAction === 'unblock'
-              ? 'bg-gradient-to-r from-blue-600 to-blue-700 border-blue-400/30'
-              : 'bg-gradient-to-r from-gray-600 to-gray-700 border-gray-400/30'
-          }`}>
+          <div
+            className={`rounded-2xl shadow-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-center gap-4 min-w-[300px] sm:min-w-[400px] border-2 ${
+              multiSelectAction === 'delete'
+                ? 'bg-gradient-to-r from-red-600 to-red-700 border-red-400/30'
+                : multiSelectAction === 'unblock'
+                  ? 'bg-gradient-to-r from-blue-600 to-blue-700 border-blue-400/30'
+                  : 'bg-gradient-to-r from-gray-600 to-gray-700 border-gray-400/30'
+            }`}
+          >
             {/* Contador de Lotes */}
             <div className="flex items-center gap-3">
               <div className="bg-white/20 backdrop-blur-sm rounded-full w-10 h-10 flex items-center justify-center">
@@ -2838,22 +3382,37 @@ export default function MapDetails() {
                   {selectedLots.length === 1 ? '1 Lote' : `${selectedLots.length} Lotes`}
                 </p>
                 <p className="text-white opacity-80 text-xs">
-                  {multiSelectAction === 'delete' ? (() => {
-                    const blockGroups = selectedLots.reduce((acc, lot) => {
-                      const block = blocks.find(b => b.id === lot.blockId);
-                      const name = block?.name || 'Desconhecida';
-                      acc[name] = (acc[name] || 0) + 1;
-                      return acc;
-                    }, {} as Record<string, number>);
-                    const groupTexts = Object.entries(blockGroups).map(([name, count]) => `${name}: ${count}`);
-                    return groupTexts.length > 1 ? groupTexts.join(' | ') : 'selecionado(s) para exclusão';
-                  })() : multiSelectAction === 'block' ? (() => {
-                    const count = selectedLots.filter(l => l.status === LotStatus.AVAILABLE).length;
-                    return `${count} lote(s) a bloquear`;
-                  })() : (() => {
-                    const count = selectedLots.filter(l => l.status === LotStatus.BLOCKED).length;
-                    return `${count} lote(s) a desbloquear`;
-                  })()}
+                  {multiSelectAction === 'delete'
+                    ? (() => {
+                        const blockGroups = selectedLots.reduce(
+                          (acc, lot) => {
+                            const block = blocks.find((b) => b.id === lot.blockId);
+                            const name = block?.name || 'Desconhecida';
+                            acc[name] = (acc[name] || 0) + 1;
+                            return acc;
+                          },
+                          {} as Record<string, number>
+                        );
+                        const groupTexts = Object.entries(blockGroups).map(
+                          ([name, count]) => `${name}: ${count}`
+                        );
+                        return groupTexts.length > 1
+                          ? groupTexts.join(' | ')
+                          : 'selecionado(s) para exclusão';
+                      })()
+                    : multiSelectAction === 'block'
+                      ? (() => {
+                          const count = selectedLots.filter(
+                            (l) => l.status === LotStatus.AVAILABLE
+                          ).length;
+                          return `${count} lote(s) a bloquear`;
+                        })()
+                      : (() => {
+                          const count = selectedLots.filter(
+                            (l) => l.status === LotStatus.BLOCKED
+                          ).length;
+                          return `${count} lote(s) a desbloquear`;
+                        })()}
                 </p>
               </div>
             </div>
@@ -2872,7 +3431,12 @@ export default function MapDetails() {
                 className="px-3 py-2 bg-white/10 hover:bg-white/20 text-white rounded-xl font-semibold transition-all duration-200 flex items-center gap-2 backdrop-blur-sm border border-white/20 text-sm cursor-pointer"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
                 </svg>
                 Cancelar
               </button>
@@ -2880,11 +3444,20 @@ export default function MapDetails() {
               {multiSelectAction === 'delete' && (
                 <button
                   onClick={handleBulkDelete}
-                  disabled={!selectedLots.some(l => l.status !== LotStatus.RESERVED && l.status !== LotStatus.SOLD)}
+                  disabled={
+                    !selectedLots.some(
+                      (l) => l.status !== LotStatus.RESERVED && l.status !== LotStatus.SOLD
+                    )
+                  }
                   className="px-4 py-2 bg-white hover:bg-red-100 text-red-700 rounded-xl font-bold transition-all duration-200 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed text-sm cursor-pointer"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                    />
                   </svg>
                   Confirmar Exclusão
                 </button>
@@ -2893,18 +3466,30 @@ export default function MapDetails() {
               {(multiSelectAction === 'block' || multiSelectAction === 'unblock') && (
                 <button
                   onClick={handleBulkBlockToggle}
-                  disabled={!selectedLots.some(l =>
-                    multiSelectAction === 'block'
-                      ? l.status === LotStatus.AVAILABLE
-                      : l.status === LotStatus.BLOCKED
-                  )}
+                  disabled={
+                    !selectedLots.some((l) =>
+                      multiSelectAction === 'block'
+                        ? l.status === LotStatus.AVAILABLE
+                        : l.status === LotStatus.BLOCKED
+                    )
+                  }
                   className="px-4 py-2 bg-white hover:bg-gray-100 text-gray-700 rounded-xl font-bold transition-all duration-200 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed text-sm cursor-pointer"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     {multiSelectAction === 'block' ? (
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z"
+                      />
                     ) : (
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.5 10.5V6.75a4.5 4.5 0 119 0v3.75M3.75 21.75h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H3.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M13.5 10.5V6.75a4.5 4.5 0 119 0v3.75M3.75 21.75h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H3.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z"
+                      />
                     )}
                   </svg>
                   {multiSelectAction === 'block' ? 'Confirmar Bloqueio' : 'Confirmar Desbloqueio'}
@@ -2918,13 +3503,15 @@ export default function MapDetails() {
       {/* Barra de Ação Flutuante para Seleção Múltipla de Quadras */}
       {blockSelectAction && selectedBlockIds.length > 0 && (
         <div className="fixed bottom-8 left-1/2 transform -translate-x-1/2 z-50 animate-slide-up">
-          <div className={`rounded-2xl shadow-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-center gap-4 min-w-[300px] sm:min-w-[400px] border-2 ${
-            blockSelectAction === 'delete'
-              ? 'bg-gradient-to-r from-red-600 to-red-700 border-red-400/30'
-              : blockSelectAction === 'unblock'
-              ? 'bg-gradient-to-r from-blue-600 to-blue-700 border-blue-400/30'
-              : 'bg-gradient-to-r from-gray-600 to-gray-700 border-gray-400/30'
-          }`}>
+          <div
+            className={`rounded-2xl shadow-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-center gap-4 min-w-[300px] sm:min-w-[400px] border-2 ${
+              blockSelectAction === 'delete'
+                ? 'bg-gradient-to-r from-red-600 to-red-700 border-red-400/30'
+                : blockSelectAction === 'unblock'
+                  ? 'bg-gradient-to-r from-blue-600 to-blue-700 border-blue-400/30'
+                  : 'bg-gradient-to-r from-gray-600 to-gray-700 border-gray-400/30'
+            }`}
+          >
             {/* Contador de Quadras */}
             <div className="flex items-center gap-3">
               <div className="bg-white/20 backdrop-blur-sm rounded-full w-10 h-10 flex items-center justify-center">
@@ -2932,21 +3519,28 @@ export default function MapDetails() {
               </div>
               <div className="text-white">
                 <p className="font-bold text-lg leading-tight">
-                  {selectedBlockIds.length === 1 ? '1 Quadra' : `${selectedBlockIds.length} Quadras`}
+                  {selectedBlockIds.length === 1
+                    ? '1 Quadra'
+                    : `${selectedBlockIds.length} Quadras`}
                 </p>
                 <p className="text-white opacity-80 text-xs">
                   {blockSelectAction === 'delete'
-                    ? selectedBlockIds.map(id => blocks.find(b => b.id === id)?.name || '?').join(', ')
+                    ? selectedBlockIds
+                        .map((id) => blocks.find((b) => b.id === id)?.name || '?')
+                        .join(', ')
                     : (() => {
-                        const allLots = allLotsInMap.filter(l => selectedBlockIds.includes(String(l.blockId)));
+                        const allLots = allLotsInMap.filter((l) =>
+                          selectedBlockIds.includes(String(l.blockId))
+                        );
                         if (blockSelectAction === 'block') {
-                          const count = allLots.filter(l => l.status === LotStatus.AVAILABLE).length;
+                          const count = allLots.filter(
+                            (l) => l.status === LotStatus.AVAILABLE
+                          ).length;
                           return `${count} lote(s) a bloquear`;
                         }
-                        const count = allLots.filter(l => l.status === LotStatus.BLOCKED).length;
+                        const count = allLots.filter((l) => l.status === LotStatus.BLOCKED).length;
                         return `${count} lote(s) a desbloquear`;
-                      })()
-                  }
+                      })()}
                 </p>
               </div>
             </div>
@@ -2961,7 +3555,12 @@ export default function MapDetails() {
                 className="px-3 py-2 bg-white/10 hover:bg-white/20 text-white rounded-xl font-semibold transition-all duration-200 flex items-center gap-2 backdrop-blur-sm border border-white/20 text-sm cursor-pointer"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
                 </svg>
                 Cancelar
               </button>
@@ -2972,7 +3571,12 @@ export default function MapDetails() {
                   className="px-4 py-2 bg-white hover:bg-red-100 text-red-700 rounded-xl font-bold transition-all duration-200 flex items-center gap-2 text-sm cursor-pointer"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                    />
                   </svg>
                   Confirmar Exclusão
                 </button>
@@ -2985,9 +3589,19 @@ export default function MapDetails() {
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     {blockSelectAction === 'block' ? (
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z"
+                      />
                     ) : (
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.5 10.5V6.75a4.5 4.5 0 119 0v3.75M3.75 21.75h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H3.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M13.5 10.5V6.75a4.5 4.5 0 119 0v3.75M3.75 21.75h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H3.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z"
+                      />
                     )}
                   </svg>
                   {blockSelectAction === 'block' ? 'Confirmar Bloqueio' : 'Confirmar Desbloqueio'}
@@ -3007,12 +3621,19 @@ export default function MapDetails() {
                 <div className="flex items-center gap-3">
                   <div className="w-12 h-12 bg-white/15 backdrop-blur-sm rounded-xl flex items-center justify-center">
                     <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+                      />
                     </svg>
                   </div>
                   <div>
                     <h2 className="text-2xl font-bold">Overlay SVG sobre o Mapa</h2>
-                    <p className="text-white/80 text-sm">Sobreponha uma imagem do loteamento sobre o Google Maps</p>
+                    <p className="text-white/80 text-sm">
+                      Sobreponha uma imagem do loteamento sobre o Google Maps
+                    </p>
                   </div>
                 </div>
                 <button
@@ -3020,7 +3641,12 @@ export default function MapDetails() {
                   className="w-9 h-9 flex items-center justify-center rounded-lg bg-white/10 hover:bg-white/20 transition-colors"
                 >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M6 18L18 6M6 6l12 12"
+                    />
                   </svg>
                 </button>
               </div>
@@ -3050,7 +3676,7 @@ interface LotFormProps {
   onSubmitChange?: (canSubmit: boolean, submit: () => void) => void;
 }
 
-function LotForm({ blockId, blockName, onSave, onCancel, onSubmitChange }: LotFormProps) {
+function LotForm({ blockId, blockName, onSave, onSubmitChange }: LotFormProps) {
   const [lotNumber, setLotNumber] = useState('');
   const [size, setSize] = useState<number>(0);
   const [totalPrice, setTotalPrice] = useState<number>(0);
@@ -3058,9 +3684,17 @@ function LotForm({ blockId, blockName, onSave, onCancel, onSubmitChange }: LotFo
   const [description, setDescription] = useState('');
   const [status, setStatus] = useState<LotStatus>(LotStatus.AVAILABLE);
 
-  const handleSubmit = () => {
+  // Os callbacks do pai são inline; guardá-los em ref evita notificar o pai a cada render dele
+  const onSaveRef = useRef(onSave);
+  const onSubmitChangeRef = useRef(onSubmitChange);
+  useEffect(() => {
+    onSaveRef.current = onSave;
+    onSubmitChangeRef.current = onSubmitChange;
+  });
+
+  const handleSubmit = useCallback(() => {
     const pricePerM2 = size > 0 ? totalPrice / size : 0;
-    
+
     const lot: Lot = {
       id: '',
       mapId: '',
@@ -3076,16 +3710,14 @@ function LotForm({ blockId, blockName, onSave, onCancel, onSubmitChange }: LotFo
       updatedAt: new Date(),
     };
 
-    onSave(lot);
-  };
+    onSaveRef.current(lot);
+  }, [blockId, lotNumber, status, totalPrice, size, description]);
 
   // Notificar o pai quando o estado mudar
-  React.useEffect(() => {
+  useEffect(() => {
     const canSubmit = !!(lotNumber && size && totalPrice);
-    if (onSubmitChange) {
-      onSubmitChange(canSubmit, handleSubmit);
-    }
-  }, [lotNumber, size, totalPrice]);
+    onSubmitChangeRef.current?.(canSubmit, handleSubmit);
+  }, [lotNumber, size, totalPrice, handleSubmit]);
 
   return (
     <div className="space-y-5">
@@ -3131,29 +3763,29 @@ function LotForm({ blockId, blockName, onSave, onCancel, onSubmitChange }: LotFo
           value={priceDisplay}
           onChange={(e) => {
             let value = e.target.value;
-            
+
             // Remove tudo exceto dígitos
             value = value.replace(/\D/g, '');
-            
+
             if (value === '') {
               setPriceDisplay('');
               setTotalPrice(0);
               return;
             }
-            
+
             // Adiciona zeros à esquerda se necessário
             value = value.padStart(3, '0');
-            
+
             // Separa centavos dos reais
             const cents = value.slice(-2);
             const reais = value.slice(0, -2);
-            
+
             // Formata com separador de milhar
             const formattedReais = parseInt(reais).toLocaleString('pt-BR');
             const formattedValue = `${formattedReais},${cents}`;
-            
+
             setPriceDisplay(formattedValue);
-            
+
             // Converte para número decimal
             const numericValue = parseFloat(`${reais}.${cents}`);
             setTotalPrice(numericValue);
@@ -3161,13 +3793,13 @@ function LotForm({ blockId, blockName, onSave, onCancel, onSubmitChange }: LotFo
           className="w-full px-4 py-2.5 bg-[var(--surface)] border-2 border-[var(--border)] rounded-lg text-[var(--foreground)] focus:ring-2 focus:ring-[var(--primary)] focus:border-[var(--primary)] placeholder-[var(--foreground)]/40"
           placeholder="0,00"
         />
-        <p className="text-xs text-[var(--foreground)]/60 mt-1">💡 Preencha manualmente o valor do lote</p>
+        <p className="text-xs text-[var(--foreground)]/60 mt-1">
+          💡 Preencha manualmente o valor do lote
+        </p>
       </div>
 
       <div>
-        <label className="block text-[var(--foreground)] text-sm font-semibold mb-2">
-          Status
-        </label>
+        <label className="block text-[var(--foreground)] text-sm font-semibold mb-2">Status</label>
         <select
           value={status}
           onChange={(e) => setStatus(e.target.value as LotStatus)}
@@ -3176,7 +3808,9 @@ function LotForm({ blockId, blockName, onSave, onCancel, onSubmitChange }: LotFo
           <option value={LotStatus.AVAILABLE}>Disponível</option>
           <option value={LotStatus.BLOCKED}>Bloqueado</option>
         </select>
-        <p className="text-xs text-[var(--foreground)]/60 mt-1">💡 Para reservar ou vender, use a página de Reservas</p>
+        <p className="text-xs text-[var(--foreground)]/60 mt-1">
+          💡 Para reservar ou vender, use a página de Reservas
+        </p>
       </div>
 
       <div>
@@ -3209,7 +3843,7 @@ interface BlockCardProps {
   setEditingBlock: (block: Block) => void;
   setIsAddingBlock: (isAdding: boolean) => void;
   allBlocks: Block[];
-  reservations: any[];
+  reservations: ReservationSummary[];
   userRole?: string;
   multiSelectMode?: boolean;
   selectedLots?: Lot[];
@@ -3223,17 +3857,11 @@ interface BlockCardProps {
 }
 
 function BlockCard({
-  block,
-  mapId,
   blockLots,
   isLoadingBlockLots,
-  handleAddLotToBlock,
   handleEditLot,
   handleDeleteLot,
   handleToggleLotStatus,
-  handleDeleteBlock,
-  setEditingBlock,
-  setIsAddingBlock,
   allBlocks,
   reservations,
   userRole,
@@ -3243,18 +3871,14 @@ function BlockCard({
   onSingleLotClick,
   onPlaceLot,
   onRemoveLotPosition,
-  onStartSequentialPlacing,
-  isSequentialPlacing: isSequentialPlacingProp = false,
   multiSelectAction = null,
 }: BlockCardProps) {
-  const [isHovered, setIsHovered] = useState(false);
-  
   // Verificar se existem lotes reservados ou vendidos
   const hasReservedOrSoldLots = blockLots.some(
-    lot => lot.status === LotStatus.RESERVED || lot.status === LotStatus.SOLD
+    (lot) => lot.status === LotStatus.RESERVED || lot.status === LotStatus.SOLD
   );
   const reservedOrSoldCount = blockLots.filter(
-    lot => lot.status === LotStatus.RESERVED || lot.status === LotStatus.SOLD
+    (lot) => lot.status === LotStatus.RESERVED || lot.status === LotStatus.SOLD
   ).length;
 
   return (
@@ -3263,14 +3887,25 @@ function BlockCard({
       {hasReservedOrSoldLots && (
         <div className="mb-4 bg-orange-50 border-l-4 border-orange-500 p-4 rounded-lg">
           <div className="flex items-start gap-3">
-            <svg className="w-5 h-5 text-orange-500 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+            <svg
+              className="w-5 h-5 text-orange-500 mt-0.5 flex-shrink-0"
+              fill="currentColor"
+              viewBox="0 0 20 20"
+            >
+              <path
+                fillRule="evenodd"
+                d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
+                clipRule="evenodd"
+              />
             </svg>
             <div>
-              <p className="font-bold text-orange-800 text-sm mb-1">⚠️ Quadra com lotes reservados/vendidos</p>
+              <p className="font-bold text-orange-800 text-sm mb-1">
+                ⚠️ Quadra com lotes reservados/vendidos
+              </p>
               <p className="text-orange-700 text-sm">
-                Esta quadra possui <strong>{reservedOrSoldCount} lote(s)</strong> com reservas ou vendas ativas.
-                Para excluir esta quadra, cancele primeiro as reservas/vendas na página de <strong>Reservas</strong>.
+                Esta quadra possui <strong>{reservedOrSoldCount} lote(s)</strong> com reservas ou
+                vendas ativas. Para excluir esta quadra, cancele primeiro as reservas/vendas na
+                página de <strong>Reservas</strong>.
               </p>
             </div>
           </div>
@@ -3278,48 +3913,64 @@ function BlockCard({
       )}
 
       {/* Lotes da Quadra */}
-        {isLoadingBlockLots ? (
-          <div className="py-6">
-            <div className="grid grid-cols-5 sm:grid-cols-10 md:grid-cols-15 gap-2">
-              {Array.from({ length: 30 }).map((_, i) => (
-                <div
-                  key={i}
-                  className="aspect-square bg-[var(--surface)] border-2 border-[var(--border)] rounded-lg animate-pulse"
-                ></div>
-              ))}
-            </div>
+      {isLoadingBlockLots ? (
+        <div className="py-6">
+          <div className="grid grid-cols-5 sm:grid-cols-10 md:grid-cols-15 gap-2">
+            {Array.from({ length: 30 }).map((_, i) => (
+              <div
+                key={i}
+                className="aspect-square bg-[var(--surface)] border-2 border-[var(--border)] rounded-lg animate-pulse"
+              ></div>
+            ))}
           </div>
-        ) : blockLots && blockLots.length > 0 ? (
-          <LotSelector
-            lots={blockLots}
-            blocks={allBlocks}
-            onLotEdit={handleEditLot}
-            onLotDelete={handleDeleteLot}
-            onToggleLotStatus={handleToggleLotStatus}
-            onSingleLotClick={onSingleLotClick}
-            selectedLotIds={selectedLots.map(l => l.id)}
-            allowMultipleSelection={multiSelectMode}
-            onMultipleSelect={multiSelectMode && onToggleLotSelection ? (lots) => {
-              // Recebe um array com um único lote para fazer toggle
-              if (lots.length === 1) {
-                onToggleLotSelection(lots[0]);
-              }
-            } : undefined}
-            lotsPerRow={15}
-            reservations={reservations}
-            userRole={userRole}
-            isAdminContext={true}
-            onPlaceLot={onPlaceLot}
-            onRemoveLotPosition={onRemoveLotPosition}
-            multiSelectAction={multiSelectAction}
-          />
-        ) : (
-          <div className="text-center py-8 bg-[var(--card-bg)] rounded-xl border-2 border-dashed border-[var(--accent)]/40">
-            <svg className="w-12 h-12 mx-auto mb-3 text-[var(--accent)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
-            </svg>
-            <p className="text-white font-medium mb-2">Nenhum lote cadastrado nesta quadra</p>
-          <p className="text-white/70 text-sm mb-4">Clique em "Adicionar Lote" para começar</p>
+        </div>
+      ) : blockLots && blockLots.length > 0 ? (
+        <LotSelector
+          lots={blockLots}
+          blocks={allBlocks}
+          onLotEdit={handleEditLot}
+          onLotDelete={handleDeleteLot}
+          onToggleLotStatus={handleToggleLotStatus}
+          onSingleLotClick={onSingleLotClick}
+          selectedLotIds={selectedLots.map((l) => l.id)}
+          allowMultipleSelection={multiSelectMode}
+          onMultipleSelect={
+            multiSelectMode && onToggleLotSelection
+              ? (lots) => {
+                  // Recebe um array com um único lote para fazer toggle
+                  if (lots.length === 1) {
+                    onToggleLotSelection(lots[0]);
+                  }
+                }
+              : undefined
+          }
+          lotsPerRow={15}
+          reservations={reservations}
+          userRole={userRole}
+          isAdminContext={true}
+          onPlaceLot={onPlaceLot}
+          onRemoveLotPosition={onRemoveLotPosition}
+          multiSelectAction={multiSelectAction}
+        />
+      ) : (
+        <div className="text-center py-8 bg-[var(--card-bg)] rounded-xl border-2 border-dashed border-[var(--accent)]/40">
+          <svg
+            className="w-12 h-12 mx-auto mb-3 text-[var(--accent)]"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"
+            />
+          </svg>
+          <p className="text-white font-medium mb-2">Nenhum lote cadastrado nesta quadra</p>
+          <p className="text-white/70 text-sm mb-4">
+            Clique em &quot;Adicionar Lote&quot; para começar
+          </p>
         </div>
       )}
     </div>

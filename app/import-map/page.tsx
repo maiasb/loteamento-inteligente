@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import axios from 'axios';
+import NextImage from 'next/image';
 import { useRouter } from 'next/navigation';
 import * as XLSX from 'xlsx';
 
@@ -608,10 +609,14 @@ export default function ImportMapPage() {
                             <p className="text-gray-400 text-sm">Arquivo PDF selecionado</p>
                           </div>
                         ) : (
-                          <img
+                          <NextImage
                             src={imagePreview}
                             alt="Preview"
-                            className="w-full max-h-64 object-contain bg-gray-900 rounded-lg"
+                            width={0}
+                            height={0}
+                            sizes="100vw"
+                            unoptimized
+                            className="w-full h-auto max-h-64 object-contain bg-gray-900 rounded-lg"
                           />
                         )}
                       </div>

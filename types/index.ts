@@ -179,5 +179,6 @@ export interface ReservationSummary {
   seller_name: string;
   status: string;
   created_at: string;
+  user_id?: number | string | null;
   lots?: ReservationLotSummary[];
 }

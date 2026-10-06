@@ -2,6 +2,7 @@
 
 import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
+import Image from 'next/image';
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { UserRole } from '@/types';
@@ -141,13 +142,15 @@ export default function SharedLayout({ children }: { children: React.ReactNode }
           <div className="flex-shrink-0 p-6 border-b border-[var(--border)]">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3 flex-1">
-                <img
+                <Image
                   src={
                     theme === 'light'
                       ? '/simbolo-logotipo-epiteto-verde.svg'
                       : '/simbolo-logotipo-epiteto.svg'
                   }
                   alt="Imobiliária Vale dos Carajás"
+                  width={1148}
+                  height={440}
                   className="h-auto w-auto"
                 />
               </div>

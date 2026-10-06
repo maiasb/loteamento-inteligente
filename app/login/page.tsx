@@ -2,6 +2,7 @@
 
 import { useState, FormEvent, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import Image from 'next/image';
 import { useAuth } from '@/contexts/AuthContext';
 import Link from 'next/link';
 
@@ -85,11 +86,11 @@ function LoginForm() {
       const success = await login(cpf, password);
 
       if (success) {
-        const currentUser = JSON.parse(localStorage.getItem('currentUser') || "{}");
+        const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
 
         if (!currentUser.first_login) {
           router.push('/dashboard');
-        }else {
+        } else {
           router.push(`/password?userId=${currentUser.id}`);
         }
       } else {
@@ -99,9 +100,13 @@ function LoginForm() {
     } catch (err) {
       if (err instanceof Error) {
         if (err.message === 'PENDING') {
-          setError('Sua conta ainda está aguardando aprovação de um administrador. Entre em contato para mais informações.');
+          setError(
+            'Sua conta ainda está aguardando aprovação de um administrador. Entre em contato para mais informações.'
+          );
         } else if (err.message === 'REJECTED') {
-          setError('Sua conta foi rejeitada. Entre em contato com o administrador para mais informações.');
+          setError(
+            'Sua conta foi rejeitada. Entre em contato com o administrador para mais informações.'
+          );
         } else {
           setError('CPF ou senha inválidos');
         }
@@ -113,15 +118,21 @@ function LoginForm() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4" style={{ backgroundColor: '#E8D5CE' }}>
+    <div
+      className="min-h-screen flex items-center justify-center p-4"
+      style={{ backgroundColor: '#E8D5CE' }}
+    >
       <div className="w-full max-w-md">
         <div className="bg-[var(--card-bg)] rounded-2xl shadow-xl p-8 border border-[var(--border)]">
           {/* Logo e Título */}
           <div className="text-center mb-8">
             <div className="mx-auto mb-4 flex items-center justify-center">
-              <img 
-                src="/simbolo-logotipo-epiteto-login.svg" 
-                alt="Imobiliária Vale dos Carajás" 
+              <Image
+                src="/simbolo-logotipo-epiteto-login.svg"
+                alt="Imobiliária Vale dos Carajás"
+                width={1329}
+                height={738}
+                priority
                 className="h-30 w-auto"
               />
             </div>
@@ -133,7 +144,10 @@ function LoginForm() {
           {/* Formulário */}
           <form onSubmit={handleSubmit} className="space-y-6">
             <div>
-              <label htmlFor="cpf" className="block text-sm font-medium text-[var(--foreground)] opacity-90 mb-2">
+              <label
+                htmlFor="cpf"
+                className="block text-sm font-medium text-[var(--foreground)] opacity-90 mb-2"
+              >
                 CPF
               </label>
               <input
@@ -149,7 +163,10 @@ function LoginForm() {
             </div>
 
             <div>
-              <label htmlFor="password" className="block text-sm font-medium text-[var(--foreground)] opacity-90 mb-2">
+              <label
+                htmlFor="password"
+                className="block text-sm font-medium text-[var(--foreground)] opacity-90 mb-2"
+              >
                 Senha
               </label>
               <div className="relative">
@@ -170,12 +187,27 @@ function LoginForm() {
                 >
                   {showPassword ? (
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"
+                      />
                     </svg>
                   ) : (
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                      />
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+                      />
                     </svg>
                   )}
                 </button>
@@ -184,7 +216,8 @@ function LoginForm() {
 
             {isPending && (
               <div className="bg-amber-50 border border-amber-200 text-amber-700 px-4 py-3 rounded-lg text-sm">
-                ⏳ Conta criada com sucesso! Aguardando aprovação de um administrador. Você receberá acesso em breve.
+                ⏳ Conta criada com sucesso! Aguardando aprovação de um administrador. Você receberá
+                acesso em breve.
               </div>
             )}
 
@@ -229,17 +262,29 @@ function LoginForm() {
 
 export default function LoginPage() {
   return (
-    <Suspense fallback={
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-emerald-50 to-teal-100">
-        <div className="text-center">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-white rounded-full shadow-lg mb-4">
-            <svg className="w-8 h-8 text-emerald-600 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-            </svg>
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-emerald-50 to-teal-100">
+          <div className="text-center">
+            <div className="inline-flex items-center justify-center w-16 h-16 bg-white rounded-full shadow-lg mb-4">
+              <svg
+                className="w-8 h-8 text-emerald-600 animate-spin"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2.5}
+                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                />
+              </svg>
+            </div>
           </div>
         </div>
-      </div>
-    }>
+      }
+    >
       <LoginForm />
     </Suspense>
   );
