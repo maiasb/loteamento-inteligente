@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect, useCallback } from 'react';
-import { Lot, LotArea, LotStatus } from '@/types';
+import { Lot, LotArea } from '@/types';
 
 interface UseInteractiveMapProps {
   imageUrl: string;
@@ -15,12 +15,8 @@ interface UseInteractiveMapProps {
 
 export function useInteractiveMap({
   imageUrl,
-  lots,
-  onLotClick,
   isEditMode = false,
   onAreaDrawn,
-  selectedLotId,
-  selectedLotIds = [], // Novo: suporte para múltiplos lotes selecionados
   drawingMode = 'polygon',
   previewArea = null,
 }: UseInteractiveMapProps) {
@@ -29,17 +25,30 @@ export function useInteractiveMap({
   const containerRef = useRef<HTMLDivElement>(null);
 
   const [drawingPoints, setDrawingPoints] = useState<{ x: number; y: number }[]>([]);
-  const [hoveredLot, setHoveredLot] = useState<Lot | null>(null);
+  const [hoveredLot] = useState<Lot | null>(null);
   const [imageLoaded, setImageLoaded] = useState(false);
+  const [lastImageUrl, setLastImageUrl] = useState(imageUrl);
   const [scale, setScale] = useState(1);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
+
+  // Resetar estado e zoom ao mudar a URL da imagem (PDFs aguardam a conversão)
+  if (imageUrl !== lastImageUrl) {
+    setLastImageUrl(imageUrl);
+    if (!imageUrl || imageUrl.trim() === '') {
+      setImageLoaded(false);
+    } else if (!imageUrl.startsWith('data:application/pdf')) {
+      setImageLoaded(false);
+      setScale(1);
+      setOffset({ x: 0, y: 0 });
+    }
+  }
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
   const [initialPinchDistance, setInitialPinchDistance] = useState<number | null>(null);
   const [initialScale, setInitialScale] = useState(1);
   const [initialOffset, setInitialOffset] = useState({ x: 0, y: 0 });
   const [pinchCenter, setPinchCenter] = useState<{ x: number; y: number } | null>(null);
-  
+
   // Estados para melhorar pan em mobile
   const [lastTouchTime, setLastTouchTime] = useState(0);
   const [touchVelocity, setTouchVelocity] = useState({ x: 0, y: 0 });
@@ -50,17 +59,6 @@ export function useInteractiveMap({
   const [isDrawingRect, setIsDrawingRect] = useState(false);
   const [rectStart, setRectStart] = useState<{ x: number; y: number } | null>(null);
   const [rectEnd, setRectEnd] = useState<{ x: number; y: number } | null>(null);
-
-  const drawLot = (
-    ctx: CanvasRenderingContext2D,
-    lot: Lot,
-    isHovered: boolean,
-    isSelected: boolean
-  ) => {
-    // Lotes agora não possuem área desenhada (lot.area.points removido)
-    // Função mantida para compatibilidade mas não desenha nada
-    return;
-  };
 
   const redraw = useCallback(() => {
     const canvas = canvasRef.current;
@@ -156,7 +154,18 @@ export function useInteractiveMap({
     }
 
     ctx.restore();
-  }, [imageLoaded, lots, drawingPoints, hoveredLot, selectedLotId, selectedLotIds, isEditMode, scale, offset, drawingMode, isDrawingRect, rectStart, rectEnd, previewArea]);
+  }, [
+    imageLoaded,
+    drawingPoints,
+    isEditMode,
+    scale,
+    offset,
+    drawingMode,
+    isDrawingRect,
+    rectStart,
+    rectEnd,
+    previewArea,
+  ]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -164,8 +173,6 @@ export function useInteractiveMap({
     if (!canvas || !img) return;
 
     if (!imageUrl || imageUrl.trim() === '') {
-      // Resetar quando não há URL
-      setImageLoaded(false);
       return;
     }
 
@@ -173,11 +180,6 @@ export function useInteractiveMap({
     if (imageUrl.startsWith('data:application/pdf')) {
       return;
     }
-
-    // Resetar estado e zoom ao mudar URL
-    setImageLoaded(false);
-    setScale(1);
-    setOffset({ x: 0, y: 0 });
 
     const handleLoad = () => {
       // Verificar se a imagem realmente carregou
@@ -195,7 +197,7 @@ export function useInteractiveMap({
 
     // Limpar src anterior para forçar reload
     img.src = '';
-    
+
     img.addEventListener('load', handleLoad);
     img.addEventListener('error', handleError);
 
@@ -217,22 +219,6 @@ export function useInteractiveMap({
   useEffect(() => {
     redraw();
   }, [redraw, imageLoaded]);
-
-  const isPointInPolygon = (
-    x: number,
-    y: number,
-    points: { x: number; y: number }[]
-  ): boolean => {
-    let inside = false;
-    for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
-      const xi = points[i].x, yi = points[i].y;
-      const xj = points[j].x, yj = points[j].y;
-      const intersect =
-        yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi;
-      if (intersect) inside = !inside;
-    }
-    return inside;
-  };
 
   const getCanvasCoordinates = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
@@ -352,7 +338,8 @@ export function useInteractiveMap({
       setRectStart(null);
       setRectEnd(null);
     }
-  };  const handleContextMenu = (e: React.MouseEvent) => {
+  };
+  const handleContextMenu = (e: React.MouseEvent) => {
     e.preventDefault();
   };
 
@@ -427,7 +414,7 @@ export function useInteractiveMap({
       setInitialScale(scale);
       setInitialOffset({ x: offset.x, y: offset.y });
       setPinchCenter({ x: centerX, y: centerY });
-      
+
       // Cancela qualquer animação de momentum
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current);
@@ -444,7 +431,7 @@ export function useInteractiveMap({
       setLastTouchPos({ x: touch.clientX, y: touch.clientY });
       setLastTouchTime(Date.now());
       setTouchVelocity({ x: 0, y: 0 });
-      
+
       // Cancela qualquer animação de momentum
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current);
@@ -496,29 +483,29 @@ export function useInteractiveMap({
     } else if (e.touches.length === 1 && isPanning && !isEditMode) {
       // Pan com suavização usando requestAnimationFrame
       e.preventDefault();
-      
+
       const touch = e.touches[0];
       const now = Date.now();
       const timeDelta = now - lastTouchTime;
-      
+
       if (timeDelta > 0) {
         const deltaX = touch.clientX - lastTouchPos.x;
         const deltaY = touch.clientY - lastTouchPos.y;
-        
+
         // Calcula velocidade para momentum
         const velocityX = deltaX / timeDelta;
         const velocityY = deltaY / timeDelta;
-        
+
         setTouchVelocity({ x: velocityX, y: velocityY });
         setLastTouchPos({ x: touch.clientX, y: touch.clientY });
         setLastTouchTime(now);
       }
-      
+
       // Usa requestAnimationFrame para suavizar o movimento
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current);
       }
-      
+
       animationFrameRef.current = requestAnimationFrame(() => {
         setOffset({
           x: touch.clientX - panStart.x,
@@ -534,35 +521,35 @@ export function useInteractiveMap({
       let currentVelocityX = touchVelocity.x;
       let currentVelocityY = touchVelocity.y;
       const currentOffset = { ...offset };
-      
+
       const applyMomentum = () => {
         // Reduz a velocidade gradualmente (friction)
         currentVelocityX *= 0.92;
         currentVelocityY *= 0.92;
-        
+
         // Para quando a velocidade for muito baixa
         if (Math.abs(currentVelocityX) < 0.1 && Math.abs(currentVelocityY) < 0.1) {
           animationFrameRef.current = null;
           return;
         }
-        
+
         // Aplica a velocidade ao offset
         currentOffset.x += currentVelocityX * 16; // ~16ms por frame
         currentOffset.y += currentVelocityY * 16;
-        
+
         setOffset({ ...currentOffset });
-        
+
         // Continua a animação
         animationFrameRef.current = requestAnimationFrame(applyMomentum);
       };
-      
+
       // Inicia a animação de momentum
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current);
       }
       animationFrameRef.current = requestAnimationFrame(applyMomentum);
     }
-    
+
     setInitialPinchDistance(null);
     setPinchCenter(null);
     setIsPanning(false);

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import mysql, { Connection } from 'mysql2/promise';
+import mysql, { Connection, type RowDataPacket } from 'mysql2/promise';
 import { dbConfig } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
@@ -16,23 +16,20 @@ export async function GET(request: NextRequest) {
     const mapId = searchParams.get('mapId');
 
     if (!mapId) {
-      return NextResponse.json(
-        { error: 'mapId é obrigatório' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'mapId é obrigatório' }, { status: 400 });
     }
 
     connection = await mysql.createConnection(dbConfig);
 
     // Verificar se a coluna overlay_config existe
-    const [overlayCols] = await connection.execute(
+    const [overlayCols] = await connection.execute<RowDataPacket[]>(
       `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS 
        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'maps' AND COLUMN_NAME = 'overlay_config'`
-    ) as any;
+    );
     const hasOverlay = Array.isArray(overlayCols) && overlayCols.length > 0;
 
     // Buscar dados do mapa
-    const [mapRows]: any = await connection.execute(
+    const [mapRows] = await connection.execute<RowDataPacket[]>(
       `SELECT 
         id, 
         name, 
@@ -48,16 +45,13 @@ export async function GET(request: NextRequest) {
     );
 
     if (!mapRows || mapRows.length === 0) {
-      return NextResponse.json(
-        { error: 'Mapa não encontrado' },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: 'Mapa não encontrado' }, { status: 404 });
     }
 
     const mapData = mapRows[0];
 
     // Buscar quadras do mapa
-    const [blockRows]: any = await connection.execute(
+    const [blockRows] = await connection.execute<RowDataPacket[]>(
       `SELECT 
         id, 
         mapId, 
@@ -71,7 +65,7 @@ export async function GET(request: NextRequest) {
       [mapId]
     );
 
-    const blocks = blockRows.map((block: any) => {
+    const blocks = blockRows.map((block) => {
       return {
         id: block.id.toString(),
         mapId: block.mapId.toString(),
@@ -83,7 +77,7 @@ export async function GET(request: NextRequest) {
     });
 
     // Buscar lotes do mapa com coordenadas
-    const [lotRows]: any = await connection.execute(
+    const [lotRows] = await connection.execute<RowDataPacket[]>(
       `SELECT 
         l.id, 
         l.map_id as mapId, 
@@ -105,26 +99,27 @@ export async function GET(request: NextRequest) {
       [mapId]
     );
 
-    const lots = lotRows.map((lot: any) => {
+    const lots = lotRows.map((lot) => {
       // Parse coordinates for lat/lng
       let lat = null;
       let lng = null;
       if (lot.coordinates) {
         try {
-          const coords = typeof lot.coordinates === 'string' ? JSON.parse(lot.coordinates) : lot.coordinates;
+          const coords =
+            typeof lot.coordinates === 'string' ? JSON.parse(lot.coordinates) : lot.coordinates;
           if (coords && typeof coords.lat === 'number' && typeof coords.lng === 'number') {
             lat = coords.lat;
             lng = coords.lng;
           }
-        } catch (e) { /* ignore */ }
+        } catch {
+          /* ignore */
+        }
       }
 
       let features = [];
       if (lot.features) {
         try {
-          features = typeof lot.features === 'string' 
-            ? JSON.parse(lot.features) 
-            : lot.features;
+          features = typeof lot.features === 'string' ? JSON.parse(lot.features) : lot.features;
         } catch (e) {
           console.error(`[API /mapas/visualizacao] Erro ao parsear features do lote ${lot.id}:`, e);
         }
@@ -157,9 +152,10 @@ export async function GET(request: NextRequest) {
     let overlayConfig = null;
     if (mapData.overlayConfig) {
       try {
-        overlayConfig = typeof mapData.overlayConfig === 'string'
-          ? JSON.parse(mapData.overlayConfig)
-          : mapData.overlayConfig;
+        overlayConfig =
+          typeof mapData.overlayConfig === 'string'
+            ? JSON.parse(mapData.overlayConfig)
+            : mapData.overlayConfig;
       } catch (e) {
         console.error('[API /mapas/visualizacao] Erro ao parsear overlay_config:', e);
       }
@@ -183,10 +179,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(response, { status: 200 });
   } catch (error) {
     console.error('[API /mapas/visualizacao GET] Erro:', error);
-    return NextResponse.json(
-      { error: 'Erro ao buscar dados de visualização' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Erro ao buscar dados de visualização' }, { status: 500 });
   } finally {
     if (connection) {
       await connection.end();

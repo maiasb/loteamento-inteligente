@@ -2,24 +2,51 @@
 
 import { useState } from 'react';
 import axios from 'axios';
+import NextImage from 'next/image';
 import { useRouter } from 'next/navigation';
 import * as XLSX from 'xlsx';
 
 const API_URL = '/api';
+
+type SheetRow = Record<string, string | number | undefined>;
+
+interface ImportReservationData {
+  customer_name: string | number;
+  customer_email: string | number;
+  customer_phone: string | number;
+  customer_cpf: string | number;
+  customer_address: string | number;
+  payment_method: string;
+  status: string;
+  notes: string | number;
+}
+
+interface ImportLotData {
+  lotNumber: string;
+  status: string;
+  price: number;
+  size: number;
+  description: string | number;
+  features: string[];
+  reservation?: ImportReservationData;
+}
+
+interface ImportBlockData {
+  name: string;
+  description: string;
+  lots: ImportLotData[];
+}
+
+interface ImportData {
+  name: string;
+  blocks: ImportBlockData[];
+}
 
 interface ImportResult {
   mapId: string;
   mapName: string;
   totalBlocks: number;
   totalLots: number;
-}
-
-interface UploadImageResult {
-  message: string;
-  mapId: string;
-  imageType: string;
-  width: number;
-  height: number;
 }
 
 export default function ImportMapPage() {
@@ -47,11 +74,11 @@ export default function ImportMapPage() {
     try {
       const data = await file.arrayBuffer();
       const workbook = XLSX.read(data, { type: 'array' });
-      
+
       // Processar planilha
       const jsonData = processExcelToJson(workbook);
       const jsonString = JSON.stringify(jsonData, null, 2);
-      
+
       // Atualizar estados com os novos dados
       setJsonContent(jsonString);
       setExcelFile(file);
@@ -64,20 +91,20 @@ export default function ImportMapPage() {
   };
 
   const processExcelToJson = (workbook: XLSX.WorkBook) => {
-    const result: any = {
+    const result: ImportData = {
       name: '',
-      blocks: []
+      blocks: [],
     };
 
     // Ler dados da primeira planilha (Info)
     const infoSheet = workbook.Sheets[workbook.SheetNames[0]];
     if (infoSheet) {
-      const infoData = XLSX.utils.sheet_to_json(infoSheet, { header: 1 }) as any[][];
-      
+      const infoData = XLSX.utils.sheet_to_json(infoSheet, { header: 1 }) as unknown[][];
+
       // Buscar nome do mapa
       for (const row of infoData) {
         if (row[0] === 'Nome do Loteamento' && row[1]) {
-          result.name = row[1];
+          result.name = String(row[1]);
           break;
         }
       }
@@ -87,44 +114,58 @@ export default function ImportMapPage() {
     for (let i = 1; i < workbook.SheetNames.length; i++) {
       const sheetName = workbook.SheetNames[i];
       const sheet = workbook.Sheets[sheetName];
-      
-      const data = XLSX.utils.sheet_to_json(sheet) as any[];
-      
+
+      const data = XLSX.utils.sheet_to_json(sheet) as SheetRow[];
+
       if (data.length > 0) {
-        const block: any = {
+        const block: ImportBlockData = {
           name: sheetName,
           description: '',
-          lots: []
+          lots: [],
         };
 
         for (const row of data) {
           // Mapear colunas do Excel para propriedades do lote
-          const lot: any = {
+          const lot: ImportLotData = {
             lotNumber: String(row['Número'] || row['Lote'] || row['lotNumber'] || '').trim(),
-            status: normalizeStatus(row['Status'] || row['status'] || 'available'),
-            price: parseFloat(String(row['Preço'] || row['Preco'] || row['price'] || '0').replace(/[^0-9.,]/g, '').replace(',', '.')),
-            size: parseFloat(String(row['Área'] || row['Area'] || row['Tamanho'] || row['size'] || '0').replace(/[^0-9.,]/g, '').replace(',', '.')),
+            status: normalizeStatus(String(row['Status'] || row['status'] || 'available')),
+            price: parseFloat(
+              String(row['Preço'] || row['Preco'] || row['price'] || '0')
+                .replace(/[^0-9.,]/g, '')
+                .replace(',', '.')
+            ),
+            size: parseFloat(
+              String(row['Área'] || row['Area'] || row['Tamanho'] || row['size'] || '0')
+                .replace(/[^0-9.,]/g, '')
+                .replace(',', '.')
+            ),
             description: row['Descrição'] || row['Descricao'] || row['description'] || '',
-            features: []
+            features: [],
           };
 
           // Processar características
-          const features = row['Características'] || row['Caracteristicas'] || row['features'] || '';
+          const features =
+            row['Características'] || row['Caracteristicas'] || row['features'] || '';
           if (features) {
-            lot.features = String(features).split(',').map((f: string) => f.trim()).filter(Boolean);
+            lot.features = String(features)
+              .split(',')
+              .map((f: string) => f.trim())
+              .filter(Boolean);
           }
 
           // Processar reserva se o lote estiver reservado ou vendido
           if (lot.status === 'reserved' || lot.status === 'sold') {
-            const reservation: any = {
+            const reservation: ImportReservationData = {
               customer_name: row['Cliente'] || row['customer_name'] || '',
               customer_email: row['Email'] || row['customer_email'] || '',
               customer_phone: row['Telefone'] || row['customer_phone'] || '',
               customer_cpf: row['CPF'] || row['customer_cpf'] || '',
               customer_address: row['Endereço'] || row['Endereco'] || row['customer_address'] || '',
-              payment_method: normalizePaymentMethod(row['Pagamento'] || row['payment_method'] || 'cash'),
+              payment_method: normalizePaymentMethod(
+                String(row['Pagamento'] || row['payment_method'] || 'cash')
+              ),
               status: lot.status === 'sold' ? 'completed' : 'approved',
-              notes: row['Observações'] || row['Observacoes'] || row['notes'] || ''
+              notes: row['Observações'] || row['Observacoes'] || row['notes'] || '',
             };
 
             // Só adicionar reserva se tiver ao menos nome e telefone
@@ -149,31 +190,31 @@ export default function ImportMapPage() {
 
   const normalizeStatus = (status: string): string => {
     const statusMap: { [key: string]: string } = {
-      'disponivel': 'available',
-      'disponível': 'available',
-      'livre': 'available',
-      'available': 'available',
-      'reservado': 'reserved',
-      'reserved': 'reserved',
-      'vendido': 'sold',
-      'sold': 'sold',
-      'bloqueado': 'blocked',
-      'blocked': 'blocked'
+      disponivel: 'available',
+      disponível: 'available',
+      livre: 'available',
+      available: 'available',
+      reservado: 'reserved',
+      reserved: 'reserved',
+      vendido: 'sold',
+      sold: 'sold',
+      bloqueado: 'blocked',
+      blocked: 'blocked',
     };
     return statusMap[status.toLowerCase()] || 'available';
   };
 
   const normalizePaymentMethod = (method: string): string => {
     const methodMap: { [key: string]: string } = {
-      'dinheiro': 'cash',
+      dinheiro: 'cash',
       'à vista': 'cash',
-      'avista': 'cash',
-      'cash': 'cash',
-      'financiamento': 'financing',
-      'financing': 'financing',
-      'parcelado': 'installments',
-      'parcelas': 'installments',
-      'installments': 'installments'
+      avista: 'cash',
+      cash: 'cash',
+      financiamento: 'financing',
+      financing: 'financing',
+      parcelado: 'installments',
+      parcelas: 'installments',
+      installments: 'installments',
     };
     return methodMap[method.toLowerCase()] || 'cash';
   };
@@ -193,7 +234,7 @@ export default function ImportMapPage() {
       let data;
       try {
         data = JSON.parse(jsonContent);
-      } catch (e) {
+      } catch {
         setError('JSON inválido. Verifique a sintaxe do arquivo.');
         setIsUploading(false);
         return;
@@ -209,10 +250,12 @@ export default function ImportMapPage() {
 
       setSuccess(response.data);
       setJsonContent('');
-      
+
       // Mostrar mensagem de sucesso
-      alert(`✅ Loteamento importado com sucesso!\n\nO loteamento foi cadastrado e está disponível para visualização.`);
-    } catch (err: any) {
+      alert(
+        `✅ Loteamento importado com sucesso!\n\nO loteamento foi cadastrado e está disponível para visualização.`
+      );
+    } catch (err) {
       console.error('[ImportMap] ❌ Erro na importação:', err);
 
       if (axios.isAxiosError(err) && err.response) {
@@ -233,7 +276,7 @@ export default function ImportMapPage() {
     // Validar tipo de arquivo (imagem ou PDF)
     const isImage = file.type.startsWith('image/');
     const isPDF = file.type === 'application/pdf';
-    
+
     if (!isImage && !isPDF) {
       setError('Por favor, selecione uma imagem (JPG, PNG, GIF) ou um arquivo PDF');
       return;
@@ -247,7 +290,7 @@ export default function ImportMapPage() {
     }
 
     setImageFile(file);
-    
+
     // Criar preview (apenas para imagens)
     if (isImage) {
       const reader = new FileReader();
@@ -267,9 +310,7 @@ export default function ImportMapPage() {
     const wb = XLSX.utils.book_new();
 
     // Aba Info
-    const infoData = [
-      ['Nome do Loteamento', 'Meu Loteamento - Exemplo']
-    ];
+    const infoData = [['Nome do Loteamento', 'Meu Loteamento - Exemplo']];
     const infoSheet = XLSX.utils.aoa_to_sheet(infoData);
     infoSheet['!cols'] = [{ wch: 25 }, { wch: 30 }];
     XLSX.utils.book_append_sheet(wb, infoSheet, 'Info');
@@ -286,7 +327,14 @@ export default function ImportMapPage() {
       ['7', 'disponível', 'R$ 138.000,00', '270', '', 'Próximo ao parque'],
       ['8', 'disponível', 'R$ 147.000,00', '295', 'Lote ensolarado', 'Ensolarado, Ventilado'],
       ['9', 'disponível', 'R$ 143.000,00', '282', '', 'Infraestrutura completa'],
-      ['10', 'disponível', 'R$ 152.000,00', '310', 'Lote de frente', 'Frente, Localização privilegiada']
+      [
+        '10',
+        'disponível',
+        'R$ 152.000,00',
+        '310',
+        'Lote de frente',
+        'Frente, Localização privilegiada',
+      ],
     ];
     const quadraASheet = XLSX.utils.aoa_to_sheet(quadraAData);
     quadraASheet['!cols'] = [
@@ -295,7 +343,7 @@ export default function ImportMapPage() {
       { wch: 15 }, // Preço
       { wch: 10 }, // Área
       { wch: 25 }, // Descrição
-      { wch: 35 }  // Características
+      { wch: 35 }, // Características
     ];
     XLSX.utils.book_append_sheet(wb, quadraASheet, 'Quadra A');
 
@@ -307,9 +355,16 @@ export default function ImportMapPage() {
       ['3', 'disponível', 'R$ 138.000,00', '270', '', 'Próximo à área verde'],
       ['4', 'disponível', 'R$ 140.000,00', '275', 'Lote plano', 'Plano, Fácil acesso'],
       ['5', 'disponível', 'R$ 145.000,00', '285', '', 'Localização estratégica'],
-      ['6', 'disponível', 'R$ 136.000,00', '265', 'Bom custo-benefício', 'Econômico, Infraestrutura'],
+      [
+        '6',
+        'disponível',
+        'R$ 136.000,00',
+        '265',
+        'Bom custo-benefício',
+        'Econômico, Infraestrutura',
+      ],
       ['7', 'disponível', 'R$ 142.000,00', '280', '', 'Vista agradável'],
-      ['8', 'disponível', 'R$ 148.000,00', '295', 'Lote amplo', 'Amplo, Ensolarado']
+      ['8', 'disponível', 'R$ 148.000,00', '295', 'Lote amplo', 'Amplo, Ensolarado'],
     ];
     const quadraBSheet = XLSX.utils.aoa_to_sheet(quadraBData);
     quadraBSheet['!cols'] = [
@@ -318,7 +373,7 @@ export default function ImportMapPage() {
       { wch: 15 }, // Preço
       { wch: 10 }, // Área
       { wch: 25 }, // Descrição
-      { wch: 35 }  // Características
+      { wch: 35 }, // Características
     ];
     XLSX.utils.book_append_sheet(wb, quadraBSheet, 'Quadra B');
 
@@ -364,7 +419,7 @@ export default function ImportMapPage() {
       ['- Adicionar novas quadras (criar novas abas)'],
       ['- Remover as quadras de exemplo'],
       [''],
-      ['Após preencher, salve e faça o upload na página de importação!']
+      ['Após preencher, salve e faça o upload na página de importação!'],
     ];
     const instrucoesSheet = XLSX.utils.aoa_to_sheet(instrucoesData);
     instrucoesSheet['!cols'] = [{ wch: 80 }];
@@ -382,7 +437,7 @@ export default function ImportMapPage() {
 
     try {
       const isPDF = imageFile.type === 'application/pdf';
-      
+
       // Converter arquivo para base64
       const reader = new FileReader();
       reader.onload = async (e) => {
@@ -391,17 +446,21 @@ export default function ImportMapPage() {
         try {
           if (isPDF) {
             // Para PDF, enviar direto sem verificar dimensões
-            const response = await axios.post(`${API_URL}/mapas/atualizar-imagem`, {
-              mapId: success.mapId,
-              imageUrl: base64Data,
-              width: 800,  // Valor padrão para PDFs
-              height: 600, // Valor padrão para PDFs
-            }, {
-              headers: {
-                'Content-Type': 'application/json',
+            await axios.post(
+              `${API_URL}/mapas/atualizar-imagem`,
+              {
+                mapId: success.mapId,
+                imageUrl: base64Data,
+                width: 800, // Valor padrão para PDFs
+                height: 600, // Valor padrão para PDFs
               },
-              timeout: 120000,
-            });
+              {
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                timeout: 120000,
+              }
+            );
 
             setImageUploaded(true);
             setIsUploadingImage(false);
@@ -412,17 +471,21 @@ export default function ImportMapPage() {
               const width = img.width;
               const height = img.height;
 
-              const response = await axios.post(`${API_URL}/mapas/atualizar-imagem`, {
-                mapId: success.mapId,
-                imageUrl: base64Data,
-                width,
-                height,
-              }, {
-                headers: {
-                  'Content-Type': 'application/json',
+              await axios.post(
+                `${API_URL}/mapas/atualizar-imagem`,
+                {
+                  mapId: success.mapId,
+                  imageUrl: base64Data,
+                  width,
+                  height,
                 },
-                timeout: 30000,
-              });
+                {
+                  headers: {
+                    'Content-Type': 'application/json',
+                  },
+                  timeout: 30000,
+                }
+              );
 
               setImageUploaded(true);
               setIsUploadingImage(false);
@@ -433,9 +496,12 @@ export default function ImportMapPage() {
             };
             img.src = base64Data;
           }
-        } catch (err: any) {
+        } catch (err) {
           console.error('[ImportMap] ❌ Erro ao enviar arquivo:', err);
-          setError(err.response?.data?.error || 'Erro ao fazer upload do arquivo');
+          setError(
+            (axios.isAxiosError(err) && err.response?.data?.error) ||
+              'Erro ao fazer upload do arquivo'
+          );
           setIsUploadingImage(false);
         }
       };
@@ -465,18 +531,36 @@ export default function ImportMapPage() {
         <div className="bg-green-500/20 border border-green-500/50 rounded-xl p-6 mb-6">
           <div className="flex items-start gap-4">
             <div className="w-12 h-12 bg-green-500 rounded-full flex items-center justify-center flex-shrink-0">
-              <svg className="w-6 h-6 text-[var(--foreground)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+              <svg
+                className="w-6 h-6 text-[var(--foreground)]"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2.5}
+                  d="M5 13l4 4L19 7"
+                />
               </svg>
             </div>
             <div className="flex-1">
               <h3 className="text-xl font-bold text-green-300 mb-2">Importação Concluída!</h3>
               <p className="text-green-200 mb-4">O loteamento foi criado com sucesso.</p>
               <div className="bg-green-900/30 rounded-lg p-4 space-y-2 text-green-100">
-                <p><span className="font-semibold">Mapa:</span> {success.mapName}</p>
-                <p><span className="font-semibold">ID:</span> {success.mapId}</p>
-                <p><span className="font-semibold">Quadras criadas:</span> {success.totalBlocks}</p>
-                <p><span className="font-semibold">Lotes criados:</span> {success.totalLots}</p>
+                <p>
+                  <span className="font-semibold">Mapa:</span> {success.mapName}
+                </p>
+                <p>
+                  <span className="font-semibold">ID:</span> {success.mapId}
+                </p>
+                <p>
+                  <span className="font-semibold">Quadras criadas:</span> {success.totalBlocks}
+                </p>
+                <p>
+                  <span className="font-semibold">Lotes criados:</span> {success.totalLots}
+                </p>
               </div>
 
               {/* Upload de imagem após importação */}
@@ -484,7 +568,12 @@ export default function ImportMapPage() {
                 <div className="mt-4 p-4 bg-blue-900/30 rounded-lg border border-blue-500/30">
                   <h4 className="text-blue-300 font-semibold mb-3 flex items-center gap-2">
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+                      />
                     </svg>
                     Adicionar Imagem ou PDF (Opcional)
                   </h4>
@@ -503,17 +592,31 @@ export default function ImportMapPage() {
                       <div className="relative">
                         {imagePreview === 'PDF' ? (
                           <div className="w-full h-40 bg-gray-900 rounded-lg flex flex-col items-center justify-center border border-gray-700">
-                            <svg className="w-16 h-16 text-red-400 mb-2" fill="currentColor" viewBox="0 0 20 20">
-                              <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z" clipRule="evenodd" />
+                            <svg
+                              className="w-16 h-16 text-red-400 mb-2"
+                              fill="currentColor"
+                              viewBox="0 0 20 20"
+                            >
+                              <path
+                                fillRule="evenodd"
+                                d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z"
+                                clipRule="evenodd"
+                              />
                             </svg>
-                            <p className="text-[var(--foreground)] font-semibold">{imageFile?.name}</p>
+                            <p className="text-[var(--foreground)] font-semibold">
+                              {imageFile?.name}
+                            </p>
                             <p className="text-gray-400 text-sm">Arquivo PDF selecionado</p>
                           </div>
                         ) : (
-                          <img
+                          <NextImage
                             src={imagePreview}
                             alt="Preview"
-                            className="w-full max-h-64 object-contain bg-gray-900 rounded-lg"
+                            width={0}
+                            height={0}
+                            sizes="100vw"
+                            unoptimized
+                            className="w-full h-auto max-h-64 object-contain bg-gray-900 rounded-lg"
                           />
                         )}
                       </div>
@@ -523,8 +626,18 @@ export default function ImportMapPage() {
                         onClick={handleUploadImage}
                         className="w-full px-4 py-2 bg-blue-500 hover:bg-blue-600 text-[var(--foreground)] rounded-lg font-semibold transition-colors flex items-center justify-center gap-2"
                       >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                        <svg
+                          className="w-5 h-5"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+                          />
                         </svg>
                         Fazer Upload da Imagem
                       </button>
@@ -532,8 +645,19 @@ export default function ImportMapPage() {
                     {isUploadingImage && (
                       <div className="flex items-center justify-center gap-2 text-blue-300">
                         <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                          <circle
+                            className="opacity-25"
+                            cx="12"
+                            cy="12"
+                            r="10"
+                            stroke="currentColor"
+                            strokeWidth="4"
+                          ></circle>
+                          <path
+                            className="opacity-75"
+                            fill="currentColor"
+                            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                          ></path>
                         </svg>
                         <span>Enviando arquivo...</span>
                       </div>
@@ -546,7 +670,12 @@ export default function ImportMapPage() {
                 <div className="mt-4 p-4 bg-green-900/30 rounded-lg border border-green-500/30">
                   <p className="text-green-300 font-semibold flex items-center gap-2">
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2.5}
+                        d="M5 13l4 4L19 7"
+                      />
                     </svg>
                     Arquivo adicionado com sucesso!
                   </p>
@@ -581,8 +710,18 @@ export default function ImportMapPage() {
       {/* Card de erro */}
       {error && (
         <div className="bg-red-500/20 border border-red-500/50 rounded-xl p-4 mb-6 flex items-start gap-3">
-          <svg className="w-6 h-6 text-red-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          <svg
+            className="w-6 h-6 text-red-400 flex-shrink-0 mt-0.5"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+            />
           </svg>
           <div>
             <p className="text-red-300 font-semibold">Erro na Importação</p>
@@ -596,23 +735,31 @@ export default function ImportMapPage() {
         <h2 className="text-xl font-bold text-[var(--foreground)] mb-4">Como Usar</h2>
         <ol className="space-y-2 text-[var(--foreground)] opacity-80">
           <li className="flex items-start gap-2">
-            <span className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center text-white text-sm font-bold flex-shrink-0">1</span>
+            <span className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center text-white text-sm font-bold flex-shrink-0">
+              1
+            </span>
             <span>Baixe a planilha modelo clicando no botão abaixo</span>
           </li>
           <li className="flex items-start gap-2">
-            <span className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center text-white text-sm font-bold flex-shrink-0">2</span>
+            <span className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center text-white text-sm font-bold flex-shrink-0">
+              2
+            </span>
             <span>Edite a planilha com os dados do seu loteamento</span>
           </li>
           <li className="flex items-start gap-2">
-            <span className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center text-white text-sm font-bold flex-shrink-0">3</span>
+            <span className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center text-white text-sm font-bold flex-shrink-0">
+              3
+            </span>
             <span>Faça upload do arquivo Excel abaixo</span>
           </li>
           <li className="flex items-start gap-2">
-            <span className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center text-white text-sm font-bold flex-shrink-0">4</span>
-            <span>Revise o JSON gerado e clique em "Importar Loteamento"</span>
+            <span className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center text-white text-sm font-bold flex-shrink-0">
+              4
+            </span>
+            <span>Revise o JSON gerado e clique em &quot;Importar Loteamento&quot;</span>
           </li>
         </ol>
-        
+
         {/* Botão de download */}
         <div className="mt-4">
           <button
@@ -620,7 +767,12 @@ export default function ImportMapPage() {
             className="w-full px-6 py-3 bg-green-500 hover:bg-green-600 text-white rounded-lg font-semibold transition-colors flex items-center justify-center gap-2"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+              />
             </svg>
             Baixar Planilha Modelo
           </button>
@@ -630,7 +782,7 @@ export default function ImportMapPage() {
       {/* Card de upload/editor */}
       <div className="bg-[var(--card-bg)] rounded-xl shadow-lg p-6">
         <h2 className="text-xl font-bold text-[var(--foreground)] mb-4">Upload da Planilha</h2>
-        
+
         {/* Upload de Excel */}
         <div className="mb-4">
           <label className="block text-[var(--foreground)] opacity-80 font-semibold mb-2">
@@ -647,7 +799,8 @@ export default function ImportMapPage() {
             className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white cursor-pointer file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-green-500 file:text-white file:font-semibold hover:file:bg-green-600 transition-colors"
           />
           <p className="text-xs text-[var(--foreground)] opacity-60 mt-2">
-            📊 A planilha deve ter uma aba "Info" com o nome do loteamento e demais abas com os dados dos lotes de cada quadra.
+            📊 A planilha deve ter uma aba &quot;Info&quot; com o nome do loteamento e demais abas
+            com os dados dos lotes de cada quadra.
           </p>
         </div>
 
@@ -655,33 +808,70 @@ export default function ImportMapPage() {
         <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4 mb-4">
           <p className="text-blue-300 font-semibold mb-2 flex items-center gap-2">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
             </svg>
             Estrutura da Planilha Excel
           </p>
           <div className="text-sm text-blue-200 space-y-2">
-            <p><strong>Aba "Info":</strong></p>
+            <p>
+              <strong>Aba &quot;Info&quot;:</strong>
+            </p>
             <ul className="list-disc list-inside ml-4">
-              <li>Linha com "Nome do Loteamento" na coluna A e o nome na coluna B</li>
+              <li>Linha com &quot;Nome do Loteamento&quot; na coluna A e o nome na coluna B</li>
             </ul>
-            <p><strong>Demais abas (uma por quadra):</strong></p>
+            <p>
+              <strong>Demais abas (uma por quadra):</strong>
+            </p>
             <ul className="list-disc list-inside ml-4">
-              <li><strong>Número</strong> ou <strong>Lote</strong>: Número do lote</li>
-              <li><strong>Status</strong>: disponível, reservado, vendido ou bloqueado</li>
-              <li><strong>Preço</strong>: Valor do lote (aceita formatação de moeda)</li>
-              <li><strong>Área</strong>: Tamanho em m²</li>
-              <li><strong>Descrição</strong>: Texto descritivo (opcional)</li>
-              <li><strong>Características</strong>: Lista separada por vírgulas (opcional)</li>
+              <li>
+                <strong>Número</strong> ou <strong>Lote</strong>: Número do lote
+              </li>
+              <li>
+                <strong>Status</strong>: disponível, reservado, vendido ou bloqueado
+              </li>
+              <li>
+                <strong>Preço</strong>: Valor do lote (aceita formatação de moeda)
+              </li>
+              <li>
+                <strong>Área</strong>: Tamanho em m²
+              </li>
+              <li>
+                <strong>Descrição</strong>: Texto descritivo (opcional)
+              </li>
+              <li>
+                <strong>Características</strong>: Lista separada por vírgulas (opcional)
+              </li>
             </ul>
-            <p><strong>Para lotes reservados/vendidos (colunas adicionais):</strong></p>
+            <p>
+              <strong>Para lotes reservados/vendidos (colunas adicionais):</strong>
+            </p>
             <ul className="list-disc list-inside ml-4">
-              <li><strong>Cliente</strong>: Nome do cliente</li>
-              <li><strong>Email</strong>: Email do cliente</li>
-              <li><strong>Telefone</strong>: Telefone com DDD</li>
-              <li><strong>CPF</strong>: CPF do cliente (opcional)</li>
-              <li><strong>Endereço</strong>: Endereço completo (opcional)</li>
-              <li><strong>Pagamento</strong>: dinheiro, financiamento ou parcelado</li>
-              <li><strong>Observações</strong>: Notas adicionais (opcional)</li>
+              <li>
+                <strong>Cliente</strong>: Nome do cliente
+              </li>
+              <li>
+                <strong>Email</strong>: Email do cliente
+              </li>
+              <li>
+                <strong>Telefone</strong>: Telefone com DDD
+              </li>
+              <li>
+                <strong>CPF</strong>: CPF do cliente (opcional)
+              </li>
+              <li>
+                <strong>Endereço</strong>: Endereço completo (opcional)
+              </li>
+              <li>
+                <strong>Pagamento</strong>: dinheiro, financiamento ou parcelado
+              </li>
+              <li>
+                <strong>Observações</strong>: Notas adicionais (opcional)
+              </li>
             </ul>
           </div>
         </div>
@@ -690,7 +880,12 @@ export default function ImportMapPage() {
           <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-3 mb-4">
             <p className="text-green-300 font-semibold flex items-center gap-2">
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                />
               </svg>
               Arquivo processado: {excelFile.name}
             </p>
@@ -708,7 +903,7 @@ export default function ImportMapPage() {
           <textarea
             value={jsonContent}
             onChange={(e) => setJsonContent(e.target.value)}
-            placeholder='Faça upload da planilha Excel para gerar o JSON...'
+            placeholder="Faça upload da planilha Excel para gerar o JSON..."
             rows={15}
             className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-[var(--foreground)] font-mono text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
           />
@@ -727,15 +922,31 @@ export default function ImportMapPage() {
             {isUploading ? (
               <>
                 <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                  ></circle>
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                  ></path>
                 </svg>
                 Importando...
               </>
             ) : (
               <>
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+                  />
                 </svg>
                 Importar Loteamento
               </>

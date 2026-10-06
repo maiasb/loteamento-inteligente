@@ -1,16 +1,14 @@
 import { NextResponse } from 'next/server';
 import { executeQuery } from '@/lib/db';
 import crypto from 'crypto';
+import type { RowDataPacket } from 'mysql2/promise';
 
 export async function POST(request: Request) {
   try {
     const { userId, newPassword } = await request.json();
 
     if (!userId || !newPassword) {
-      return NextResponse.json(
-        { success: false, message: 'Dados inválidos' },
-        { status: 400 }
-      );
+      return NextResponse.json({ success: false, message: 'Dados inválidos' }, { status: 400 });
     }
 
     if (newPassword.length < 6) {
@@ -21,7 +19,9 @@ export async function POST(request: Request) {
     }
 
     // Verificar se o usuário existe
-    const users = await executeQuery<any[]>('SELECT id FROM users WHERE id = ?', [userId]);
+    const users = await executeQuery<RowDataPacket[]>('SELECT id FROM users WHERE id = ?', [
+      userId,
+    ]);
     const user = users.length > 0 ? users[0] : null;
 
     if (!user) {
@@ -32,17 +32,17 @@ export async function POST(request: Request) {
     }
 
     // Hash da nova senha usando SHA-256 (mesmo padrão do sistema)
-    const hashedPassword = crypto
-      .createHash('sha256')
-      .update(newPassword)
-      .digest('hex');
+    const hashedPassword = crypto.createHash('sha256').update(newPassword).digest('hex');
 
     // Atualizar senha e marcar que não é mais primeiro login
-    await executeQuery(`
+    await executeQuery(
+      `
       UPDATE users
       SET password = ?, first_login = 0
       WHERE id = ?
-    `, [hashedPassword, userId]);
+    `,
+      [hashedPassword, userId]
+    );
 
     return NextResponse.json({
       success: true,

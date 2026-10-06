@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import mysql from 'mysql2/promise';
+import mysql, { type RowDataPacket } from 'mysql2/promise';
 import { dbConfig } from '@/lib/db';
 
 // Forçar rota dinâmica
@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic';
 export async function POST(request: NextRequest) {
   let connection;
   let lotNumber = '';
-  
+
   try {
     const body = await request.json();
     const {
@@ -17,14 +17,13 @@ export async function POST(request: NextRequest) {
       lotNumber: lotNum,
       status = 'available',
       price,
-      pricePerM2,
       size,
       description,
       features = [],
       lat,
       lng,
     } = body;
-    
+
     lotNumber = lotNum;
 
     if (!mapId || !lotNumber || !price || !size) {
@@ -65,15 +64,13 @@ export async function POST(request: NextRequest) {
         size,
         description || '',
         JSON.stringify(features),
-        (lat !== undefined && lng !== undefined) ? JSON.stringify({ lat, lng }) : null,
+        lat !== undefined && lng !== undefined ? JSON.stringify({ lat, lng }) : null,
       ]
     );
 
     // Buscar o ID inserido
-    const [rows] = await connection.execute(
-      'SELECT LAST_INSERT_ID() as insertedId'
-    );
-    const insertedId = (rows as any)[0].insertedId;
+    const [rows] = await connection.execute('SELECT LAST_INSERT_ID() as insertedId');
+    const insertedId = (rows as RowDataPacket[])[0].insertedId;
 
     const newLot = {
       id: insertedId.toString(),
@@ -90,21 +87,19 @@ export async function POST(request: NextRequest) {
     };
 
     return NextResponse.json(newLot, { status: 201 });
-  } catch (error: any) {
+  } catch (error) {
+    const dbError = error as NodeJS.ErrnoException;
     console.error('[API /mapas/lotes/criar] Erro:', error);
-    
+
     // Tratamento específico para erro de duplicata
-    if (error.code === 'ER_DUP_ENTRY') {
+    if (dbError.code === 'ER_DUP_ENTRY') {
       return NextResponse.json(
         { error: `O lote "${lotNumber}" já existe nesta quadra` },
         { status: 409 }
       );
     }
-    
-    return NextResponse.json(
-      { error: 'Erro ao criar lote' },
-      { status: 500 }
-    );
+
+    return NextResponse.json({ error: 'Erro ao criar lote' }, { status: 500 });
   } finally {
     if (connection) await connection.end();
   }

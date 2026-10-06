@@ -35,9 +35,10 @@ comportamento atual, inclusive problemas conhecidos; não são um pedido de muda
 | [005](005-dashboard-visualizacao-publica.md) | Dashboard e visualização pública     | implementada |
 | [006](006-docker.md)                         | Ambiente com Docker                  | implementada |
 | [007](007-reconciliacao-schema.md)           | Reconciliação do schema com o código | implementada |
+| [008](008-testes-automatizados.md)           | Testes automatizados                 | implementada |
+| [009](009-limpeza-eslint.md)                 | Limpeza dos erros de ESLint          | implementada |
 
 ## Testes
 
-Ainda não há testes automatizados. Criar a infraestrutura de testes é uma etapa própria, que
-precisa de spec (framework, o que cobrir primeiro, script `test` e inclusão no `pre-push`). Toda
-spec nova deve manter seus critérios de aceite verificáveis para que virem testes depois.
+Os testes ficam em `tests/` (Vitest; ver [008](008-testes-automatizados.md)). Todo critério de aceite
+de uma spec nova deve ser verificável e, sempre que possível, virar teste.

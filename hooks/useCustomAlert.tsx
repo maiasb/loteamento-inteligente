@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useCallback } from 'react';
 import { createRoot } from 'react-dom/client';
 import CustomAlert from '@/components/CustomAlert';
 
@@ -31,18 +31,16 @@ export const showAlert = ({ title, message, type = 'info' }: AlertOptions) => {
     }
   };
 
-  root.render(
-    <CustomAlert
-      title={title}
-      message={message}
-      type={type}
-      onClose={handleClose}
-    />
-  );
+  root.render(<CustomAlert title={title} message={message} type={type} onClose={handleClose} />);
 };
 
 // Função helper para criar e mostrar confirm
-export const showConfirm = ({ title, message, confirmText, cancelText }: ConfirmOptions): Promise<boolean> => {
+export const showConfirm = ({
+  title,
+  message,
+  confirmText,
+  cancelText,
+}: ConfirmOptions): Promise<boolean> => {
   return new Promise((resolve) => {
     const container = document.createElement('div');
     document.body.appendChild(container);
@@ -83,10 +81,8 @@ export const showConfirm = ({ title, message, confirmText, cancelText }: Confirm
 // Hook para usar nos componentes
 export function useCustomAlert() {
   const alert = useCallback((options: AlertOptions | string) => {
-    const opts = typeof options === 'string' 
-      ? { message: options } 
-      : options;
-    
+    const opts = typeof options === 'string' ? { message: options } : options;
+
     showAlert(opts);
   }, []);
 
@@ -107,10 +103,8 @@ export function useCustomAlert() {
   }, []);
 
   const confirm = useCallback((options: ConfirmOptions | string): Promise<boolean> => {
-    const opts = typeof options === 'string'
-      ? { message: options }
-      : options;
-    
+    const opts = typeof options === 'string' ? { message: options } : options;
+
     return showConfirm(opts);
   }, []);
 

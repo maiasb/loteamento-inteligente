@@ -1,5 +1,5 @@
-import { NextRequest, NextResponse } from 'next/server';
-import mysql from 'mysql2/promise';
+import { NextResponse } from 'next/server';
+import type { RowDataPacket } from 'mysql2/promise';
 import { withDbConnection } from '@/lib/dbConnection';
 
 // Forçar rota dinâmica
@@ -10,19 +10,14 @@ export const dynamic = 'force-dynamic';
  * Retorna estatísticas agregadas do dashboard (quantidades e valores financeiros)
  * Otimizado para não trazer dados detalhados desnecessários
  */
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
     const result = await withDbConnection(async (connection) => {
       // Executar queries em paralelo para melhor performance
-      const [
-        [mapsCount],
-        [lotsStats],
-        [reservationsStats],
-        [mapStats]
-      ] = await Promise.all([
+      const [[mapsCount], [lotsStats], [reservationsStats], [mapStats]] = await Promise.all([
         // Contar total de mapas
         connection.execute('SELECT COUNT(*) as total FROM maps'),
-        
+
         // Estatísticas de lotes por status (contagem e valor)
         connection.execute(`
           SELECT 
@@ -32,7 +27,7 @@ export async function GET(request: NextRequest) {
           FROM lots
           GROUP BY status
         `),
-        
+
         // Buscar dados agregados das reservas
         connection.execute(`
           SELECT 
@@ -43,7 +38,7 @@ export async function GET(request: NextRequest) {
           INNER JOIN purchase_request_lots prl ON pr.id = prl.purchase_request_id
           GROUP BY pr.status
         `),
-        
+
         // Buscar estatísticas por mapa
         connection.execute(`
           SELECT 
@@ -59,82 +54,88 @@ export async function GET(request: NextRequest) {
           LEFT JOIN lots l ON m.id = l.map_id
           GROUP BY m.id, m.name, m.description
           ORDER BY m.created_at DESC
-        `)
+        `),
       ]);
-      
-      const totalMaps = (mapsCount as any)[0]?.total || 0;
 
-    // Processar estatísticas de lotes
-    const lotsStatsMap = (lotsStats as any[]).reduce((acc, row) => {
-      acc[row.status] = {
-        count: Number(row.count) || 0,
-        totalValue: Number(row.total_value) || 0,
+      const totalMaps = (mapsCount as RowDataPacket[])[0]?.total || 0;
+
+      // Processar estatísticas de lotes
+      const lotsStatsMap = (lotsStats as RowDataPacket[]).reduce(
+        (acc, row) => {
+          acc[row.status] = {
+            count: Number(row.count) || 0,
+            totalValue: Number(row.total_value) || 0,
+          };
+          return acc;
+        },
+        {} as Record<string, { count: number; totalValue: number }>
+      );
+
+      // Processar estatísticas de reservas
+      const reservationsStatsMap = (reservationsStats as RowDataPacket[]).reduce(
+        (acc, row) => {
+          acc[row.status] = {
+            totalAgreed: Number(row.total_agreed) || 0,
+            totalFirstPayment: Number(row.total_first_payment) || 0,
+          };
+          return acc;
+        },
+        {} as Record<string, { totalAgreed: number; totalFirstPayment: number }>
+      );
+
+      // Calcular totais
+      const availableCount = lotsStatsMap['available']?.count || 0;
+      const reservedCount = lotsStatsMap['reserved']?.count || 0;
+      const soldCount = lotsStatsMap['sold']?.count || 0;
+      const blockedCount = lotsStatsMap['blocked']?.count || 0;
+      const totalLots = availableCount + reservedCount + soldCount + blockedCount;
+
+      const availableValue = lotsStatsMap['available']?.totalValue || 0;
+      const blockedValue = lotsStatsMap['blocked']?.totalValue || 0;
+      const reservedValue = reservationsStatsMap['pending']?.totalAgreed || 0;
+      const soldValue = reservationsStatsMap['completed']?.totalAgreed || 0;
+
+      // Somar entradas dos lotes vendidos E reservados
+      const totalFirstPayments =
+        (reservationsStatsMap['completed']?.totalFirstPayment || 0) +
+        (reservationsStatsMap['pending']?.totalFirstPayment || 0);
+
+      const totalValue = availableValue + reservedValue + soldValue + blockedValue;
+
+      // Formatar resposta
+      const response = {
+        summary: {
+          totalMaps,
+          totalLots,
+          availableLots: availableCount,
+          reservedLots: reservedCount,
+          soldLots: soldCount,
+          blockedLots: blockedCount,
+        },
+        financial: {
+          totalValue,
+          availableValue,
+          reservedValue,
+          soldValue,
+          blockedValue,
+          totalFirstPayments,
+        },
+        maps: (mapStats as RowDataPacket[]).map((map) => ({
+          id: map.id?.toString() || '',
+          name: map.name || '',
+          description: map.description || '',
+          totalLots: Number(map.total_lots) || 0,
+          availableLots: Number(map.available_lots) || 0,
+          reservedLots: Number(map.reserved_lots) || 0,
+          soldLots: Number(map.sold_lots) || 0,
+          blockedLots: Number(map.blocked_lots) || 0,
+        })),
       };
-      return acc;
-    }, {} as Record<string, { count: number; totalValue: number }>);
 
-    // Processar estatísticas de reservas
-    const reservationsStatsMap = (reservationsStats as any[]).reduce((acc, row) => {
-      acc[row.status] = {
-        totalAgreed: Number(row.total_agreed) || 0,
-        totalFirstPayment: Number(row.total_first_payment) || 0,
-      };
-      return acc;
-    }, {} as Record<string, { totalAgreed: number; totalFirstPayment: number }>);
+      return response;
+    });
 
-    // Calcular totais
-    const availableCount = lotsStatsMap['available']?.count || 0;
-    const reservedCount = lotsStatsMap['reserved']?.count || 0;
-    const soldCount = lotsStatsMap['sold']?.count || 0;
-    const blockedCount = lotsStatsMap['blocked']?.count || 0;
-    const totalLots = availableCount + reservedCount + soldCount + blockedCount;
-
-    const availableValue = lotsStatsMap['available']?.totalValue || 0;
-    const blockedValue = lotsStatsMap['blocked']?.totalValue || 0;
-    const reservedValue = reservationsStatsMap['pending']?.totalAgreed || 0;
-    const soldValue = reservationsStatsMap['completed']?.totalAgreed || 0;
-    
-    // Somar entradas dos lotes vendidos E reservados
-    const totalFirstPayments = 
-      (reservationsStatsMap['completed']?.totalFirstPayment || 0) + 
-      (reservationsStatsMap['pending']?.totalFirstPayment || 0);
-
-    const totalValue = availableValue + reservedValue + soldValue + blockedValue;
-
-    // Formatar resposta
-    const response = {
-      summary: {
-        totalMaps,
-        totalLots,
-        availableLots: availableCount,
-        reservedLots: reservedCount,
-        soldLots: soldCount,
-        blockedLots: blockedCount,
-      },
-      financial: {
-        totalValue,
-        availableValue,
-        reservedValue,
-        soldValue,
-        blockedValue,
-        totalFirstPayments,
-      },
-      maps: (mapStats as any[]).map((map) => ({
-        id: map.id?.toString() || '',
-        name: map.name || '',
-        description: map.description || '',
-        totalLots: Number(map.total_lots) || 0,
-        availableLots: Number(map.available_lots) || 0,
-        reservedLots: Number(map.reserved_lots) || 0,
-        soldLots: Number(map.sold_lots) || 0,
-        blockedLots: Number(map.blocked_lots) || 0,
-      })),
-    };
-
-    return response;
-  });
-
-  return NextResponse.json(result, { status: 200 });
+    return NextResponse.json(result, { status: 200 });
   } catch (error) {
     console.error('[API /dashboard/stats GET] ❌ Erro:', error);
     return NextResponse.json(

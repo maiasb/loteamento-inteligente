@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { executeQuery } from '@/lib/db';
+import type { RowDataPacket } from 'mysql2/promise';
 
 /**
  * POST /api/usuarios/reset-password
@@ -11,23 +12,16 @@ export async function POST(request: Request) {
     const { userId } = await request.json();
 
     if (!userId) {
-      return NextResponse.json(
-        { error: 'userId é obrigatório' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'userId é obrigatório' }, { status: 400 });
     }
 
     // Verificar se o usuário existe
-    const users = await executeQuery<any[]>(
-      'SELECT id, name FROM users WHERE id = ?',
-      [userId]
-    );
+    const users = await executeQuery<RowDataPacket[]>('SELECT id, name FROM users WHERE id = ?', [
+      userId,
+    ]);
 
     if (!users || users.length === 0) {
-      return NextResponse.json(
-        { error: 'Usuário não encontrado' },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: 'Usuário não encontrado' }, { status: 404 });
     }
 
     // Senha padrão: 123456
@@ -42,7 +36,6 @@ export async function POST(request: Request) {
       [hashedPassword, userId]
     );
 
-
     return NextResponse.json({
       success: true,
       message: 'Senha resetada com sucesso',
@@ -50,9 +43,6 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     console.error('[ResetPassword] ❌ Erro ao resetar senha:', error);
-    return NextResponse.json(
-      { error: 'Erro ao resetar senha do usuário' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Erro ao resetar senha do usuário' }, { status: 500 });
   }
 }

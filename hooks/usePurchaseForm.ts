@@ -24,10 +24,38 @@ interface FormData {
   lotPaymentMethods: Record<string, string[]>;
 }
 
+interface ReservationLotDetail {
+  lotId: string;
+  mapId: string;
+  blockId: string | null;
+  price: number;
+  firstPayment: number | null;
+  installments: number | null;
+  paymentMethod: string | null;
+}
+
+interface ReservationRequest {
+  lotIds: string[];
+  lotDetails: ReservationLotDetail[];
+  customerName: string;
+  sellerName: string;
+  customerEmail?: string;
+  customerPhone?: string;
+  customerCPF?: string;
+  sellerEmail?: string;
+  sellerPhone?: string;
+  sellerCPF?: string;
+  message?: string;
+  contract?: string;
+  reservationDate?: string;
+  userId?: string;
+  paymentMethod?: string;
+}
+
 export function usePurchaseForm(
-  lots: Lot[], 
-  onSuccess: (reservationId?: string) => void, 
-  lotPrices?: Record<string, number | null>, 
+  lots: Lot[],
+  onSuccess: (reservationId?: string) => void,
+  lotPrices?: Record<string, number | null>,
   lotFirstPayments?: Record<string, number | null>,
   lotInstallments?: Record<string, number | null>,
   userId?: string
@@ -99,7 +127,9 @@ export function usePurchaseForm(
       }
 
       if (unavailableLots.length > 0) {
-        setError(`Os seguintes lotes não estão mais disponíveis: ${unavailableLots.join(', ')}. Por favor, remova-os da seleção.`);
+        setError(
+          `Os seguintes lotes não estão mais disponíveis: ${unavailableLots.join(', ')}. Por favor, remova-os da seleção.`
+        );
         setIsSubmitting(false);
         return;
       }
@@ -109,23 +139,24 @@ export function usePurchaseForm(
       const formFirstPayment = formData.firstPayment ? parseCurrency(formData.firstPayment) : null;
       const formInstallments = formData.installments > 1 ? formData.installments : null;
 
-      const lotDetails = lots.map(lot => ({
+      const lotDetails = lots.map((lot) => ({
         lotId: lot.id,
         mapId: lot.mapId,
         blockId: lot.blockId || null,
         price: lotPrices?.[lot.id] || lot.price,
         firstPayment: lotFirstPayments?.[lot.id] || formFirstPayment || null,
         installments: lotInstallments?.[lot.id] || formInstallments || null,
-        paymentMethod: formData.lotPaymentMethods[lot.id]?.length > 0
-          ? formData.lotPaymentMethods[lot.id].join(', ')
-          : formData.paymentMethod.length > 0
-            ? formData.paymentMethod.join(', ')
-            : null,
+        paymentMethod:
+          formData.lotPaymentMethods[lot.id]?.length > 0
+            ? formData.lotPaymentMethods[lot.id].join(', ')
+            : formData.paymentMethod.length > 0
+              ? formData.paymentMethod.join(', ')
+              : null,
       }));
 
       // Criar objeto de requisição apenas com campos obrigatórios e preenchidos
-      const requestData: any = {
-        lotIds: lots.map(lot => lot.id),
+      const requestData: ReservationRequest = {
+        lotIds: lots.map((lot) => lot.id),
         lotDetails,
         customerName: formData.customerName,
         sellerName: formData.sellerName,
@@ -142,7 +173,7 @@ export function usePurchaseForm(
       if (formData.contract) requestData.contract = formData.contract;
       if (formData.reservationDate) requestData.reservationDate = formData.reservationDate;
       if (userId) requestData.userId = userId;
-      
+
       if (formData.paymentMethod.length > 0 || formData.otherPayment) {
         const methods = formData.otherPayment
           ? [...formData.paymentMethod, formData.otherPayment]
@@ -158,7 +189,8 @@ export function usePurchaseForm(
       });
 
       // Retornar o ID da reserva criada
-      const reservationId = response.data?.purchaseRequestId || response.data?.id || response.data?.reservationId;
+      const reservationId =
+        response.data?.purchaseRequestId || response.data?.id || response.data?.reservationId;
       onSuccess(reservationId);
     } catch (err) {
       console.error('[usePurchaseForm] ❌ Erro ao enviar reserva:', err);

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import mysql from 'mysql2/promise';
+import mysql, { type ResultSetHeader } from 'mysql2/promise';
 import { dbConfig } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
@@ -40,7 +40,7 @@ interface ImportMap {
 
 export async function POST(request: NextRequest) {
   let connection;
-  
+
   try {
     const body = await request.json();
     const importData: ImportMap = body;
@@ -55,7 +55,10 @@ export async function POST(request: NextRequest) {
 
     if (!importData.blocks || !Array.isArray(importData.blocks) || importData.blocks.length === 0) {
       return NextResponse.json(
-        { error: 'Pelo menos uma quadra é obrigatória', message: 'O campo "blocks" deve conter pelo menos uma quadra' },
+        {
+          error: 'Pelo menos uma quadra é obrigatória',
+          message: 'O campo "blocks" deve conter pelo menos uma quadra',
+        },
         { status: 400 }
       );
     }
@@ -78,7 +81,6 @@ export async function POST(request: NextRequest) {
         ]
       );
 
-
       let totalBlocks = 0;
       let totalLots = 0;
 
@@ -87,7 +89,10 @@ export async function POST(request: NextRequest) {
         if (!blockData.name) {
           await connection.rollback();
           return NextResponse.json(
-            { error: 'Nome da quadra é obrigatório', message: 'Todas as quadras devem ter um nome' },
+            {
+              error: 'Nome da quadra é obrigatório',
+              message: 'Todas as quadras devem ter um nome',
+            },
             { status: 400 }
           );
         }
@@ -99,9 +104,8 @@ export async function POST(request: NextRequest) {
           [mapId, blockData.name, blockData.description || '']
         );
 
-        const blockId = (blockResult as any).insertId;
+        const blockId = (blockResult as ResultSetHeader).insertId;
         totalBlocks++;
-
 
         // Criar lotes da quadra
         if (blockData.lots && Array.isArray(blockData.lots) && blockData.lots.length > 0) {
@@ -109,9 +113,9 @@ export async function POST(request: NextRequest) {
             if (!lotData.lotNumber) {
               await connection.rollback();
               return NextResponse.json(
-                { 
-                  error: 'Número do lote é obrigatório', 
-                  message: `Todos os lotes da quadra "${blockData.name}" devem ter um número (lotNumber)` 
+                {
+                  error: 'Número do lote é obrigatório',
+                  message: `Todos os lotes da quadra "${blockData.name}" devem ter um número (lotNumber)`,
                 },
                 { status: 400 }
               );
@@ -120,9 +124,9 @@ export async function POST(request: NextRequest) {
             if (!lotData.price || !lotData.size) {
               await connection.rollback();
               return NextResponse.json(
-                { 
-                  error: 'Preço e tamanho são obrigatórios', 
-                  message: `Lote ${lotData.lotNumber} da quadra "${blockData.name}" deve ter price e size` 
+                {
+                  error: 'Preço e tamanho são obrigatórios',
+                  message: `Lote ${lotData.lotNumber} da quadra "${blockData.name}" deve ter price e size`,
                 },
                 { status: 400 }
               );
@@ -148,23 +152,27 @@ export async function POST(request: NextRequest) {
               ]
             );
 
-            const lotId = (lotResult as any).insertId;
+            const lotId = (lotResult as ResultSetHeader).insertId;
             totalLots++;
 
             // Se o lote está reservado ou vendido e tem dados de reserva, criar purchase_request
             if (
-              (lotData.status === 'reserved' || lotData.status === 'sold') && 
+              (lotData.status === 'reserved' || lotData.status === 'sold') &&
               lotData.reservation
             ) {
               const reservation = lotData.reservation;
-              
+
               // Validar dados obrigatórios da reserva
-              if (!reservation.customer_name || !reservation.customer_email || !reservation.customer_phone) {
+              if (
+                !reservation.customer_name ||
+                !reservation.customer_email ||
+                !reservation.customer_phone
+              ) {
                 await connection.rollback();
                 return NextResponse.json(
-                  { 
-                    error: 'Dados de reserva incompletos', 
-                    message: `Lote ${lotData.lotNumber} (${lotData.status}) requer customer_name, customer_email e customer_phone na reserva` 
+                  {
+                    error: 'Dados de reserva incompletos',
+                    message: `Lote ${lotData.lotNumber} (${lotData.status}) requer customer_name, customer_email e customer_phone na reserva`,
                   },
                   { status: 400 }
                 );
@@ -205,7 +213,7 @@ export async function POST(request: NextRequest) {
                 ]
               );
 
-              const purchaseRequestId = (purchaseResult as any).insertId;
+              const purchaseRequestId = (purchaseResult as ResultSetHeader).insertId;
 
               // Criar relacionamento em purchase_request_lots
               await connection.execute(
@@ -213,15 +221,12 @@ export async function POST(request: NextRequest) {
                  VALUES (?, ?)`,
                 [purchaseRequestId, lotId]
               );
-
             }
           }
-
         }
       }
 
       await connection.commit();
-
 
       return NextResponse.json(
         {
@@ -237,24 +242,28 @@ export async function POST(request: NextRequest) {
       await connection.rollback();
       throw error;
     }
-  } catch (error: any) {
+  } catch (error) {
+    const dbError = error as NodeJS.ErrnoException;
     console.error('[API /mapas/importar] ❌ Erro:', error);
 
     // Erro de constraint (duplicação)
-    if (error.code === 'ER_DUP_ENTRY') {
+    if (dbError.code === 'ER_DUP_ENTRY') {
       return NextResponse.json(
-        { 
-          error: 'Dados duplicados', 
-          message: 'Já existe um mapa, quadra ou lote com esses dados. Verifique números de lotes duplicados.' 
+        {
+          error: 'Dados duplicados',
+          message:
+            'Já existe um mapa, quadra ou lote com esses dados. Verifique números de lotes duplicados.',
         },
         { status: 409 }
       );
     }
 
     return NextResponse.json(
-      { 
-        error: 'Erro ao importar loteamento', 
-        message: error.message || 'Ocorreu um erro ao processar o arquivo. Verifique o formato dos dados.' 
+      {
+        error: 'Erro ao importar loteamento',
+        message:
+          dbError.message ||
+          'Ocorreu um erro ao processar o arquivo. Verifique o formato dos dados.',
       },
       { status: 500 }
     );

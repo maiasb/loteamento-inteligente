@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import mysql from 'mysql2/promise';
+import mysql, { type RowDataPacket } from 'mysql2/promise';
 import { dbConfig } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
 export async function PUT(request: NextRequest) {
   let connection;
-  
+
   try {
     const body = await request.json();
     const { reservationId, status, lotStatus, userRole } = body;
@@ -58,13 +58,13 @@ export async function PUT(request: NextRequest) {
         );
       }
 
-      const lotIds = (lotRelations as any[]).map(rel => rel.lot_id);
+      const lotIds = (lotRelations as RowDataPacket[]).map((rel) => rel.lot_id);
 
       // Atualizar status da reserva
-      await connection.execute(
-        'UPDATE purchase_requests SET status = ? WHERE id = ?',
-        [status, reservationId]
-      );
+      await connection.execute('UPDATE purchase_requests SET status = ? WHERE id = ?', [
+        status,
+        reservationId,
+      ]);
 
       // Atualizar status de todos os lotes associados
       const placeholders = lotIds.map(() => '?').join(',');
@@ -91,10 +91,7 @@ export async function PUT(request: NextRequest) {
     }
   } catch (error) {
     console.error('[API /reserva/confirmacao] Erro:', error);
-    return NextResponse.json(
-      { error: 'Erro ao atualizar reserva' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Erro ao atualizar reserva' }, { status: 500 });
   } finally {
     if (connection) await connection.end();
   }

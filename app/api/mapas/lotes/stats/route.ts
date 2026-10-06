@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import mysql from 'mysql2/promise';
+import mysql, { type RowDataPacket } from 'mysql2/promise';
 import { dbConfig } from '@/lib/db';
 import { LotStatus } from '@/types';
 
@@ -8,16 +8,13 @@ export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
   let connection;
-  
+
   try {
     const { searchParams } = new URL(request.url);
     const mapId = searchParams.get('mapId');
 
     if (!mapId) {
-      return NextResponse.json(
-        { error: 'mapId é obrigatório' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'mapId é obrigatório' }, { status: 400 });
     }
 
     connection = await mysql.createConnection(dbConfig);
@@ -37,10 +34,10 @@ export async function GET(request: NextRequest) {
       available: 0,
       reserved: 0,
       sold: 0,
-      blocked: 0
+      blocked: 0,
     };
 
-    (rows as any[]).forEach(row => {
+    (rows as RowDataPacket[]).forEach((row) => {
       switch (row.status) {
         case LotStatus.AVAILABLE:
           result.available = row.count;
@@ -60,10 +57,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(result);
   } catch (error) {
     console.error('Erro ao buscar estatísticas dos lotes:', error);
-    return NextResponse.json(
-      { error: 'Erro ao buscar estatísticas dos lotes' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Erro ao buscar estatísticas dos lotes' }, { status: 500 });
   } finally {
     if (connection) {
       await connection.end();

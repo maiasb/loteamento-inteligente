@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import mysql from 'mysql2/promise';
+import mysql, { type RowDataPacket } from 'mysql2/promise';
 import crypto from 'crypto';
 import { dbConfig } from '@/lib/db';
 
@@ -12,28 +12,21 @@ export const dynamic = 'force-dynamic';
  */
 export async function GET(request: NextRequest) {
   let connection;
-  
+
   try {
     const { searchParams } = new URL(request.url);
     const cpf = searchParams.get('cpf');
     const password = searchParams.get('password');
 
     if (!cpf || !password) {
-      return NextResponse.json(
-        { error: 'CPF e senha são obrigatórios' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'CPF e senha são obrigatórios' }, { status: 400 });
     }
 
     // Remover formatação do CPF
     const cleanCpf = cpf.replace(/\D/g, '');
 
     // Gerar hash MD5 da senha (mesmo algoritmo do n8n)
-    const hashedPassword = crypto
-      .createHash('md5')
-      .update(password)
-      .digest('hex');
-
+    const hashedPassword = crypto.createHash('md5').update(password).digest('hex');
 
     // Conectar ao banco de dados
     connection = await mysql.createConnection(dbConfig);
@@ -47,13 +40,10 @@ export async function GET(request: NextRequest) {
     );
 
     if (!Array.isArray(rows) || rows.length === 0) {
-      return NextResponse.json(
-        { error: 'CPF ou senha inválidos' },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: 'CPF ou senha inválidos' }, { status: 401 });
     }
 
-    const user = rows[0] as any;
+    const user = rows[0] as RowDataPacket;
 
     // Verificar se o usuário está aprovado
     if (user.status !== 'approved') {
@@ -91,10 +81,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(userData, { status: 200 });
   } catch (error) {
     console.error('[API /usuarios/login] ❌ Erro:', error);
-    return NextResponse.json(
-      { error: 'Erro ao fazer login' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Erro ao fazer login' }, { status: 500 });
   } finally {
     if (connection) {
       await connection.end();

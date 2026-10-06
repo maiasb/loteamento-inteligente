@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import mysql from 'mysql2/promise';
+import mysql, { type RowDataPacket } from 'mysql2/promise';
 import { dbConfig } from '@/lib/db';
 
 // Forçar rota dinâmica
@@ -7,17 +7,14 @@ export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
   let connection;
-  
+
   try {
     const { searchParams } = new URL(request.url);
     const mapId = searchParams.get('mapId');
 
     if (!mapId) {
       console.error('[API /mapas/estatisticas GET] mapId não fornecido');
-      return NextResponse.json(
-        { error: 'mapId é obrigatório' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'mapId é obrigatório' }, { status: 400 });
     }
 
     // Verificar se as configurações do banco estão definidas
@@ -48,36 +45,40 @@ export async function GET(request: NextRequest) {
       [mapId]
     );
 
-    const result = (stats as any[])[0];
+    const result = (stats as RowDataPacket[])[0];
 
-    return NextResponse.json({
-      total: Number(result.total) || 0,
-      available: Number(result.available) || 0,
-      reserved: Number(result.reserved) || 0,
-      sold: Number(result.sold) || 0,
-      blocked: Number(result.blocked) || 0,
-    }, { status: 200 });
-  } catch (error: any) {
+    return NextResponse.json(
+      {
+        total: Number(result.total) || 0,
+        available: Number(result.available) || 0,
+        reserved: Number(result.reserved) || 0,
+        sold: Number(result.sold) || 0,
+        blocked: Number(result.blocked) || 0,
+      },
+      { status: 200 }
+    );
+  } catch (error) {
+    const dbError = error as NodeJS.ErrnoException;
     console.error('[API /mapas/estatisticas GET] Erro:', error);
-    console.error('[API /mapas/estatisticas GET] Tipo de erro:', error.code);
-    console.error('[API /mapas/estatisticas GET] Mensagem:', error.message);
-    
+    console.error('[API /mapas/estatisticas GET] Tipo de erro:', dbError.code);
+    console.error('[API /mapas/estatisticas GET] Mensagem:', dbError.message);
+
     let errorMessage = 'Erro ao buscar estatísticas do mapa';
     const statusCode = 500;
-    
-    if (error.code === 'ECONNREFUSED') {
+
+    if (dbError.code === 'ECONNREFUSED') {
       errorMessage = 'Não foi possível conectar ao banco de dados';
       console.error('[API /mapas/estatisticas GET] Banco de dados inacessível');
-    } else if (error.code === 'ER_ACCESS_DENIED_ERROR') {
+    } else if (dbError.code === 'ER_ACCESS_DENIED_ERROR') {
       errorMessage = 'Acesso negado ao banco de dados';
       console.error('[API /mapas/estatisticas GET] Credenciais inválidas');
-    } else if (error.code === 'ETIMEDOUT') {
+    } else if (dbError.code === 'ETIMEDOUT') {
       errorMessage = 'Timeout na conexão com o banco de dados';
       console.error('[API /mapas/estatisticas GET] Timeout na conexão');
     }
-    
+
     return NextResponse.json(
-      { error: errorMessage, details: error.message },
+      { error: errorMessage, details: dbError.message },
       { status: statusCode }
     );
   } finally {

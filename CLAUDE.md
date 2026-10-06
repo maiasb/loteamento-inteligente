@@ -16,14 +16,16 @@ yarn dev            # servidor de desenvolvimento (0.0.0.0:3000)
 yarn build          # build de produção
 yarn lint           # ESLint
 yarn typecheck      # tsc --noEmit
+yarn test           # Vitest (tests/); yarn test:watch para modo contínuo
 yarn format <arquivos>  # Prettier nos arquivos informados (nunca no projeto todo)
 
 docker compose up -d db       # só o MariaDB (dev com `yarn dev` na máquina)
 docker compose up --build     # banco + app em container (http://localhost:3000); exige .env
 ```
 
-- **Testes:** ainda não existem. Quando forem criados (etapa própria, com spec em `docs/specs/`),
-  adicionar o script `test` e incluí-lo em `.husky/pre-push` e na definição de pronto.
+- **Testes:** Vitest em `tests/` (`tests/api` para rotas, com `mysql2` mockado via
+  `tests/helpers/db.ts`). Bug corrigido e regra nova ganham teste. Spec:
+  [docs/specs/008-testes-automatizados.md](docs/specs/008-testes-automatizados.md).
 - **Banco:** MariaDB. Docker executa `migrations/*.sql` e cria o usuário dev (`DEV_*` no `.env`) em volume vazio. Não há scripts `migrate`,
   `migrate:status` nem seed no `package.json`, embora o deploy chame `npm run migrate`. Regras de migration: [docs/database.md](docs/database.md).
 - **Variáveis de ambiente:** nomes em `.env.example`. Nunca ler, copiar ou expor valores de `.env*`.
@@ -40,7 +42,7 @@ docker compose up --build     # banco + app em container (http://localhost:3000)
 | `lib/`                              | Infra: banco (`db.ts`), Cloudinary, migrations, config de libs     |
 | `utils/`                            | Funções puras (formatação, validação)                              |
 | `types/index.ts`                    | Tipos de domínio                                                   |
-| `migrations/`                       | SQL numerado, executado em ordem                                   |
+| `migrations/`                       | SQL numerado (MariaDB), executado em ordem; próxima: 015           |
 | `docs/`                             | Arquitetura, banco, design system, specs, ADRs                     |
 
 ## Convenções (padrões dominantes do código)
@@ -86,15 +88,15 @@ docker compose up --build     # banco + app em container (http://localhost:3000)
 - Branches `tipo/descricao-curta`; commits em **Conventional Commits** (`feat:`, `fix:`, `docs:`,
   `chore:`…), validados pelo commitlint no hook `commit-msg`.
 - **pre-commit** (lint-staged): ESLint `--fix` + Prettier só nos arquivos em stage.
-- **pre-push:** `yarn typecheck`.
-- Atenção: o código legado tem erros de ESLint (principalmente `any`). Ao tocar num arquivo
-  legado, o pre-commit pode bloquear até esses erros serem resolvidos naquele arquivo. Não use
-  `--no-verify`.
+- **pre-push:** `yarn typecheck` e `yarn test`.
+- `yarn lint` está limpo (0 erros, 0 avisos). Não use `--no-verify` nem adicione `eslint-disable`;
+  corrija a causa. Os 14 `eslint-disable` que já existiam estão registrados na
+  [spec 009](docs/specs/009-limpeza-eslint.md).
 
 ## Definição de pronto
 
 - `yarn lint` sem erros nos arquivos tocados e `yarn typecheck` passando.
-- Testes passando (quando existirem).
+- `yarn test` passando; regra nova ou bug corrigido com teste.
 - Spec atualizada e com status correto.
 - Nenhum arquivo extra, `console.log`, código comentado ou dado fake.
 
