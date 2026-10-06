@@ -13,7 +13,7 @@ Subir banco e aplicação com um comando, em qualquer máquina, sem alterar o c�
 
 ## Fora de escopo
 
-Substituir o deploy atual (GitHub Actions + SSH + PM2); `output: 'standalone'`; modo de desenvolvimento com hot reload dentro do container; testes.
+Definir deploy (o antigo, GitHub Actions + SSH + PM2, foi removido); `output: 'standalone'`; modo de desenvolvimento com hot reload dentro do container; testes.
 
 ## Usuários e permissões
 

@@ -67,18 +67,16 @@ Exemplo: reservar lotes (`LotSelector` / `PurchaseModal`).
 
 ## Deploy
 
-- `.github/workflows/deploy-hostgator-main.yml`: em push na `main`, conecta por SSH na VPS, faz
-  `git reset --hard origin/main`, `npm ci`, `npm run migrate`, `npm run build` e recarrega o PM2
-  (`ecosystem.config.js`, 1 instância, reinicia acima de 1 GB). O projeto usa yarn (`yarn.lock`),
-  mas o workflow roda `npm ci` e não há `package-lock.json`; os scripts `migrate` não existem.
-- `.github/workflows/deploy.yml` (GitHub Pages, publica `out/`): **legado**. O projeto não usa
-  `output: export`, então esse workflow não corresponde ao app atual.
+Nenhum deploy está configurado. Os workflows do GitHub Actions (HostGator por SSH e GitHub Pages),
+o `ecosystem.config.js` do PM2 e a dependência `gh-pages` foram removidos em 2026-10-06, porque o
+deploy não está sendo feito por enquanto e os workflows falhavam a cada push na `main`. Definir um
+deploy novo exige uma spec em `docs/specs/` (e um ADR se mudar a stack).
 
 ## Ambiente local com Docker
 
 `docker-compose.yml` sobe `db` (MariaDB 11, migrations executadas na primeira subida) e `app` (build
-de produção do `Dockerfile`, Node 20). Ver [specs/006-docker.md](specs/006-docker.md). O deploy
-de produção continua sendo o workflow com SSH e PM2.
+de produção do `Dockerfile`, Node 20). Ver [specs/006-docker.md](specs/006-docker.md). Não há deploy
+configurado.
 
 ## Decisões relevantes
 

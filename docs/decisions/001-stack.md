@@ -6,7 +6,7 @@
 ## Contexto
 
 Plataforma para uma imobiliária gerenciar loteamentos, mapas e reservas, hospedada numa VPS própria
-com recursos limitados (PM2, uma instância, limite de memória de 1 GB).
+com recursos limitados (na época: PM2, uma instância, limite de memória de 1 GB).
 
 ## Decisão
 
@@ -19,7 +19,8 @@ com recursos limitados (PM2, uma instância, limite de memória de 1 GB).
 - Cloudinary para imagens, Google Maps para overlay de lotes, `xlsx` para importação.
 - Autenticação própria por CPF e senha, com sessão em `localStorage`.
 - yarn como gerenciador de pacotes.
-- Deploy por GitHub Actions + SSH + PM2; ambiente local com Docker Compose (ADR 002).
+- Ambiente local com Docker Compose (ADR 002). O deploy anterior (GitHub Actions + SSH + PM2) foi
+  removido em 2026-10-06 e não há deploy configurado.
 
 ## Alternativas consideradas
 
