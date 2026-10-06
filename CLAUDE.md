@@ -42,7 +42,7 @@ docker compose up --build     # banco + app em container (http://localhost:3000)
 | `lib/`                              | Infra: banco (`db.ts`), Cloudinary, migrations, config de libs     |
 | `utils/`                            | Funções puras (formatação, validação)                              |
 | `types/index.ts`                    | Tipos de domínio                                                   |
-| `migrations/`                       | SQL numerado, executado em ordem                                   |
+| `migrations/`                       | SQL numerado (MariaDB), executado em ordem; próxima: 015           |
 | `docs/`                             | Arquitetura, banco, design system, specs, ADRs                     |
 
 ## Convenções (padrões dominantes do código)

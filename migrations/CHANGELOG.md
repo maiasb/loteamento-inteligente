@@ -157,3 +157,8 @@ Para reverter uma migration:
 - `purchase_request_lots`: adiciona `payment_method`
 
 **Correção na 007**: removida a referência a `purchase_requests.first_payment` (coluna inexistente), que fazia a migration falhar em banco novo.
+
+### 014_payment_method_text.sql
+
+**Data**: 2026-10-06
+**Descrição**: `purchase_requests.payment_method` passa de ENUM para `VARCHAR(255)`, porque o formulário de reserva envia várias formas separadas por vírgula (ex.: `cash, financing`). Com o ENUM, reservar pela tela retornava erro 500 (`Data truncated`).

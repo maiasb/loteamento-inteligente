@@ -28,15 +28,16 @@ Quem opera o banco.
 5. `blocks.identifier` e `lots.block_id` ficam opcionais; `lots.status` aceita também `blocked`.
 6. `purchase_requests`: `lot_id`, `map_id`, `customer_email`, `customer_phone` ficam opcionais; adiciona `user_id` (FK com `ON DELETE SET NULL`), `message` e `seller_*`.
 7. `purchase_request_lots` ganha `payment_method`.
+8. Migration 014: `purchase_requests.payment_method` vira `VARCHAR(255)`. O formulário envia várias formas separadas por vírgula e o ENUM da 001 as recusava (erro 500 ao reservar). Descoberto ao testar o fluxo real contra o banco do Docker.
 
 ## Fluxos
 
-`docker compose up --build` (spec 006) num volume vazio executa 001 → 013.
+`docker compose up --build` (spec 006) num volume vazio executa 001 → 014.
 
 ## Critérios de aceite
 
 - [x] Todas as migrations rodam em ordem num MariaDB vazio sem erro.
-- [x] Cadastro, login, criar mapa, quadra e lote, e reservar lote funcionam contra esse banco.
+- [x] Cadastro, login, criar mapa, quadra e lote, e reservar lote (inclusive com `paymentMethod` de várias formas) funcionam contra esse banco.
 - [x] Re-executar a 013 não falha (idempotente).
 
 ## Impacto no banco

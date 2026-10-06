@@ -7,9 +7,9 @@ Docker usa `mariadb:11`. Configuração em `lib/db.ts` (`DB_HOST`, `DB_PORT`, `D
 
 ## Origem do schema
 
-O banco original foi perdido e não há dump. O schema atual é o resultado das migrations 001–013.
-As migrations 001–012 não bastavam para o código; a **013** (spec
-[007](specs/007-reconciliacao-schema.md)) alinha o schema ao que as rotas de `app/api` consultam.
+O banco original foi perdido e não há dump. O schema atual é o resultado das migrations 001–014.
+As migrations 001–012 não bastavam para o código; a **013** e a **014** (spec
+[007](specs/007-reconciliacao-schema.md)) alinham o schema ao que as rotas de `app/api` consultam.
 Se o banco original diferia disso, a fonte de verdade passa a ser a 013.
 
 Validado em 2026-10-05: num MariaDB vazio, 001 → 013 rodam sem erro, a 013 pode ser reexecutada, e
@@ -43,7 +43,7 @@ Views: `vw_map_statistics`, `vw_lot_details` (criadas na 001).
   `status` (`available|reserved|sold|unavailable|blocked`), `description`, `features` (JSON),
   `coordinates` (JSON), timestamps.
 - **purchase_requests:** `id`, `user_id`, `customer_name`, `customer_email`, `customer_phone`,
-  `customer_cpf`, `message`, `payment_method`, `seller_name`, `seller_email`, `seller_phone`,
+  `customer_cpf`, `message`, `payment_method` (texto, formas separadas por vírgula), `seller_name`, `seller_email`, `seller_phone`,
   `seller_cpf`, `contract`, `status` (`pending|approved|rejected|completed|cancelled`),
   timestamps. `lot_id` e `map_id` existem mas são opcionais e o código não os preenche (a ligação
   com lotes é feita por `purchase_request_lots`).
@@ -63,7 +63,7 @@ Views: `vw_map_statistics`, `vw_lot_details` (criadas na 001).
 | ---------------------------------------------------------------------------------- | ------------------------------------------------------------ |
 | `lots.status` aceita `unavailable` (001) e `blocked` (013); o código usa `blocked` | Unificar em `blocked` numa spec, ajustando dados e ENUM      |
 | `blocks` em camelCase                                                              | Manter em código existente; em tabelas novas usar snake_case |
-| Numeração 001–007 e depois 012, 013; datas dos comentários fora de ordem           | Próxima migration: 014                                       |
+| Numeração 001–007 e depois 012 a 014; datas dos comentários fora de ordem          | Próxima migration: 015                                       |
 | `purchase_requests.lot_id`/`map_id` e `users.username` sem uso                     | Remover numa spec futura, após confirmar                     |
 | Quatro formas de acessar o banco                                                   | Padrão: `executeQuery` de `lib/db.ts`                        |
 | Hash de senha MD5 (login) e SHA-256 (`password/reset`)                             | Spec própria de autenticação                                 |
