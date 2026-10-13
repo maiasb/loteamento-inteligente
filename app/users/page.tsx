@@ -11,8 +11,25 @@ export const dynamic = 'force-dynamic';
 
 const API_URL = '/api';
 
+interface ResetRequest {
+  id: number;
+  status: 'open' | 'issued';
+  created_at: string;
+  expires_at: string | null;
+  name: string;
+  email: string;
+  phone: string | null;
+}
+
+interface SecretNotice {
+  title: string;
+  description: string;
+  label: string;
+  value: string;
+}
+
 export default function UsersPage() {
-  const { canAccessUsers } = useAuth();
+  const { user: currentUser, canAccessUsers } = useAuth();
   const router = useRouter();
   const [users, setUsers] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -24,6 +41,9 @@ export default function UsersPage() {
   const [actionsMenuOpen, setActionsMenuOpen] = useState<string | null>(null);
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
   const [selectedUserForDetails, setSelectedUserForDetails] = useState<User | null>(null);
+  const [resetRequests, setResetRequests] = useState<ResetRequest[]>([]);
+  const [issuingRequestId, setIssuingRequestId] = useState<number | null>(null);
+  const [secretNotice, setSecretNotice] = useState<SecretNotice | null>(null);
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -97,6 +117,11 @@ export default function UsersPage() {
       // A API pode retornar os usuários diretamente ou em response.data.users
       const usersList = Array.isArray(response.data) ? response.data : response.data.users || [];
       setUsers(usersList);
+
+      const requestsResponse = await axios.get(`${API_URL}/usuarios/senha/pedidos`, {
+        timeout: 10000,
+      });
+      setResetRequests(Array.isArray(requestsResponse.data) ? requestsResponse.data : []);
     } catch (error) {
       console.error('[UsersPage] ❌ Erro ao carregar usuários:', error);
       alert('Erro ao carregar usuários');
@@ -112,25 +137,16 @@ export default function UsersPage() {
       if (editingUser) {
         // Editar usuário existente
 
-        const params = new URLSearchParams({
-          name: formData.name,
-          email: formData.email,
-          cpf: formData.cpf.replace(/\D/g, ''),
-          phone: formData.phone.replace(/\D/g, ''),
-          role: formData.role,
-          ...(formData.creci && { creci: formData.creci }),
-          ...(formData.password && { password: formData.password }),
-        });
-
         await axios.put(
-          `${API_URL}/usuarios/atualizar/${editingUser.id}?${params.toString()}`,
-          null,
+          `${API_URL}/usuarios/atualizar/${editingUser.id}`,
           {
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            timeout: 10000,
-          }
+            name: formData.name,
+            email: formData.email,
+            cpf: formData.cpf.replace(/\D/g, ''),
+            phone: formData.phone.replace(/\D/g, ''),
+            creci: formData.creci || null,
+          },
+          { timeout: 10000 }
         );
 
         alert('Usuário atualizado com sucesso!');
@@ -144,12 +160,10 @@ export default function UsersPage() {
           phone: formData.phone.replace(/\D/g, ''),
           creci: formData.creci || null,
           role: formData.role,
-          status: UserStatus.APPROVED, // Usuários criados por admin são aprovados automaticamente
           password: formData.password,
-          first_login: true,
         };
 
-        await axios.post(`${API_URL}/usuarios/criar`, newUserData, {
+        await axios.post(`${API_URL}/usuarios`, newUserData, {
           headers: {
             'Content-Type': 'application/json',
           },
@@ -165,8 +179,8 @@ export default function UsersPage() {
     } catch (error) {
       console.error('[UsersPage] ❌ Erro ao salvar usuário:', error);
 
-      if (axios.isAxiosError(error) && error.response?.data?.message) {
-        alert(error.response.data.message);
+      if (axios.isAxiosError(error) && error.response?.data?.error) {
+        alert(error.response.data.error);
       } else {
         alert('Erro ao salvar usuário');
       }
@@ -230,35 +244,75 @@ export default function UsersPage() {
   const handleResetPassword = async (userId: string, userName: string) => {
     if (
       !confirm(
-        `Tem certeza que deseja resetar a senha de ${userName}?\n\nA senha será redefinida para: 123456\nO usuário precisará alterá-la no próximo login.`
+        `Tem certeza que deseja resetar a senha de ${userName}?\n\nSerá gerada uma senha provisória aleatória, e as sessões abertas dele serão encerradas. O usuário precisará trocá-la no próximo login.`
       )
     )
       return;
 
     try {
-      await axios.post(
+      const response = await axios.post(
         `${API_URL}/usuarios/reset-password`,
-        {
-          userId,
-        },
-        {
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          timeout: 10000,
-        }
+        { userId },
+        { timeout: 10000 }
       );
 
-      alert(
-        'Senha resetada com sucesso!\n\nNova senha: 123456\nO usuário deverá alterá-la no próximo login.'
-      );
+      setSecretNotice({
+        title: 'Senha provisória gerada',
+        description: `Entregue a senha a ${userName} por um canal seguro (ex.: WhatsApp). Ela não será mostrada novamente e deve ser trocada no primeiro acesso.`,
+        label: 'Senha provisória',
+        value: response.data.temporaryPassword,
+      });
 
-      // Recarregar lista de usuários
       await loadUsers();
     } catch (error) {
-      console.error('[UsersPage] ❌ Erro ao resetar senha:', error);
-      alert('Erro ao resetar senha do usuário');
+      console.error('[UsersPage] Erro ao resetar senha:', error);
+      alert(
+        axios.isAxiosError(error) && error.response?.data?.error
+          ? error.response.data.error
+          : 'Erro ao resetar senha do usuário'
+      );
     }
+  };
+
+  const handleIssueCode = async (request: ResetRequest) => {
+    if (
+      !confirm(
+        `Antes de emitir o código, confirme a identidade de ${request.name} por fora do sistema (ligação ou WhatsApp conhecido).\n\nEmitir o código agora?`
+      )
+    )
+      return;
+
+    setIssuingRequestId(request.id);
+    try {
+      const response = await axios.post(
+        `${API_URL}/usuarios/senha/codigo`,
+        { requestId: request.id },
+        { timeout: 10000 }
+      );
+
+      setSecretNotice({
+        title: 'Código de redefinição emitido',
+        description: `Entregue o código a ${request.name} por um canal externo. Ele vale por ${response.data.expiresInMinutes} minutos, é de uso único e não será mostrado novamente.`,
+        label: 'Código',
+        value: response.data.code,
+      });
+      await loadUsers();
+    } catch (error) {
+      console.error('[UsersPage] Erro ao emitir código:', error);
+      alert(
+        axios.isAxiosError(error) && error.response?.data?.error
+          ? error.response.data.error
+          : 'Erro ao emitir o código'
+      );
+    } finally {
+      setIssuingRequestId(null);
+    }
+  };
+
+  // Espelha a hierarquia do servidor (só para esconder ações; quem decide é a API).
+  const canManage = (target: User) => {
+    if (!currentUser || !canAccessUsers || target.id === currentUser.id) return false;
+    return target.role !== UserRole.DEV || currentUser.role === UserRole.DEV;
   };
 
   const handleToggleActive = async (userId: string, userName: string, currentActive: boolean) => {
@@ -286,16 +340,15 @@ export default function UsersPage() {
       await loadUsers();
     } catch (error) {
       console.error(`[UsersPage] ❌ Erro ao ${action} usuário:`, error);
-      alert(`Erro ao ${action} usuário`);
+      alert(
+        axios.isAxiosError(error) && error.response?.data?.error
+          ? error.response.data.error
+          : `Erro ao ${action} usuário`
+      );
     }
   };
 
-  const handleDeleteUser = async (userId: string, userName: string, userRole: UserRole) => {
-    if (userRole === UserRole.DEV) {
-      alert('Não é possível excluir usuários com perfil de desenvolvedor.');
-      return;
-    }
-
+  const handleDeleteUser = async (userId: string, userName: string) => {
     if (
       !confirm(
         `⚠️ ATENÇÃO: Esta ação não pode ser desfeita!\n\nTem certeza que deseja EXCLUIR permanentemente o usuário ${userName}?`
@@ -351,7 +404,11 @@ export default function UsersPage() {
       await loadUsers();
     } catch (error) {
       console.error('[UsersPage] ❌ Erro ao alterar cargo:', error);
-      alert('Erro ao alterar cargo do usuário');
+      alert(
+        axios.isAxiosError(error) && error.response?.data?.error
+          ? error.response.data.error
+          : 'Erro ao alterar cargo do usuário'
+      );
     }
   };
 
@@ -433,6 +490,58 @@ export default function UsersPage() {
           </button>
         )}
       </div>
+
+      {/* Pedidos de redefinição de senha */}
+      {resetRequests.length > 0 && (
+        <section
+          aria-labelledby="reset-requests-title"
+          className="bg-[var(--card-bg)] rounded-xl shadow-md border border-[var(--border)] overflow-hidden"
+        >
+          <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-[var(--border)]">
+            <h2
+              id="reset-requests-title"
+              className="text-lg sm:text-xl font-bold text-[var(--foreground)]"
+            >
+              Pedidos de redefinição de senha ({resetRequests.length})
+            </h2>
+            <p className="text-xs sm:text-sm text-[var(--foreground)] opacity-70">
+              Confirme a identidade da pessoa por fora do sistema antes de emitir o código.
+            </p>
+          </div>
+          <ul className="divide-y divide-[var(--border)]">
+            {resetRequests.map((request) => (
+              <li
+                key={request.id}
+                className="px-4 sm:px-6 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"
+              >
+                <div className="min-w-0">
+                  <p className="font-semibold text-[var(--foreground)] truncate">{request.name}</p>
+                  <p className="text-sm text-[var(--foreground)] opacity-70 truncate">
+                    {request.email}
+                    {request.phone ? ` · ${request.phone}` : ''}
+                  </p>
+                  <p className="text-xs text-[var(--foreground)] opacity-60">
+                    Pedido em {new Date(request.created_at).toLocaleString('pt-BR')}
+                    {request.status === 'issued' && ' · código emitido, aguardando uso'}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleIssueCode(request)}
+                  disabled={issuingRequestId === request.id}
+                  className="bg-[var(--primary)] hover:bg-[var(--primary-light)] text-white px-4 py-2 rounded-lg font-medium transition-colors shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {issuingRequestId === request.id
+                    ? 'Emitindo...'
+                    : request.status === 'issued'
+                      ? 'Emitir novo código'
+                      : 'Emitir código'}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {/* Seção de Usuários Pendentes */}
       {users.filter((u) => u.status === UserStatus.PENDING).length > 0 ? (
@@ -684,46 +793,46 @@ export default function UsersPage() {
                 />
               </div>
 
-              <div>
-                <label className="block text-sm font-semibold text-[var(--foreground)] opacity-90 mb-2">
-                  Perfil *
-                </label>
-                <select
-                  value={formData.role}
-                  onChange={(e) => setFormData({ ...formData, role: e.target.value as UserRole })}
-                  className="w-full px-4 py-2.5 bg-[var(--surface)] text-[var(--foreground)] border-2 border-[var(--border)] rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all cursor-pointer"
-                >
-                  <option value={UserRole.ADMIN}>👑 Administrador</option>
-                  <option value={UserRole.VENDEDOR}>💼 Vendedor</option>
-                </select>
-              </div>
+              {!editingUser && (
+                <>
+                  <div>
+                    <label className="block text-sm font-semibold text-[var(--foreground)] opacity-90 mb-2">
+                      Perfil *
+                    </label>
+                    <select
+                      value={formData.role}
+                      onChange={(e) =>
+                        setFormData({ ...formData, role: e.target.value as UserRole })
+                      }
+                      className="w-full px-4 py-2.5 bg-[var(--surface)] text-[var(--foreground)] border-2 border-[var(--border)] rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all cursor-pointer"
+                    >
+                      {currentUser?.role === UserRole.DEV && (
+                        <option value={UserRole.DEV}>🛠️ Desenvolvedor</option>
+                      )}
+                      <option value={UserRole.ADMIN}>👑 Administrador</option>
+                      <option value={UserRole.VENDEDOR}>💼 Vendedor</option>
+                    </select>
+                  </div>
 
-              <div className="md:col-span-2">
-                <label className="block text-sm font-semibold text-[var(--foreground)] opacity-90 mb-2">
-                  Senha{' '}
-                  {editingUser ? (
-                    <span className="text-[var(--foreground)]/50 text-xs font-normal">
-                      (deixe em branco para manter a atual)
-                    </span>
-                  ) : (
-                    '*'
-                  )}
-                </label>
-                <input
-                  type="password"
-                  value={formData.password}
-                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                  required={!editingUser}
-                  className="w-full px-4 py-2.5 bg-[var(--surface)] text-[var(--foreground)] border-2 border-[var(--border)] rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 placeholder-[var(--foreground)]/40 transition-all"
-                  placeholder="••••••••"
-                  minLength={6}
-                />
-                {!editingUser && (
-                  <p className="mt-1.5 text-xs text-[var(--foreground)]/60">
-                    Mínimo de 6 caracteres
-                  </p>
-                )}
-              </div>
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-semibold text-[var(--foreground)] opacity-90 mb-2">
+                      Senha provisória *
+                    </label>
+                    <input
+                      type="password"
+                      value={formData.password}
+                      onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                      required
+                      className="w-full px-4 py-2.5 bg-[var(--surface)] text-[var(--foreground)] border-2 border-[var(--border)] rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 placeholder-[var(--foreground)]/40 transition-all"
+                      placeholder="••••••••"
+                      minLength={8}
+                    />
+                    <p className="mt-1.5 text-xs text-[var(--foreground)]/60">
+                      Mínimo de 8 caracteres. O usuário será obrigado a trocá-la no primeiro acesso.
+                    </p>
+                  </div>
+                </>
+              )}
             </div>
 
             <div className="flex gap-3 pt-4 border-t border-[var(--border)] mt-6">
@@ -1092,116 +1201,124 @@ export default function UsersPage() {
                                   </svg>
                                   Ver Detalhes
                                 </button>
-                                <button
-                                  onClick={() => {
-                                    openRoleModal(user);
-                                    setActionsMenuOpen(null);
-                                  }}
-                                  className="w-full text-left px-4 py-2 text-sm text-[var(--foreground)] hover:bg-[var(--surface-hover)] flex items-center gap-2 transition-colors"
-                                >
-                                  <svg
-                                    className="w-4 h-4 text-blue-500"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    viewBox="0 0 24 24"
+                                {canManage(user) && (
+                                  <button
+                                    onClick={() => {
+                                      openRoleModal(user);
+                                      setActionsMenuOpen(null);
+                                    }}
+                                    className="w-full text-left px-4 py-2 text-sm text-[var(--foreground)] hover:bg-[var(--surface-hover)] flex items-center gap-2 transition-colors"
                                   >
-                                    <path
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
-                                      strokeWidth={2}
-                                      d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"
-                                    />
-                                  </svg>
-                                  Alterar Cargo
-                                </button>
-                                <button
-                                  onClick={() => {
-                                    handleResetPassword(user.id, user.name);
-                                    setActionsMenuOpen(null);
-                                  }}
-                                  className="w-full text-left px-4 py-2 text-sm text-[var(--foreground)] hover:bg-[var(--surface-hover)] flex items-center gap-2 transition-colors"
-                                >
-                                  <svg
-                                    className="w-4 h-4 text-amber-500"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    viewBox="0 0 24 24"
+                                    <svg
+                                      className="w-4 h-4 text-blue-500"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      viewBox="0 0 24 24"
+                                    >
+                                      <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        strokeWidth={2}
+                                        d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"
+                                      />
+                                    </svg>
+                                    Alterar Cargo
+                                  </button>
+                                )}
+                                {canManage(user) && (
+                                  <button
+                                    onClick={() => {
+                                      handleResetPassword(user.id, user.name);
+                                      setActionsMenuOpen(null);
+                                    }}
+                                    className="w-full text-left px-4 py-2 text-sm text-[var(--foreground)] hover:bg-[var(--surface-hover)] flex items-center gap-2 transition-colors"
                                   >
-                                    <path
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
-                                      strokeWidth={2}
-                                      d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"
-                                    />
-                                  </svg>
-                                  Resetar Senha
-                                </button>
+                                    <svg
+                                      className="w-4 h-4 text-amber-500"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      viewBox="0 0 24 24"
+                                    >
+                                      <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        strokeWidth={2}
+                                        d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"
+                                      />
+                                    </svg>
+                                    Resetar Senha
+                                  </button>
+                                )}
                                 <div className="border-t border-[var(--border)] my-1"></div>
-                                <button
-                                  onClick={() => {
-                                    handleToggleActive(user.id, user.name, user.active === true);
-                                    setActionsMenuOpen(null);
-                                  }}
-                                  className="w-full text-left px-4 py-2 text-sm text-[var(--foreground)] hover:bg-[var(--surface-hover)] flex items-center gap-2 transition-colors"
-                                >
-                                  {user.active === true ? (
-                                    <>
-                                      <svg
-                                        className="w-4 h-4 text-gray-400"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        viewBox="0 0 24 24"
-                                      >
-                                        <path
-                                          strokeLinecap="round"
-                                          strokeLinejoin="round"
-                                          strokeWidth={2}
-                                          d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"
-                                        />
-                                      </svg>
-                                      Desativar Usuário
-                                    </>
-                                  ) : (
-                                    <>
-                                      <svg
-                                        className="w-4 h-4 text-[var(--success)]"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        viewBox="0 0 24 24"
-                                      >
-                                        <path
-                                          strokeLinecap="round"
-                                          strokeLinejoin="round"
-                                          strokeWidth={2}
-                                          d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-                                        />
-                                      </svg>
-                                      Ativar Usuário
-                                    </>
-                                  )}
-                                </button>
-                                <button
-                                  onClick={() => {
-                                    handleDeleteUser(user.id, user.name, user.role);
-                                    setActionsMenuOpen(null);
-                                  }}
-                                  className="w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-[var(--danger)]/20 flex items-center gap-2 transition-colors"
-                                >
-                                  <svg
-                                    className="w-4 h-4"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    viewBox="0 0 24 24"
+                                {canManage(user) && (
+                                  <button
+                                    onClick={() => {
+                                      handleToggleActive(user.id, user.name, user.active === true);
+                                      setActionsMenuOpen(null);
+                                    }}
+                                    className="w-full text-left px-4 py-2 text-sm text-[var(--foreground)] hover:bg-[var(--surface-hover)] flex items-center gap-2 transition-colors"
                                   >
-                                    <path
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
-                                      strokeWidth={2}
-                                      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                                    />
-                                  </svg>
-                                  Excluir Usuário
-                                </button>
+                                    {user.active === true ? (
+                                      <>
+                                        <svg
+                                          className="w-4 h-4 text-gray-400"
+                                          fill="none"
+                                          stroke="currentColor"
+                                          viewBox="0 0 24 24"
+                                        >
+                                          <path
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                            strokeWidth={2}
+                                            d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"
+                                          />
+                                        </svg>
+                                        Desativar Usuário
+                                      </>
+                                    ) : (
+                                      <>
+                                        <svg
+                                          className="w-4 h-4 text-[var(--success)]"
+                                          fill="none"
+                                          stroke="currentColor"
+                                          viewBox="0 0 24 24"
+                                        >
+                                          <path
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                            strokeWidth={2}
+                                            d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                                          />
+                                        </svg>
+                                        Ativar Usuário
+                                      </>
+                                    )}
+                                  </button>
+                                )}
+                                {canManage(user) && (
+                                  <button
+                                    onClick={() => {
+                                      handleDeleteUser(user.id, user.name);
+                                      setActionsMenuOpen(null);
+                                    }}
+                                    className="w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-[var(--danger)]/20 flex items-center gap-2 transition-colors"
+                                  >
+                                    <svg
+                                      className="w-4 h-4"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      viewBox="0 0 24 24"
+                                    >
+                                      <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        strokeWidth={2}
+                                        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                                      />
+                                    </svg>
+                                    Excluir Usuário
+                                  </button>
+                                )}
                               </div>
                             )}
                           </div>
@@ -1362,116 +1479,124 @@ export default function UsersPage() {
                             </svg>
                             Ver Detalhes
                           </button>
-                          <button
-                            onClick={() => {
-                              openRoleModal(user);
-                              setActionsMenuOpen(null);
-                            }}
-                            className="w-full text-left px-4 py-3 text-sm text-[var(--foreground)] hover:bg-[var(--surface-hover)] flex items-center gap-2 transition-colors"
-                          >
-                            <svg
-                              className="w-4 h-4 text-[var(--accent)]"
-                              fill="none"
-                              stroke="currentColor"
-                              viewBox="0 0 24 24"
+                          {canManage(user) && (
+                            <button
+                              onClick={() => {
+                                openRoleModal(user);
+                                setActionsMenuOpen(null);
+                              }}
+                              className="w-full text-left px-4 py-3 text-sm text-[var(--foreground)] hover:bg-[var(--surface-hover)] flex items-center gap-2 transition-colors"
                             >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"
-                              />
-                            </svg>
-                            Alterar Cargo
-                          </button>
-                          <button
-                            onClick={() => {
-                              handleResetPassword(user.id, user.name);
-                              setActionsMenuOpen(null);
-                            }}
-                            className="w-full text-left px-4 py-3 text-sm text-[var(--foreground)] hover:bg-[var(--surface-hover)] flex items-center gap-2 transition-colors"
-                          >
-                            <svg
-                              className="w-4 h-4 text-[var(--warning)]"
-                              fill="none"
-                              stroke="currentColor"
-                              viewBox="0 0 24 24"
+                              <svg
+                                className="w-4 h-4 text-[var(--accent)]"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"
+                                />
+                              </svg>
+                              Alterar Cargo
+                            </button>
+                          )}
+                          {canManage(user) && (
+                            <button
+                              onClick={() => {
+                                handleResetPassword(user.id, user.name);
+                                setActionsMenuOpen(null);
+                              }}
+                              className="w-full text-left px-4 py-3 text-sm text-[var(--foreground)] hover:bg-[var(--surface-hover)] flex items-center gap-2 transition-colors"
                             >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"
-                              />
-                            </svg>
-                            Resetar Senha
-                          </button>
+                              <svg
+                                className="w-4 h-4 text-[var(--warning)]"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"
+                                />
+                              </svg>
+                              Resetar Senha
+                            </button>
+                          )}
                           <div className="border-t border-[var(--border)]"></div>
-                          <button
-                            onClick={() => {
-                              handleToggleActive(user.id, user.name, user.active === true);
-                              setActionsMenuOpen(null);
-                            }}
-                            className="w-full text-left px-4 py-3 text-sm text-[var(--foreground)] hover:bg-[var(--surface-hover)] flex items-center gap-2 transition-colors"
-                          >
-                            {user.active === true ? (
-                              <>
-                                <svg
-                                  className="w-4 h-4 text-gray-400"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  viewBox="0 0 24 24"
-                                >
-                                  <path
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    strokeWidth={2}
-                                    d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"
-                                  />
-                                </svg>
-                                Desativar Usuário
-                              </>
-                            ) : (
-                              <>
-                                <svg
-                                  className="w-4 h-4 text-[var(--success)]"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  viewBox="0 0 24 24"
-                                >
-                                  <path
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    strokeWidth={2}
-                                    d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-                                  />
-                                </svg>
-                                Ativar Usuário
-                              </>
-                            )}
-                          </button>
-                          <button
-                            onClick={() => {
-                              handleDeleteUser(user.id, user.name, user.role);
-                              setActionsMenuOpen(null);
-                            }}
-                            className="w-full text-left px-4 py-3 text-sm text-red-400 hover:bg-[var(--danger)]/20 flex items-center gap-2 transition-colors"
-                          >
-                            <svg
-                              className="w-4 h-4"
-                              fill="none"
-                              stroke="currentColor"
-                              viewBox="0 0 24 24"
+                          {canManage(user) && (
+                            <button
+                              onClick={() => {
+                                handleToggleActive(user.id, user.name, user.active === true);
+                                setActionsMenuOpen(null);
+                              }}
+                              className="w-full text-left px-4 py-3 text-sm text-[var(--foreground)] hover:bg-[var(--surface-hover)] flex items-center gap-2 transition-colors"
                             >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                              />
-                            </svg>
-                            Excluir Usuário
-                          </button>
+                              {user.active === true ? (
+                                <>
+                                  <svg
+                                    className="w-4 h-4 text-gray-400"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    viewBox="0 0 24 24"
+                                  >
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      strokeWidth={2}
+                                      d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"
+                                    />
+                                  </svg>
+                                  Desativar Usuário
+                                </>
+                              ) : (
+                                <>
+                                  <svg
+                                    className="w-4 h-4 text-[var(--success)]"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    viewBox="0 0 24 24"
+                                  >
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      strokeWidth={2}
+                                      d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                                    />
+                                  </svg>
+                                  Ativar Usuário
+                                </>
+                              )}
+                            </button>
+                          )}
+                          {canManage(user) && (
+                            <button
+                              onClick={() => {
+                                handleDeleteUser(user.id, user.name);
+                                setActionsMenuOpen(null);
+                              }}
+                              className="w-full text-left px-4 py-3 text-sm text-red-400 hover:bg-[var(--danger)]/20 flex items-center gap-2 transition-colors"
+                            >
+                              <svg
+                                className="w-4 h-4"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                                />
+                              </svg>
+                              Excluir Usuário
+                            </button>
+                          )}
                         </div>
                       )}
                     </div>
@@ -1509,6 +1634,50 @@ export default function UsersPage() {
           </div>
         )}
       </div>
+
+      {/* Segredo mostrado uma única vez (senha provisória ou código de redefinição) */}
+      {secretNotice && (
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="secret-notice-title"
+        >
+          <div className="bg-[var(--card-bg)] rounded-xl shadow-2xl max-w-md w-full border border-[var(--border)] p-6 space-y-4">
+            <h3 id="secret-notice-title" className="text-xl font-bold text-[var(--foreground)]">
+              {secretNotice.title}
+            </h3>
+            <p className="text-sm text-[var(--foreground)] opacity-80">
+              {secretNotice.description}
+            </p>
+            <div>
+              <p className="text-xs text-[var(--foreground)] opacity-60 mb-1">
+                {secretNotice.label}
+              </p>
+              <p className="bg-[var(--surface)] border border-[var(--border)] rounded-lg px-4 py-3 font-mono text-lg tracking-wider text-[var(--foreground)] select-all break-all">
+                {secretNotice.value}
+              </p>
+            </div>
+            <div className="flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => navigator.clipboard?.writeText(secretNotice.value)}
+                className="px-4 py-2 text-sm font-medium text-[var(--foreground)] bg-[var(--surface)] border border-[var(--border)] rounded-lg hover:bg-[var(--surface-hover)] transition-colors"
+              >
+                Copiar
+              </button>
+              <button
+                type="button"
+                autoFocus
+                onClick={() => setSecretNotice(null)}
+                className="px-4 py-2 text-sm font-medium text-white bg-[var(--primary)] rounded-lg hover:bg-[var(--primary-light)] transition-colors"
+              >
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal de Alteração de Cargo */}
       {isRoleModalOpen && selectedUserForRole && (
@@ -1794,23 +1963,25 @@ export default function UsersPage() {
 
             {/* Footer do Modal */}
             <div className="bg-[var(--surface)] px-6 py-4 rounded-b-xl flex justify-end gap-3 border-t border-[var(--border)]">
-              <button
-                onClick={() => {
-                  setIsDetailsModalOpen(false);
-                  openRoleModal(selectedUserForDetails);
-                }}
-                className="px-4 py-2 text-sm font-medium text-[var(--foreground)] bg-[var(--primary)] border border-[var(--primary)] rounded-lg hover:bg-[var(--primary-light)] transition-colors flex items-center gap-2 shadow-md"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"
-                  />
-                </svg>
-                Alterar Cargo
-              </button>
+              {canManage(selectedUserForDetails) && (
+                <button
+                  onClick={() => {
+                    setIsDetailsModalOpen(false);
+                    openRoleModal(selectedUserForDetails);
+                  }}
+                  className="px-4 py-2 text-sm font-medium text-[var(--foreground)] bg-[var(--primary)] border border-[var(--primary)] rounded-lg hover:bg-[var(--primary-light)] transition-colors flex items-center gap-2 shadow-md"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"
+                    />
+                  </svg>
+                  Alterar Cargo
+                </button>
+              )}
               <button
                 onClick={() => setIsDetailsModalOpen(false)}
                 className="px-4 py-2 text-sm font-medium text-[var(--foreground)] bg-[var(--surface)] border border-[var(--border)] rounded-lg hover:bg-[var(--surface-hover)] transition-colors"

@@ -1,15 +1,32 @@
 'use client';
 
-import { createContext, useContext, useState, ReactNode, useEffect } from 'react';
-import { User, UserRole, UserStatus } from '@/types';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  ReactNode,
+} from 'react';
+import { useRouter } from 'next/navigation';
 import axios from 'axios';
+import { User, UserRole } from '@/types';
 
 const API_URL = '/api';
 
+// Endpoints em que 401 não significa "sessão perdida" (login errado, /me sem sessão, logout).
+const AUTH_ENDPOINTS = ['/usuarios/login', '/usuarios/me', '/usuarios/logout'];
+
+export type LoginResult = { ok: true; user: User } | { ok: false; message: string };
+
 interface AuthContextType {
   user: User | null;
-  login: (cpf: string, password: string) => Promise<boolean>;
-  logout: () => void;
+  /** true enquanto o servidor ainda não respondeu se existe sessão válida (/me). */
+  isLoading: boolean;
+  login: (cpf: string, password: string) => Promise<LoginResult>;
+  logout: () => Promise<void>;
+  refreshUser: () => Promise<User | null>;
   isAuthenticated: boolean;
   hasRole: (role: UserRole) => boolean;
   canAccessUsers: boolean;
@@ -18,141 +35,113 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
-  const [mounted, setMounted] = useState(false);
+function loginErrorMessage(error: unknown): string {
+  if (axios.isAxiosError(error) && error.response) {
+    const { status, data } = error.response;
+    if (status === 429) {
+      const minutes = Math.max(1, Math.ceil(Number(data?.retryAfter ?? 60) / 60));
+      return `Muitas tentativas. Tente novamente em ${minutes} ${minutes === 1 ? 'minuto' : 'minutos'}.`;
+    }
+    if (typeof data?.error === 'string') return data.error;
+  }
+  return 'Não foi possível entrar. Verifique sua conexão e tente novamente.';
+}
 
-  // Marcar como montado e restaurar usuário do localStorage
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const router = useRouter();
+  const [user, setUser] = useState<User | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const userRef = useRef<User | null>(null);
+
   useEffect(() => {
-    setMounted(true);
-    
-    if (typeof window !== 'undefined') {
-      const storedUser = localStorage.getItem('currentUser');
-      if (storedUser) {
-        try {
-          const parsedUser = JSON.parse(storedUser);
-          setUser(parsedUser);
-        } catch (e) {
-          console.error('[AuthContext] Erro ao recuperar usuário:', e);
-          localStorage.removeItem('currentUser');
-        }
-      }
+    userRef.current = user;
+  }, [user]);
+
+  const refreshUser = useCallback(async (): Promise<User | null> => {
+    try {
+      const response = await axios.get(`${API_URL}/usuarios/me`, { timeout: 10000 });
+      const current = response.data.user as User;
+      setUser(current);
+      return current;
+    } catch {
+      setUser(null);
+      return null;
     }
   }, []);
 
-  // Validar sessão ao montar o componente
+  // A sessão vive no cookie HttpOnly; o navegador não guarda mais usuário nem senha. Chaves
+  // antigas do localStorage (usuário completo) são removidas.
   useEffect(() => {
-    if (!mounted) return;
+    localStorage.removeItem('currentUser');
+    localStorage.removeItem('userData');
 
-    // Verificar se há dados de sessão no localStorage
-    const validateSession = () => {
-      if (typeof window === 'undefined') return;
-
-      const storedUser = localStorage.getItem('currentUser');
-
-      // Se não há usuário no estado mas há no localStorage, restaurar
-      if (!user && storedUser) {
-        try {
-          const parsedUser = JSON.parse(storedUser);
-          setUser(parsedUser);
-        } catch (e) {
-          console.error('[AuthContext] Erro ao restaurar sessão:', e);
-          localStorage.removeItem('currentUser');
-          localStorage.removeItem('userData');
-        }
-      }
-    };
-
-    // Validar imediatamente
-    validateSession();
-
-    // Validar a cada 30 segundos (opcional - para detectar se outro tab limpou a sessão)
-    const intervalId = setInterval(validateSession, 30000);
-
-    return () => clearInterval(intervalId);
-  }, [user, mounted]);
-
-  const login = async (cpf: string, password: string): Promise<boolean> => {
-    try {
-
-      // Normalizar o CPF removendo formatação
-      const normalizedCpf = cpf.replace(/\D/g, '');
-
-      // Enviar credenciais para o backend via query params
-      const response = await axios.get(`${API_URL}/usuarios/login?cpf=${normalizedCpf}&password=${encodeURIComponent(password)}`, {
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        timeout: 10000,
+    let cancelled = false;
+    axios
+      .get(`${API_URL}/usuarios/me`, { timeout: 10000 })
+      .then((response) => {
+        if (!cancelled) setUser(response.data.user as User);
+      })
+      .catch(() => {
+        // Sem sessão válida (401) ou servidor indisponível: segue deslogado.
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoading(false);
       });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
-      // A API pode retornar os dados diretamente ou dentro de um objeto 'user'
-      const foundUser = response.data.user || response.data;
-
-      if (foundUser && foundUser.id) {
-        // Verificar se o usuário está aprovado (apenas para vendedores)
-        if (foundUser.status === UserStatus.PENDING && foundUser.role === UserRole.VENDEDOR) {
-          throw new Error('PENDING');
-        }
-
-        if (foundUser.status === UserStatus.REJECTED) {
-          throw new Error('REJECTED');
-        }
-
-        // Remover senha antes de armazenar
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        const { password: _, ...userWithoutPassword } = foundUser;
-        
-        // Verificar se já existe preferência de tema salva localmente
-        const storedUser = localStorage.getItem('currentUser');
-        let finalUser = userWithoutPassword;
-        
-        if (storedUser) {
-          try {
-            const parsedStoredUser = JSON.parse(storedUser);
-            // Se o usuário já tem uma preferência local E é o mesmo usuário, manter a preferência local
-            if (parsedStoredUser.id === userWithoutPassword.id && parsedStoredUser.theme_preference) {
-              finalUser = { ...userWithoutPassword, theme_preference: parsedStoredUser.theme_preference };
-            }
-          } catch (e) {
-            console.error('[AuthContext] Erro ao verificar tema local:', e);
+  // 401 fora do login = sessão expirada/revogada: limpa o estado e volta ao login (uma vez:
+  // sem usuário no estado, novos 401 não redirecionam, então não há laço). Senha provisória
+  // (403 PASSWORD_CHANGE_REQUIRED) leva a /password.
+  useEffect(() => {
+    const interceptorId = axios.interceptors.response.use(
+      (response) => response,
+      (error: unknown) => {
+        if (axios.isAxiosError(error) && error.response) {
+          const requestUrl = error.config?.url ?? '';
+          const isAuthEndpoint = AUTH_ENDPOINTS.some((endpoint) => requestUrl.includes(endpoint));
+          if (error.response.status === 401 && !isAuthEndpoint && userRef.current) {
+            userRef.current = null;
+            setUser(null);
+            router.replace('/login');
+          } else if (
+            error.response.status === 403 &&
+            error.response.data?.code === 'PASSWORD_CHANGE_REQUIRED' &&
+            window.location.pathname !== '/password'
+          ) {
+            router.replace('/password');
           }
         }
-        
-        setUser(finalUser as User);
-
-        // Salvar no localStorage para persistir sessão após reload
-        localStorage.setItem('currentUser', JSON.stringify(finalUser));
-        localStorage.setItem('userData', JSON.stringify(finalUser));
-
-        return true;
+        return Promise.reject(error);
       }
+    );
+    return () => axios.interceptors.response.eject(interceptorId);
+  }, [router]);
 
-      return false;
+  const login = async (cpf: string, password: string): Promise<LoginResult> => {
+    try {
+      const response = await axios.post(
+        `${API_URL}/usuarios/login`,
+        { cpf: cpf.replace(/\D/g, ''), password },
+        { timeout: 10000 }
+      );
+      const loggedUser = response.data.user as User;
+      setUser(loggedUser);
+      return { ok: true, user: loggedUser };
     } catch (error) {
-      if (error instanceof Error) {
-        if (error.message === 'PENDING') {
-          throw error;
-        }
-        if (error.message === 'REJECTED') {
-          throw error;
-        }
-      }
-
-      // Tratar erros da API
-      if (axios.isAxiosError(error) && error.response?.status === 401) {
-        return false;
-      }
-
-      console.error('[AuthContext] ❌ Erro no login:', error);
-      return false;
+      return { ok: false, message: loginErrorMessage(error) };
     }
   };
 
-  const logout = () => {
+  const logout = async () => {
+    try {
+      await axios.post(`${API_URL}/usuarios/logout`, null, { timeout: 10000 });
+    } catch {
+      // A sessão local é descartada de qualquer forma.
+    }
     setUser(null);
-    localStorage.removeItem('currentUser');
-    localStorage.removeItem('userData');
   };
 
   const hasRole = (role: UserRole): boolean => {
@@ -163,22 +152,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const canAccessUsers = user?.role === UserRole.DEV || user?.role === UserRole.ADMIN;
 
-  // Função para atualizar tema do usuário
   const updateUserTheme = (theme: 'light' | 'dark') => {
-    if (user) {
-      const updatedUser = { ...user, theme_preference: theme };
-      setUser(updatedUser);
-      localStorage.setItem('currentUser', JSON.stringify(updatedUser));
-      localStorage.setItem('userData', JSON.stringify(updatedUser));
-    }
+    setUser((current) => (current ? { ...current, theme_preference: theme } : current));
   };
 
   return (
     <AuthContext.Provider
       value={{
         user,
+        isLoading,
         login,
         logout,
+        refreshUser,
         isAuthenticated: !!user,
         hasRole,
         canAccessUsers,

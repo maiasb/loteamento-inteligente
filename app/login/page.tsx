@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Image from 'next/image';
 import { useAuth } from '@/contexts/AuthContext';
 import Link from 'next/link';
+import { validateCPF } from '@/utils/formatters';
 
 function LoginForm() {
   const [cpf, setCpf] = useState('');
@@ -19,6 +20,7 @@ function LoginForm() {
   // Verificar se veio da página de registro
   const isRegistered = searchParams.get('registered') === 'true';
   const isPending = searchParams.get('registered') === 'pending';
+  const isPasswordChanged = searchParams.get('senha') === 'redefinida';
 
   // Formatar CPF com máscara
   const formatCPF = (value: string) => {
@@ -30,36 +32,6 @@ function LoginForm() {
         .replace(/(\d{3})(\d{1,2})$/, '$1-$2');
     }
     return value;
-  };
-
-  // Validar CPF
-  const validateCPF = (cpf: string): boolean => {
-    const numbers = cpf.replace(/\D/g, '');
-
-    if (numbers.length !== 11) return false;
-
-    // Verifica se todos os dígitos são iguais
-    if (/^(\d)\1{10}$/.test(numbers)) return false;
-
-    // Validação do primeiro dígito verificador
-    let sum = 0;
-    for (let i = 0; i < 9; i++) {
-      sum += parseInt(numbers.charAt(i)) * (10 - i);
-    }
-    let digit = 11 - (sum % 11);
-    if (digit >= 10) digit = 0;
-    if (digit !== parseInt(numbers.charAt(9))) return false;
-
-    // Validação do segundo dígito verificador
-    sum = 0;
-    for (let i = 0; i < 10; i++) {
-      sum += parseInt(numbers.charAt(i)) * (11 - i);
-    }
-    digit = 11 - (sum % 11);
-    if (digit >= 10) digit = 0;
-    if (digit !== parseInt(numbers.charAt(10))) return false;
-
-    return true;
   };
 
   const handleCPFChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -82,37 +54,12 @@ function LoginForm() {
 
     setLoading(true);
 
-    try {
-      const success = await login(cpf, password);
+    const result = await login(cpf, password);
 
-      if (success) {
-        const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
-
-        if (!currentUser.first_login) {
-          router.push('/dashboard');
-        } else {
-          router.push(`/password?userId=${currentUser.id}`);
-        }
-      } else {
-        setError('CPF ou senha inválidos');
-        setLoading(false);
-      }
-    } catch (err) {
-      if (err instanceof Error) {
-        if (err.message === 'PENDING') {
-          setError(
-            'Sua conta ainda está aguardando aprovação de um administrador. Entre em contato para mais informações.'
-          );
-        } else if (err.message === 'REJECTED') {
-          setError(
-            'Sua conta foi rejeitada. Entre em contato com o administrador para mais informações.'
-          );
-        } else {
-          setError('CPF ou senha inválidos');
-        }
-      } else {
-        setError('CPF ou senha inválidos');
-      }
+    if (result.ok) {
+      router.push(result.user.first_login ? '/password' : '/dashboard');
+    } else {
+      setError(result.message);
       setLoading(false);
     }
   };
@@ -221,17 +168,31 @@ function LoginForm() {
               </div>
             )}
 
+            {isPasswordChanged && (
+              <div
+                role="status"
+                className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg text-sm"
+              >
+                Senha redefinida com sucesso. Entre com a nova senha.
+              </div>
+            )}
+
             {isRegistered && (
               <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg text-sm">
                 ✅ Conta criada com sucesso! Faça login para continuar.
               </div>
             )}
 
-            {error && (
-              <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
-                {error}
-              </div>
-            )}
+            <div aria-live="assertive">
+              {error && (
+                <div
+                  role="alert"
+                  className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm"
+                >
+                  {error}
+                </div>
+              )}
+            </div>
 
             <button
               type="submit"
@@ -243,7 +204,15 @@ function LoginForm() {
           </form>
 
           {/* Link para Cadastro */}
-          <div className="mt-6 text-center">
+          <div className="mt-6 text-center space-y-2">
+            <p className="text-sm text-gray-600">
+              <Link
+                href="/password-reset"
+                className="text-emerald-600 hover:text-emerald-700 font-medium transition-colors"
+              >
+                Esqueci minha senha
+              </Link>
+            </p>
             <p className="text-sm text-gray-600">
               Não tem uma conta?{' '}
               <Link

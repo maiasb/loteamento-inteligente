@@ -116,6 +116,7 @@ export interface User {
   active?: boolean;
   password?: string;
   theme_preference?: 'light' | 'dark';
+  first_login?: boolean; // senha provisória: precisa trocar antes de usar o sistema
   createdAt: Date;
   updatedAt: Date;
 }

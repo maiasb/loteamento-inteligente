@@ -1,122 +1,60 @@
 import { NextRequest, NextResponse } from 'next/server';
-import mysql, { type RowDataPacket, type ResultSetHeader } from 'mysql2/promise';
-import crypto from 'crypto';
-import { dbConfig } from '@/lib/db';
+import { executeQuery } from '@/lib/db';
+import { hashPassword, validatePasswordPolicy } from '@/lib/auth/password';
+import {
+  RATE_LIMITS,
+  checkRateLimit,
+  rateLimitedResponse,
+  recordAttempt,
+} from '@/lib/auth/rate-limit';
+import { assertSameOrigin, errorResponse, getClientIp, readJsonBody } from '@/lib/auth/request';
+import { parseUserFields } from '@/lib/auth/user-input';
 
 export const dynamic = 'force-dynamic';
 
+const DUPLICATE = 'CPF ou email já cadastrado';
+
+/**
+ * POST /api/usuarios/criar: cadastro público. Grava SEMPRE vendedor / pending / first_login=1;
+ * role, status, active e first_login do corpo são ignorados (RN-12).
+ */
 export async function POST(request: NextRequest) {
-  let connection;
+  const csrf = assertSameOrigin(request);
+  if (csrf) return csrf;
 
   try {
-    const body = await request.json();
-    const {
-      name,
-      email,
-      cpf,
-      phone,
-      creci,
-      role = 'vendedor',
-      status = 'pending',
-      password,
-      first_login = true,
-    } = body;
+    const ip = getClientIp(request);
+    const limit = await checkRateLimit(RATE_LIMITS.registerIp, ip);
+    if (!limit.allowed) return rateLimitedResponse(limit.retryAfter);
+    await recordAttempt(RATE_LIMITS.registerIp, ip);
 
-    if (!name || !email || !cpf || !phone || !password) {
-      return NextResponse.json(
-        { error: 'Dados obrigatórios: name, email, cpf, phone, password' },
-        { status: 400 }
-      );
-    }
+    const body = await readJsonBody(request);
+    if (!body) return errorResponse('Dados obrigatórios: name, email, cpf, phone, password', 400);
 
-    const cleanCpf = cpf.replace(/\D/g, '');
-    const cleanPhone = phone.replace(/\D/g, '');
+    const fields = parseUserFields(body);
+    if (!fields.ok) return errorResponse(fields.error, 400);
+    const { name, email, cpf, phone, creci } = fields.data;
 
-    // Hash MD5 da senha
-    const hashedPassword = crypto.createHash('md5').update(password).digest('hex');
+    const passwordError = validatePasswordPolicy(body.password, cpf);
+    if (passwordError) return errorResponse(passwordError, 400);
 
-    connection = await mysql.createConnection(dbConfig);
+    const hashedPassword = await hashPassword(body.password as string);
 
-    // Verificar se CPF ou email já existe
-    const [existing] = await connection.execute(
-      'SELECT COUNT(*) as count FROM users WHERE cpf = ? OR email = ?',
-      [cleanCpf, email]
+    await executeQuery(
+      `INSERT INTO users (name, email, cpf, phone, creci, role, status, password, first_login)
+       VALUES (?, ?, ?, ?, ?, 'vendedor', 'pending', ?, 1)`,
+      [name, email, cpf, phone, creci, hashedPassword]
     );
-
-    if (Array.isArray(existing) && existing[0] && (existing[0] as RowDataPacket).count > 0) {
-      return NextResponse.json(
-        {
-          error: 'CPF ou email já cadastrado',
-          message: 'Este CPF ou email já está cadastrado no sistema',
-        },
-        { status: 409 }
-      );
-    }
-
-    // Inserir novo usuário
-    const [result] = await connection.execute(
-      `INSERT INTO users (
-        name, email, cpf, phone, creci, role, status,
-        password, first_login, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
-      [
-        name,
-        email,
-        cleanCpf,
-        cleanPhone,
-        creci || null,
-        role,
-        status,
-        hashedPassword,
-        first_login ? 1 : 0,
-      ]
-    );
-
-    const userId = (result as ResultSetHeader).insertId;
-
-    const newUser = {
-      id: userId,
-      name,
-      email,
-      cpf: cleanCpf,
-      phone: cleanPhone,
-      creci: creci || null,
-      role,
-      status,
-      first_login,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
 
     return NextResponse.json(
-      {
-        message: 'Usuário criado com sucesso. Aguarde aprovação do administrador.',
-        user: newUser,
-      },
+      { message: 'Cadastro realizado. Aguarde a aprovação do administrador.' },
       { status: 201 }
     );
   } catch (error) {
-    console.error('[API /usuarios/criar] ❌ Erro:', error);
-
-    // Verificar se é erro de duplicação do MySQL
     if ((error as NodeJS.ErrnoException).code === 'ER_DUP_ENTRY') {
-      return NextResponse.json(
-        {
-          error: 'CPF ou email já cadastrado',
-          message: 'Este CPF ou email já está cadastrado no sistema',
-        },
-        { status: 409 }
-      );
+      return errorResponse(DUPLICATE, 409);
     }
-
-    return NextResponse.json(
-      {
-        error: 'Erro ao criar usuário',
-        message: 'Ocorreu um erro ao processar seu cadastro. Tente novamente.',
-      },
-      { status: 500 }
-    );
-  } finally {
-    if (connection) await connection.end();
+    console.error('[API /usuarios/criar] Erro:', error instanceof Error ? error.message : error);
+    return errorResponse('Erro ao criar usuário', 500);
   }
 }

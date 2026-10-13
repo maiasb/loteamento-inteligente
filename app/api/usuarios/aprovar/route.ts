@@ -1,83 +1,55 @@
 import { NextRequest, NextResponse } from 'next/server';
-import mysql, { type RowDataPacket, type ResultSetHeader } from 'mysql2/promise';
-import { dbConfig } from '@/lib/db';
+import { requireRole } from '@/lib/auth/guard';
+import { errorResponse, readJsonBody } from '@/lib/auth/request';
+import { ADMIN_ROLES } from '@/lib/auth/roles';
+import { revokeUserSessions } from '@/lib/auth/session';
+import {
+  guardLastActiveDev,
+  lockManageableTarget,
+  parseUserId,
+  withTransaction,
+} from '@/lib/auth/accounts';
 
 export const dynamic = 'force-dynamic';
 
+/** PUT /api/usuarios/aprovar  { idUsuario, status: 'approved' | 'rejected' } (admin/dev). */
 export async function PUT(request: NextRequest) {
-  let connection;
+  const auth = await requireRole(request, ADMIN_ROLES);
+  if (auth instanceof NextResponse) return auth;
 
   try {
-    const body = await request.json();
-    const { idUsuario, status } = body;
-
-    if (!idUsuario || !status) {
-      return NextResponse.json({ error: 'idUsuario e status são obrigatórios' }, { status: 400 });
+    const body = await readJsonBody(request);
+    const targetId = parseUserId(body?.idUsuario);
+    const status = body?.status;
+    if (!targetId || !status) {
+      return errorResponse('idUsuario e status são obrigatórios', 400);
+    }
+    if (status !== 'approved' && status !== 'rejected') {
+      return errorResponse('status deve ser "approved" ou "rejected"', 400);
     }
 
-    if (!['approved', 'rejected'].includes(status)) {
-      return NextResponse.json(
-        { error: 'status deve ser "approved" ou "rejected"' },
-        { status: 400 }
-      );
-    }
+    return await withTransaction(async (connection) => {
+      const locked = await lockManageableTarget(connection, auth.user, targetId);
+      if ('response' in locked) return locked.response;
 
-    connection = await mysql.createConnection(dbConfig);
+      if (status === 'rejected') {
+        const blocked = await guardLastActiveDev(connection, locked.target);
+        if (blocked) return blocked;
+      }
 
-    // Verificar se o usuário existe
-    const [users] = await connection.execute('SELECT id, name, email FROM users WHERE id = ?', [
-      idUsuario,
-    ]);
-
-    if (!Array.isArray(users) || users.length === 0) {
-      return NextResponse.json(
-        { error: 'Usuário não encontrado', message: 'O usuário especificado não existe' },
-        { status: 404 }
-      );
-    }
-
-    const user = users[0] as RowDataPacket;
-
-    // Atualizar status do usuário
-    const [result] = await connection.execute(
-      'UPDATE users SET status = ?, updated_at = NOW() WHERE id = ?',
-      [status, idUsuario]
-    );
-
-    const affectedRows = (result as ResultSetHeader).affectedRows;
-
-    if (affectedRows === 0) {
-      return NextResponse.json(
-        {
-          error: 'Nenhum usuário foi atualizado',
-          message: 'Não foi possível atualizar o status do usuário',
-        },
-        { status: 400 }
-      );
-    }
-
-    const statusMessage = status === 'approved' ? 'aprovado' : 'rejeitado';
-
-    return NextResponse.json(
-      {
-        message: `Usuário ${statusMessage} com sucesso`,
-        userId: idUsuario,
-        userName: user.name,
-        userEmail: user.email,
+      await connection.execute('UPDATE users SET status = ?, updated_at = NOW() WHERE id = ?', [
         status,
-      },
-      { status: 200 }
-    );
+        targetId,
+      ]);
+      if (status === 'rejected') await revokeUserSessions(targetId, connection);
+
+      return NextResponse.json({
+        message: `Usuário ${status === 'approved' ? 'aprovado' : 'rejeitado'} com sucesso`,
+        status,
+      });
+    });
   } catch (error) {
-    console.error('[API /usuarios/aprovar] ❌ Erro:', error);
-    return NextResponse.json(
-      {
-        error: 'Erro ao atualizar status do usuário',
-        message: 'Ocorreu um erro ao processar a solicitação. Tente novamente.',
-      },
-      { status: 500 }
-    );
-  } finally {
-    if (connection) await connection.end();
+    console.error('[API /usuarios/aprovar] Erro:', error instanceof Error ? error.message : error);
+    return errorResponse('Erro ao atualizar status do usuário', 500);
   }
 }

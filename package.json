@@ -12,7 +12,8 @@
     "prepare": "husky",
     "test": "vitest run",
     "test:watch": "vitest",
-    "migrate": "ts-node --transpile-only -O '{\"module\":\"commonjs\",\"moduleResolution\":\"node10\"}' scripts/migrate.ts"
+    "migrate": "ts-node --transpile-only -O '{\"module\":\"commonjs\",\"moduleResolution\":\"node10\"}' scripts/migrate.ts",
+    "seed:dev": "ts-node --transpile-only -O '{\"module\":\"commonjs\",\"moduleResolution\":\"node10\"}' scripts/seed-dev.ts"
   },
   "dependencies": {
     "@react-google-maps/api": "^2.19.3",

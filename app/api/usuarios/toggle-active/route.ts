@@ -1,66 +1,56 @@
 import { NextRequest, NextResponse } from 'next/server';
-import mysql from 'mysql2/promise';
-import { dbConfig } from '@/lib/db';
+import { requireRole } from '@/lib/auth/guard';
+import { errorResponse, readJsonBody } from '@/lib/auth/request';
+import { ADMIN_ROLES } from '@/lib/auth/roles';
+import { revokeUserSessions } from '@/lib/auth/session';
+import {
+  guardLastActiveDev,
+  lockManageableTarget,
+  parseUserId,
+  withTransaction,
+} from '@/lib/auth/accounts';
 
+export const dynamic = 'force-dynamic';
+
+/** PUT /api/usuarios/toggle-active  { userId, active: boolean } (admin/dev). */
 export async function PUT(request: NextRequest) {
-  let connection;
-  
+  const auth = await requireRole(request, ADMIN_ROLES);
+  if (auth instanceof NextResponse) return auth;
+
   try {
-    const body = await request.json();
-    const { userId, active } = body;
-
-    if (!userId) {
-      return NextResponse.json(
-        { error: 'ID do usuário é obrigatório' },
-        { status: 400 }
-      );
+    const body = await readJsonBody(request);
+    const targetId = parseUserId(body?.userId);
+    if (!targetId) return errorResponse('ID do usuário é obrigatório', 400);
+    if (typeof body?.active !== 'boolean') {
+      return errorResponse('O campo active deve ser true ou false', 400);
     }
+    const active = body.active;
 
-    if (typeof active !== 'boolean') {
-      return NextResponse.json(
-        { error: 'O campo active deve ser true ou false' },
-        { status: 400 }
-      );
-    }
+    return await withTransaction(async (connection) => {
+      const locked = await lockManageableTarget(connection, auth.user, targetId);
+      if ('response' in locked) return locked.response;
 
-    connection = await mysql.createConnection(dbConfig);
+      if (!active) {
+        const blocked = await guardLastActiveDev(connection, locked.target);
+        if (blocked) return blocked;
+      }
 
-    // Verificar se o usuário existe
-    const [users] = await connection.execute(
-      'SELECT id, name FROM users WHERE id = ?',
-      [userId]
-    );
+      await connection.execute('UPDATE users SET active = ?, updated_at = NOW() WHERE id = ?', [
+        active ? 1 : 0,
+        targetId,
+      ]);
+      if (!active) await revokeUserSessions(targetId, connection);
 
-    if (!Array.isArray(users) || users.length === 0) {
-      return NextResponse.json(
-        { error: 'Usuário não encontrado' },
-        { status: 404 }
-      );
-    }
-
-    // Atualizar status do usuário
-    await connection.execute(
-      'UPDATE users SET active = ? WHERE id = ?',
-      [active ? 1 : 0, userId]
-    );
-
-    const action = active ? 'ativado' : 'desativado';
-    
-    return NextResponse.json(
-      { 
-        message: `Usuário ${action} com sucesso`,
-        userId,
-        active
-      },
-      { status: 200 }
-    );
+      return NextResponse.json({
+        message: `Usuário ${active ? 'ativado' : 'desativado'} com sucesso`,
+        active,
+      });
+    });
   } catch (error) {
-    console.error('[API /usuarios/toggle-active] ❌ Erro:', error);
-    return NextResponse.json(
-      { error: 'Erro ao atualizar status do usuário' },
-      { status: 500 }
+    console.error(
+      '[API /usuarios/toggle-active] Erro:',
+      error instanceof Error ? error.message : error
     );
-  } finally {
-    if (connection) await connection.end();
+    return errorResponse('Erro ao atualizar status do usuário', 500);
   }
 }

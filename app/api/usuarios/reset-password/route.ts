@@ -1,48 +1,55 @@
-import { NextResponse } from 'next/server';
-import { executeQuery } from '@/lib/db';
-import type { RowDataPacket } from 'mysql2/promise';
+import { NextRequest, NextResponse } from 'next/server';
+import { requireRole } from '@/lib/auth/guard';
+import { generateTemporaryPassword, hashPassword } from '@/lib/auth/password';
+import { errorResponse, readJsonBody } from '@/lib/auth/request';
+import { ADMIN_ROLES } from '@/lib/auth/roles';
+import { revokeUserSessions } from '@/lib/auth/session';
+import { lockManageableTarget, parseUserId, withTransaction } from '@/lib/auth/accounts';
+
+export const dynamic = 'force-dynamic';
 
 /**
- * POST /api/usuarios/reset-password
- * Reset password for a user (Admin/Dev only)
- * Body: { userId: string }
+ * POST /api/usuarios/reset-password  { userId } (admin/dev).
+ * Gera uma senha temporária aleatória, mostrada UMA vez nesta resposta; o usuário é obrigado a
+ * trocá-la no primeiro acesso e todas as sessões dele são revogadas.
  */
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
+  const auth = await requireRole(request, ADMIN_ROLES);
+  if (auth instanceof NextResponse) return auth;
+
   try {
-    const { userId } = await request.json();
+    const body = await readJsonBody(request);
+    const targetId = parseUserId(body?.userId);
+    if (!targetId) return errorResponse('userId é obrigatório', 400);
 
-    if (!userId) {
-      return NextResponse.json({ error: 'userId é obrigatório' }, { status: 400 });
-    }
+    const temporaryPassword = generateTemporaryPassword();
+    const hashedPassword = await hashPassword(temporaryPassword);
 
-    // Verificar se o usuário existe
-    const users = await executeQuery<RowDataPacket[]>('SELECT id, name FROM users WHERE id = ?', [
-      userId,
-    ]);
+    return await withTransaction(async (connection) => {
+      const locked = await lockManageableTarget(connection, auth.user, targetId);
+      if ('response' in locked) return locked.response;
 
-    if (!users || users.length === 0) {
-      return NextResponse.json({ error: 'Usuário não encontrado' }, { status: 404 });
-    }
+      await connection.execute(
+        'UPDATE users SET password = ?, first_login = 1, updated_at = NOW() WHERE id = ?',
+        [hashedPassword, targetId]
+      );
+      await revokeUserSessions(targetId, connection);
+      await connection.execute(
+        `UPDATE password_reset_requests SET status = 'cancelled', closed_at = NOW()
+          WHERE user_id = ? AND status IN ('open', 'issued')`,
+        [targetId]
+      );
 
-    // Senha padrão: 123456
-    // Hash SHA-256: e10adc3949ba59abbe56e057f20f883e
-    const hashedPassword = 'e10adc3949ba59abbe56e057f20f883e';
-
-    // Resetar senha e marcar como primeiro login
-    await executeQuery(
-      `UPDATE users 
-       SET password = ?, first_login = 1 
-       WHERE id = ?`,
-      [hashedPassword, userId]
-    );
-
-    return NextResponse.json({
-      success: true,
-      message: 'Senha resetada com sucesso',
-      defaultPassword: '123456',
+      return NextResponse.json(
+        { success: true, message: 'Senha resetada com sucesso', temporaryPassword },
+        { headers: { 'Cache-Control': 'no-store' } }
+      );
     });
   } catch (error) {
-    console.error('[ResetPassword] ❌ Erro ao resetar senha:', error);
-    return NextResponse.json({ error: 'Erro ao resetar senha do usuário' }, { status: 500 });
+    console.error(
+      '[API /usuarios/reset-password] Erro:',
+      error instanceof Error ? error.message : error
+    );
+    return errorResponse('Erro ao resetar senha do usuário', 500);
   }
 }

@@ -3,7 +3,6 @@
 import { useState, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { UserRole, UserStatus } from '@/types';
 import axios from 'axios';
 
 const API_URL = '/api';
@@ -113,8 +112,8 @@ export default function RegisterPage() {
       return false;
     }
 
-    if (formData.password.length < 6) {
-      setError('Senha deve ter no mínimo 6 caracteres');
+    if (formData.password.length < 8) {
+      setError('Senha deve ter no mínimo 8 caracteres');
       return false;
     }
 
@@ -144,10 +143,7 @@ export default function RegisterPage() {
         cpf: formData.cpf.replace(/\D/g, ''), // Remove formatação do CPF
         phone: formData.phone.replace(/\D/g, ''), // Remove formatação do telefone
         creci: formData.creci.trim() || null,
-        role: UserRole.VENDEDOR,
-        status: UserStatus.PENDING,
         password: formData.password,
-        first_login: false,
       };
 
       // Enviar para o backend
@@ -167,7 +163,9 @@ export default function RegisterPage() {
       if (axios.isAxiosError(err) && err.response) {
         const errorMessage = err.response.data?.message || err.response.data?.error;
 
-        if (err.response.status === 409) {
+        if (err.response.status === 429) {
+          setError('Muitas tentativas de cadastro. Tente novamente mais tarde.');
+        } else if (err.response.status === 409) {
           setError(errorMessage || 'Este email ou CPF já está cadastrado');
         } else if (errorMessage) {
           setError(errorMessage);
@@ -299,7 +297,7 @@ export default function RegisterPage() {
                   value={formData.password}
                   onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                   required
-                  minLength={6}
+                  minLength={8}
                   className="text-black w-full px-4 py-3 pr-12 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all placeholder:text-gray-400"
                   placeholder="Digite sua senha"
                 />
@@ -336,7 +334,7 @@ export default function RegisterPage() {
                   )}
                 </button>
               </div>
-              <p className="text-xs text-gray-500 mt-1">Mínimo de 6 caracteres</p>
+              <p className="text-xs text-gray-500 mt-1">Mínimo de 8 caracteres</p>
             </div>
 
             <div>
@@ -353,7 +351,7 @@ export default function RegisterPage() {
                   value={formData.confirmPassword}
                   onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
                   required
-                  minLength={6}
+                  minLength={8}
                   className="text-black w-full px-4 py-3 pr-12 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all placeholder:text-gray-400"
                   placeholder="Confirme sua senha"
                 />

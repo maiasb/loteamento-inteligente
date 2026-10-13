@@ -1,56 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server';
-import mysql from 'mysql2/promise';
-import { dbConfig } from '@/lib/db';
+import { executeQuery } from '@/lib/db';
+import { requireUser } from '@/lib/auth/guard';
+import { errorResponse, readJsonBody } from '@/lib/auth/request';
 
-// Forçar rota dinâmica
 export const dynamic = 'force-dynamic';
 
-/**
- * PUT /api/usuarios/theme
- * Atualizar preferência de tema do usuário
- */
+/** PUT /api/usuarios/theme  { theme }: altera só o tema do usuário da sessão. */
 export async function PUT(request: NextRequest) {
-  let connection;
-  
+  const auth = await requireUser(request);
+  if (auth instanceof NextResponse) return auth;
+
   try {
-    const body = await request.json();
-    const { userId, theme } = body;
-
-    if (!userId) {
-      return NextResponse.json(
-        { error: 'ID do usuário é obrigatório' },
-        { status: 400 }
-      );
+    const body = await readJsonBody(request);
+    const theme = body?.theme;
+    if (theme !== 'light' && theme !== 'dark') {
+      return errorResponse('Tema inválido. Use "light" ou "dark"', 400);
     }
 
-    if (!theme || !['light', 'dark'].includes(theme)) {
-      return NextResponse.json(
-        { error: 'Tema inválido. Use "light" ou "dark"' },
-        { status: 400 }
-      );
-    }
-
-    connection = await mysql.createConnection(dbConfig);
-
-    // Atualizar preferência de tema
-    await connection.execute(
-      'UPDATE users SET theme_preference = ? WHERE id = ?',
-      [theme, userId]
-    );
-
-    return NextResponse.json(
-      { success: true, theme },
-      { status: 200 }
-    );
+    await executeQuery('UPDATE users SET theme_preference = ? WHERE id = ?', [theme, auth.user.id]);
+    return NextResponse.json({ success: true, theme });
   } catch (error) {
-    console.error('[API /usuarios/theme PUT] Erro:', error);
-    return NextResponse.json(
-      { error: 'Erro ao atualizar preferência de tema' },
-      { status: 500 }
+    console.error(
+      '[API /usuarios/theme PUT] Erro:',
+      error instanceof Error ? error.message : error
     );
-  } finally {
-    if (connection) {
-      await connection.end();
-    }
+    return errorResponse('Erro ao atualizar preferência de tema', 500);
   }
 }

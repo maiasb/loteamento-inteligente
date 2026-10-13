@@ -13,10 +13,9 @@ import { useTheme } from '@/contexts/ThemeContext';
 export default function SharedLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, isAuthenticated, logout, canAccessUsers } = useAuth();
+  const { user, isAuthenticated, isLoading, logout, canAccessUsers } = useAuth();
   const { theme } = useTheme();
   const mounted = useIsMounted();
-  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
 
   // Estado para controlar visibilidade do sidebar
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -26,14 +25,6 @@ export default function SharedLayout({ children }: { children: React.ReactNode }
     mounted &&
     (pathname === '/map-details' || localStorage.getItem('hasVisitedMapManagement') === 'true');
 
-  useEffect(() => {
-    // Dar tempo para o AuthContext restaurar a sessão do localStorage
-    const timer = setTimeout(() => {
-      setIsCheckingAuth(false);
-    }, 100);
-    return () => clearTimeout(timer);
-  }, []);
-
   // Fechar sidebar ao mudar de página em mobile
   const [lastPathname, setLastPathname] = useState(pathname);
   if (pathname !== lastPathname) {
@@ -41,15 +32,16 @@ export default function SharedLayout({ children }: { children: React.ReactNode }
     setSidebarOpen(false);
   }
 
-  // Validar sessão e redirecionar
+  // Conveniência de UX: a segurança é do servidor (cada rota da API valida a sessão).
   useEffect(() => {
-    // Não verificar até que a checagem de autenticação termine
-    if (isCheckingAuth) return;
+    if (isLoading) return;
 
-    if (!isAuthenticated && pathname !== '/login') {
+    if (!isAuthenticated) {
       router.push('/login');
+    } else if (user?.first_login) {
+      router.replace('/password');
     }
-  }, [isAuthenticated, pathname, router, isCheckingAuth]);
+  }, [isAuthenticated, isLoading, user?.first_login, router]);
 
   // Marcar como visitado quando entrar em map-details
   useEffect(() => {
@@ -58,8 +50,8 @@ export default function SharedLayout({ children }: { children: React.ReactNode }
     }
   }, [pathname, mounted]);
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    await logout();
     router.push('/login');
   };
 
@@ -85,19 +77,22 @@ export default function SharedLayout({ children }: { children: React.ReactNode }
     );
   };
 
-  // Não renderizar até montar no cliente (evita hydration mismatch)
-  // if (!mounted || isCheckingAuth) {
-  //   return (
-  //     <div className="min-h-screen bg-[var(--background)] flex items-center justify-center">
-  //       <div className="text-center">
-  //         <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-white mb-4"></div>
-  //         <p className="text-[var(--foreground)] opacity-70">Carregando...</p>
-  //       </div>
-  //     </div>
-  //   );
-  // }
+  if (isLoading) {
+    return (
+      <div
+        className="min-h-screen bg-[var(--background)] flex items-center justify-center"
+        role="status"
+        aria-live="polite"
+      >
+        <div className="text-center">
+          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-[var(--primary)] mb-4"></div>
+          <p className="text-[var(--foreground)] opacity-70">Verificando sessão...</p>
+        </div>
+      </div>
+    );
+  }
 
-  if (!isAuthenticated || !user) {
+  if (!isAuthenticated || !user || user.first_login) {
     return null;
   }
 
