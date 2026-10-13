@@ -50,7 +50,7 @@ export async function GET(request: NextRequest) {
 
     const rows = await executeQuery<RowDataPacket[]>(query, params);
 
-    // Formatar resposta (mesmo formato do n8n)
+    // Formatar resposta
     const formattedMaps = rows.map((map) => {
       // Parse overlay_config
       let overlayConfig = null;

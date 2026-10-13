@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
     // Remover formatação do CPF
     const cleanCpf = cpf.replace(/\D/g, '');
 
-    // Gerar hash MD5 da senha (mesmo algoritmo do n8n)
+    // Gerar hash MD5 da senha
     const hashedPassword = crypto.createHash('md5').update(password).digest('hex');
 
     // Conectar ao banco de dados
