@@ -26,18 +26,18 @@ comportamento atual, inclusive problemas conhecidos; não são um pedido de muda
 
 ## Índice
 
-| Spec                                            | Módulo                                                                                            | Status                |
-| ----------------------------------------------- | ------------------------------------------------------------------------------------------------- | --------------------- |
-| [001](001-autenticacao-usuarios.md)             | Autenticação e usuários                                                                           | implementada          |
-| [002](002-mapas-importacao.md)                  | Mapas e importação                                                                                | implementada          |
-| [003](003-quadras-lotes.md)                     | Quadras e lotes (nota 2026-10-13: regra nova de exclusão aprovada, ainda não implementada)        | implementada          |
-| [004](004-reservas.md)                          | Reservas (nota 2026-10-13: edição só admin/dev e reserva como histórico, ainda não implementadas) | implementada          |
-| [005](005-dashboard-visualizacao-publica.md)    | Dashboard e visualização pública                                                                  | implementada          |
-| [006](006-docker.md)                            | Ambiente com Docker                                                                               | implementada          |
-| [007](007-reconciliacao-schema.md)              | Reconciliação do schema com o código                                                              | implementada          |
-| [008](008-testes-automatizados.md)              | Testes automatizados                                                                              | implementada          |
-| [009](009-limpeza-eslint.md)                    | Limpeza dos erros de ESLint                                                                       | implementada          |
-| [010](010-autenticacao-autorizacao-servidor.md) | Autenticação e autorização no servidor                                                            | aprovada (2026-10-13) |
+| Spec                                            | Módulo                                                                                            | Status                                                     |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| [001](001-autenticacao-usuarios.md)             | Autenticação e usuários                                                                           | implementada                                               |
+| [002](002-mapas-importacao.md)                  | Mapas e importação                                                                                | implementada                                               |
+| [003](003-quadras-lotes.md)                     | Quadras e lotes (nota 2026-10-13: regra nova de exclusão aprovada, ainda não implementada)        | implementada                                               |
+| [004](004-reservas.md)                          | Reservas (nota 2026-10-13: edição só admin/dev e reserva como histórico, ainda não implementadas) | implementada                                               |
+| [005](005-dashboard-visualizacao-publica.md)    | Dashboard e visualização pública                                                                  | implementada                                               |
+| [006](006-docker.md)                            | Ambiente com Docker                                                                               | implementada                                               |
+| [007](007-reconciliacao-schema.md)              | Reconciliação do schema com o código                                                              | implementada                                               |
+| [008](008-testes-automatizados.md)              | Testes automatizados                                                                              | implementada                                               |
+| [009](009-limpeza-eslint.md)                    | Limpeza dos erros de ESLint                                                                       | implementada                                               |
+| [010](010-autenticacao-autorizacao-servidor.md) | Autenticação e autorização no servidor                                                            | aprovada (v1.1, 2026-10-13; hospedagem Vercel, banco novo) |
 
 ## Testes
 

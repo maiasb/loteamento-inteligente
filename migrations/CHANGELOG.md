@@ -167,3 +167,14 @@ Para reverter uma migration:
 - Índices `purchase_requests (status, created_at, id)` e `(user_id, created_at, id)` para a paginação (`ORDER BY created_at DESC, id DESC`, sem filesort)
 - Removidos por redundância ou falta de uso: `purchase_request_lots.idx_purchase_request_id`, `users.idx_role`, `lots.idx_map_id`, `lots.idx_lot_number`, `blocks.idx_mapId`, `blocks.idx_name`, `purchase_requests.idx_status`, `purchase_requests.idx_pr_user_id`
 - Rollback no cabeçalho do arquivo (testado)
+
+### 016_auth_sessions.sql
+
+**Data**: 2026-10-13
+**Descrição**: Autenticação no servidor (spec 010). Banco novo: não altera senhas existentes.
+
+- `users.last_login_at` (último login); a troca obrigatória de senha reaproveita `users.first_login`
+- `user_sessions`: sessão por cookie; só o hash SHA-256 do token; expiração por inatividade e absoluta; `revoked_at`; apagada em cascata com o usuário
+- `auth_attempts`: tentativas para limite de taxa (login, cadastro, troca de senha, pedido de redefinição); `subject_hash` é o SHA-256 de CPF/IP/id
+- `password_reset_requests`: pedido de "esqueci a senha" e código de uso único emitido por admin/dev (só o hash do código); `UNIQUE` em coluna gerada VIRTUAL garante um pedido aberto por usuário
+- Rollback no cabeçalho do arquivo

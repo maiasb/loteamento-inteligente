@@ -84,15 +84,16 @@ excluía lotes sem quadra.
 
 ## Subir um banco novo
 
-Só Docker é necessário (sem Node, yarn ou MySQL instalados):
+Docker e Node/yarn (o seed do usuário dev usa o hash da aplicação; MySQL não precisa estar instalado):
 
 ```bash
 cp .env.example .env     # preencher DB_PASSWORD e DEV_PASSWORD (demais campos têm padrão)
-docker compose up --build
+docker compose up -d db  # banco + migrations
+yarn seed:dev            # cria o usuário dev inicial (scrypt)
 ```
 
 Com o volume vazio, `docker/db-init.sh` executa `migrations/*.sql` em ordem (falha interrompe a
-inicialização) e cria o usuário dev. `DB_HOST_PORT` define a porta do banco no host (padrão 3306).
+inicialização). O usuário dev é criado à parte, por `yarn seed:dev`. `DB_HOST_PORT` define a porta do banco no host (padrão 3306).
 `docker compose down -v` apaga os dados e a próxima subida recria tudo. Detalhes em
 [specs/006-docker.md](specs/006-docker.md).
 
@@ -102,7 +103,7 @@ antes registrar os arquivos já aplicados na tabela `migrations`.
 
 ### Usuário dev inicial
 
-Criado na primeira subida, com as variáveis do `.env` (a senha nunca fica no repositório):
+Criado por `yarn seed:dev` (`scripts/seed-dev.ts`, mesmo hash scrypt do login; não altera se o CPF já existir), com as variáveis do `.env` (a senha nunca fica no repositório e deve ter 8+ caracteres):
 
 | Variável       | Padrão                                                          |
 | -------------- | --------------------------------------------------------------- |

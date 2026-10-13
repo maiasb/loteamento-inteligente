@@ -65,9 +65,32 @@ Exemplo: reservar lotes (`LotSelector` / `PurchaseModal`).
 - **PDF**: `react-pdf`/`pdfjs-dist`. `canvas` é substituído por `lib/canvas-mock.ts` (alias do
   Turbopack em `next.config.ts` e `resolutions` no `package.json`).
 
-## Deploy
+## Hospedagem e deploy
 
-- `.github/workflows/deploy-hostgator-main.yml`: em push na `main`, conecta por SSH na VPS, faz
+### Destino planejado: Vercel (decisão de 2026-10-13, ainda não implantado)
+
+Ver [decisions/003-hospedagem-vercel.md](decisions/003-hospedagem-vercel.md) e a spec
+[010](specs/010-autenticacao-autorizacao-servidor.md) (RN-29 a RN-31).
+
+- App Next.js em funções serverless da Vercel; `proxy.ts` roda como middleware. HTTPS e proxy da
+  plataforma na frente; domínio inicial `*.vercel.app` (domínio próprio é opcional).
+- Banco **novo**, MySQL 8 **externo gerenciado** (a Vercel não hospeda o banco). **Provedor ainda
+  não escolhido**; pendência E1 da spec 010 (`dev-infra` recomenda, dono decide).
+- Sem estado em memória: sessões, rate limit e códigos de redefinição ficam no banco.
+- Conexões curtas e pool pequeno (`lib/db.ts`); as rotas antigas com `mysql.createConnection`
+  precisam migrar para o pool antes do deploy.
+- IP do cliente vem de `x-forwarded-for`/`x-real-ip`. Cookie de sessão com `Secure` em produção.
+- Migrations rodadas de fora do deploy (`yarn migrate` contra o banco remoto), nunca no build.
+  Hoje o `package.json` não tem esse script.
+- Variáveis de ambiente configuradas na Vercel por ambiente (inclui `ALLOWED_ORIGINS` e
+  `NEXT_PUBLIC_SITE_URL`).
+- Limites de função (tempo, memória, corpo) afetam `mapas/upload-svg` e `mapas/importar`; o
+  `bodySizeLimit` de 500 MB não vale na Vercel. Pendência E2 da spec 010.
+- O usuário dev inicial é criado por script Node (hash scrypt), não pelo `docker/db-init.sh`.
+
+### Produção atual (legado, será substituída)
+
+- **Obsoleto** (não apagar até o dono decidir): `.github/workflows/deploy-hostgator-main.yml`: em push na `main`, conecta por SSH na VPS, faz
   `git reset --hard origin/main`, `yarn install --frozen-lockfile`, `yarn migrate` (com `yarn migrate status`
   em seguida), `yarn build` e recarrega o PM2 (`ecosystem.config.js`, 1 instância, reinicia acima de
   1 GB). O runner é `scripts/migrate.ts`.
@@ -77,8 +100,9 @@ Exemplo: reservar lotes (`LotSelector` / `PurchaseModal`).
 ## Ambiente local com Docker
 
 `docker-compose.yml` sobe `db` (MySQL 8.4, migrations executadas na primeira subida) e `app` (build
-de produção do `Dockerfile`, Node 20). Ver [specs/006-docker.md](specs/006-docker.md). O deploy
-de produção continua sendo o workflow com SSH e PM2.
+de produção do `Dockerfile`, Node 20). Ver [specs/006-docker.md](specs/006-docker.md). O Docker
+fica para desenvolvimento local; até a Vercel entrar no ar, a produção segue o workflow legado com
+SSH e PM2.
 
 ## Decisões relevantes
 
