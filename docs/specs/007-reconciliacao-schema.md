@@ -5,6 +5,8 @@
 
 > **Nota (2026-10-13):** o banco passou a ser MySQL 8.4 (`mysql:8.4`), conforme [ADR 001](../decisions/001-stack.md); o ADR 002 está superado. As migrations 001–015 foram reescritas para MySQL 8 e há o runner `yarn migrate` / `yarn migrate status`. O texto abaixo é o registro da época.
 
+> **Nota (2026-10-13, regra nova de exclusão; não altera o que foi entregue aqui):** a migration 015 definiu `purchase_request_lots.lot_id` como `ON DELETE RESTRICT` ("lote com histórico de reserva nunca é excluído"). A decisão do dono em 2026-10-13 muda esse princípio: lote cujas reservas estão todas `cancelled`/`rejected` **pode** ser excluído, removendo o vínculo e mantendo a reserva como histórico (ver [003](003-quadras-lotes.md) RN-N1..N6 e [004](004-reservas.md) RN8). Isso exigirá uma migration nova (próxima livre; a 016 está reservada à spec 010, então a ordem fica a definir pelo `dev-database`) que permita a remoção do vínculo sem apagar a reserva, e garanta que as FKs `CASCADE` legadas (`purchase_requests.lot_id`, `purchase_requests.map_id`) não apaguem reservas. As referências a "RESTRICT" em `docs/database.md` e `migrations/CHANGELOG.md` serão atualizadas na implementação (fora de `docs/specs/`, por isso não editadas agora).
+
 ## Contexto e problema
 
 O banco original foi perdido e não há dump. As migrations 001–012 não criam várias colunas que o código usa (ver `docs/database.md`), e a 007 falha em banco novo (`Unknown column 'pr.first_payment'`), o que impediria o runner de chegar a qualquer migration seguinte.
