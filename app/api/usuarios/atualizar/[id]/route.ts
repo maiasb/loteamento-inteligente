@@ -1,11 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import mysql from 'mysql2/promise';
+import type { ResultSetHeader } from 'mysql2/promise';
 import crypto from 'crypto';
-import { dbConfig, type QueryParam } from '@/lib/db';
+import { executeQuery, type QueryParam } from '@/lib/db';
 
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  let connection;
-
   try {
     const { id: userId } = await params;
     const { searchParams } = new URL(request.url);
@@ -22,7 +20,12 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json({ error: 'ID do usuário é obrigatório' }, { status: 400 });
     }
 
-    connection = await mysql.createConnection(dbConfig);
+    if (role && !['dev', 'admin', 'vendedor'].includes(role)) {
+      return NextResponse.json(
+        { error: 'role deve ser "dev", "admin" ou "vendedor"' },
+        { status: 400 }
+      );
+    }
 
     // Construir query dinâmica
     const updates: string[] = [];
@@ -65,16 +68,25 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     updates.push('updated_at = NOW()');
     values.push(userId);
 
-    await connection.execute(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`, values);
+    const result = await executeQuery<ResultSetHeader>(
+      `UPDATE users SET ${updates.join(', ')} WHERE id = ?`,
+      values
+    );
+
+    if (result.affectedRows === 0) {
+      return NextResponse.json({ error: 'Usuário não encontrado' }, { status: 404 });
+    }
 
     return NextResponse.json(
       { message: 'Usuário atualizado com sucesso', userId },
       { status: 200 }
     );
   } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ER_DUP_ENTRY') {
+      return NextResponse.json({ error: 'E-mail ou CPF já cadastrado' }, { status: 409 });
+    }
+
     console.error('[API /usuarios/atualizar] Erro:', error);
     return NextResponse.json({ error: 'Erro ao atualizar usuário' }, { status: 500 });
-  } finally {
-    if (connection) await connection.end();
   }
 }

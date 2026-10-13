@@ -1,16 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import mysql, { type RowDataPacket } from 'mysql2/promise';
-import { dbConfig, type QueryParam } from '@/lib/db';
+import type { RowDataPacket } from 'mysql2/promise';
+import { executeQuery, type QueryParam } from '@/lib/db';
 
 // Forçar rota dinâmica
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
-  let connection;
-
   try {
-    connection = await mysql.createConnection(dbConfig);
-
     const { searchParams } = new URL(request.url);
     const reservationId = searchParams.get('reservationId');
     const status = searchParams.get('status');
@@ -21,11 +17,14 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'reservationId é obrigatório' }, { status: 400 });
     }
 
-    // Construir query para contar quantas reservas existem antes desta
+    // Conta as reservas que aparecem até esta na listagem (created_at DESC, id DESC): as mais
+    // novas e a própria. O desempate por id mantém a posição estável quando há created_at igual.
     let countQuery = `
-      SELECT COUNT(*) as position 
-      FROM purchase_requests 
-      WHERE created_at >= (SELECT created_at FROM purchase_requests WHERE id = ?)
+      SELECT COUNT(*) as position
+      FROM purchase_requests pr
+      INNER JOIN (SELECT created_at, id FROM purchase_requests WHERE id = ?) ref
+        ON pr.created_at > ref.created_at
+        OR (pr.created_at = ref.created_at AND pr.id >= ref.id)
     `;
 
     const whereConditions: string[] = [];
@@ -33,24 +32,24 @@ export async function GET(request: NextRequest) {
 
     // Aplicar os mesmos filtros que a listagem principal
     if (status && status !== 'all' && status !== 'undefined' && status !== 'null') {
-      whereConditions.push('status = ?');
+      whereConditions.push('pr.status = ?');
       filterParams.push(status);
     }
 
     if (userId && userId !== 'undefined' && userId !== 'null') {
-      whereConditions.push('user_id = ?');
+      whereConditions.push('pr.user_id = ?');
       filterParams.push(parseInt(userId));
     }
 
     if (whereConditions.length > 0) {
-      countQuery += ' AND ' + whereConditions.join(' AND ');
+      countQuery += ' WHERE ' + whereConditions.join(' AND ');
     }
 
-    const [result] = await connection.execute(countQuery, filterParams);
-    const position = (result as RowDataPacket[])[0].position;
+    const result = await executeQuery<RowDataPacket[]>(countQuery, filterParams);
+    const position = result[0].position;
 
     // Calcular a página
-    const page = Math.ceil(position / limit);
+    const page = Math.max(1, Math.ceil(position / limit));
 
     return NextResponse.json(
       {
@@ -63,7 +62,5 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('[API /reservas/find-page GET] Erro:', error);
     return NextResponse.json({ error: 'Erro ao buscar página da reserva' }, { status: 500 });
-  } finally {
-    if (connection) await connection.end();
   }
 }

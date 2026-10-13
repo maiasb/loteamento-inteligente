@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import mysql, { type RowDataPacket } from 'mysql2/promise';
-import { dbConfig } from '@/lib/db';
+import type { ResultSetHeader } from 'mysql2/promise';
+import { executeQuery } from '@/lib/db';
 
 // Forçar rota dinâmica
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
-  let connection;
   let lotNumber = '';
+  let withBlock = true;
 
   try {
     const body = await request.json();
@@ -25,6 +25,7 @@ export async function POST(request: NextRequest) {
     } = body;
 
     lotNumber = lotNum;
+    withBlock = Boolean(blockId);
 
     if (!mapId || !lotNumber || !price || !size) {
       return NextResponse.json(
@@ -33,23 +34,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    connection = await mysql.createConnection(dbConfig);
-
-    // Verificar se já existe um lote com o mesmo número na mesma quadra do mesmo mapa
-    const [existingLots] = await connection.execute(
-      'SELECT id FROM lots WHERE map_id = ? AND block_id = ? AND lot_number = ?',
-      [mapId, blockId || null, lotNumber]
-    );
-
-    if (Array.isArray(existingLots) && existingLots.length > 0) {
-      return NextResponse.json(
-        { error: `Já existe um lote "${lotNumber}" nesta quadra` },
-        { status: 409 }
-      );
-    }
-
-    // INSERT sem id (AUTO_INCREMENT) e sem price_per_m2 (coluna não existe)
-    await connection.execute(
+    // A unicidade (mapa, quadra, número) é garantida pelo UNIQUE do banco; lote sem quadra
+    // (blockId nulo) também é coberto por ele, via coluna gerada block_key.
+    const result = await executeQuery<ResultSetHeader>(
       `INSERT INTO lots (
         map_id, block_id, lot_number, status,
         price, size, description, features, coordinates,
@@ -68,12 +55,8 @@ export async function POST(request: NextRequest) {
       ]
     );
 
-    // Buscar o ID inserido
-    const [rows] = await connection.execute('SELECT LAST_INSERT_ID() as insertedId');
-    const insertedId = (rows as RowDataPacket[])[0].insertedId;
-
     const newLot = {
-      id: insertedId.toString(),
+      id: result.insertId.toString(),
       mapId,
       blockId: blockId || null,
       lotNumber,
@@ -94,13 +77,13 @@ export async function POST(request: NextRequest) {
     // Tratamento específico para erro de duplicata
     if (dbError.code === 'ER_DUP_ENTRY') {
       return NextResponse.json(
-        { error: `O lote "${lotNumber}" já existe nesta quadra` },
+        {
+          error: `Já existe um lote "${lotNumber}" ${withBlock ? 'nesta quadra' : 'neste mapa sem quadra'}`,
+        },
         { status: 409 }
       );
     }
 
     return NextResponse.json({ error: 'Erro ao criar lote' }, { status: 500 });
-  } finally {
-    if (connection) await connection.end();
   }
 }

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import mysql, { type RowDataPacket } from 'mysql2/promise';
-import { dbConfig, type QueryParam } from '@/lib/db';
+import type { RowDataPacket } from 'mysql2/promise';
+import { executeQuery, type QueryParam } from '@/lib/db';
 
 // Forçar rota dinâmica
 export const dynamic = 'force-dynamic';
@@ -10,8 +10,6 @@ export const dynamic = 'force-dynamic';
  * Retorna lotes de um mapa (e opcionalmente de uma quadra específica)
  */
 export async function GET(request: NextRequest) {
-  let connection;
-
   try {
     const { searchParams } = new URL(request.url);
     const mapId = searchParams.get('mapId');
@@ -20,9 +18,6 @@ export async function GET(request: NextRequest) {
     if (!mapId) {
       return NextResponse.json({ error: 'mapId é obrigatório' }, { status: 400 });
     }
-
-    // Conectar ao banco de dados
-    connection = await mysql.createConnection(dbConfig);
 
     // Construir query com JOIN na tabela blocks para trazer o blockName
     let query = `
@@ -40,14 +35,10 @@ export async function GET(request: NextRequest) {
       params.push(blockId);
     }
 
-    query += ' ORDER BY l.lot_number ASC';
+    query += ' ORDER BY CAST(l.lot_number AS UNSIGNED), l.lot_number';
 
     // Executar query
-    const [rows] = await connection.execute<RowDataPacket[]>(query, params);
-
-    if (!Array.isArray(rows)) {
-      return NextResponse.json([{ mapId, lots: [] }], { status: 200 });
-    }
+    const rows = await executeQuery<RowDataPacket[]>(query, params);
 
     // Formatar lotes (mesmo formato esperado pelo frontend)
     const lots = rows.map((lot) => {
@@ -67,6 +58,15 @@ export async function GET(request: NextRequest) {
         }
       }
 
+      let features: unknown = [];
+      if (lot.features) {
+        try {
+          features = typeof lot.features === 'string' ? JSON.parse(lot.features) : lot.features;
+        } catch {
+          features = [];
+        }
+      }
+
       return {
         id: lot.id?.toString() || '',
         mapId: lot.map_id?.toString() || mapId,
@@ -78,7 +78,7 @@ export async function GET(request: NextRequest) {
         pricePerM2: lot.price_per_m2 ? Number(lot.price_per_m2) : null,
         size: lot.size ? Number(lot.size) : 0,
         description: lot.description || '',
-        features: lot.features ? JSON.parse(lot.features) : [],
+        features,
         lat,
         lng,
         createdAt: lot.created_at || new Date(),
@@ -98,9 +98,5 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('[API /mapas/lotes GET] ❌ Erro:', error);
     return NextResponse.json({ error: 'Erro ao buscar lotes' }, { status: 500 });
-  } finally {
-    if (connection) {
-      await connection.end();
-    }
   }
 }

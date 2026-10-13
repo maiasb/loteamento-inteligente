@@ -87,7 +87,7 @@ export interface PurchaseRequest {
   customerCPF?: string;
   message?: string;
   contract?: string;
-  status: 'pending' | 'contacted' | 'completed' | 'cancelled';
+  status: 'pending' | 'approved' | 'rejected' | 'completed' | 'cancelled';
   createdAt: Date;
   lots?: PurchaseRequestLot[]; // Lotes associados com suas informações específicas
 }

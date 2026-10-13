@@ -78,10 +78,14 @@ export async function GET() {
 
         results.push({ mapId: map.id, status: 'migrated', url: uploaded.url });
       } catch (uploadError) {
+        console.error(
+          `[API /mapas/migrar-overlay-cloudinary] Erro ao migrar mapa ${map.id}:`,
+          uploadError
+        );
         results.push({
           mapId: map.id,
           status: 'error',
-          error: uploadError instanceof Error ? uploadError.message : String(uploadError),
+          error: 'Falha ao migrar o overlay',
         });
       }
     }
@@ -96,13 +100,7 @@ export async function GET() {
     );
   } catch (error) {
     console.error('[API /mapas/migrar-overlay-cloudinary] Erro:', error);
-    return NextResponse.json(
-      {
-        error: 'Erro na migração',
-        details: error instanceof Error ? error.message : String(error),
-      },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Erro na migração' }, { status: 500 });
   } finally {
     if (connection) await connection.end();
   }

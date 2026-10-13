@@ -34,6 +34,30 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const ids = [...new Set(lotIds.map(Number))].sort((a, b) => a - b);
+    if (ids.some((id) => !Number.isInteger(id) || id <= 0)) {
+      return NextResponse.json({ error: 'lotIds deve conter apenas ids válidos' }, { status: 400 });
+    }
+
+    if (!Array.isArray(lotDetails) || lotDetails.length === 0) {
+      return NextResponse.json(
+        { error: 'lotDetails é obrigatório e deve ser um array' },
+        { status: 400 }
+      );
+    }
+
+    const detailIds = new Set<number>(lotDetails.map((detail) => Number(detail?.lotId)));
+    if (
+      detailIds.size !== lotDetails.length ||
+      detailIds.size !== ids.length ||
+      ids.some((id) => !detailIds.has(id))
+    ) {
+      return NextResponse.json(
+        { error: 'lotDetails deve conter exatamente um item para cada lote de lotIds' },
+        { status: 400 }
+      );
+    }
+
     if (!customerName) {
       return NextResponse.json({ error: 'Nome do cliente é obrigatório' }, { status: 400 });
     }
@@ -49,13 +73,22 @@ export async function POST(request: NextRequest) {
 
     try {
       // Verificar se todos os lotes estão disponíveis e pegar map_id
-      const placeholders = lotIds.map(() => '?').join(',');
+      const placeholders = ids.map(() => '?').join(',');
       const [lotsCheck] = await connection.execute(
-        `SELECT id, status, map_id, block_id FROM lots WHERE id IN (${placeholders})`,
-        lotIds
+        `SELECT id, status, map_id, block_id FROM lots WHERE id IN (${placeholders}) ORDER BY id FOR UPDATE`,
+        ids
       );
 
       const lotsArray = lotsCheck as RowDataPacket[];
+
+      if (lotsArray.length !== ids.length) {
+        await connection.rollback();
+        return NextResponse.json(
+          { error: 'Um ou mais lotes não foram encontrados' },
+          { status: 404 }
+        );
+      }
+
       const unavailableLots = lotsArray.filter((lot) => lot.status !== 'available');
 
       if (unavailableLots.length > 0) {
@@ -64,11 +97,6 @@ export async function POST(request: NextRequest) {
           { error: 'Um ou mais lotes não estão disponíveis', unavailableLots },
           { status: 409 }
         );
-      }
-
-      if (lotsArray.length === 0) {
-        await connection.rollback();
-        return NextResponse.json({ error: 'Nenhum lote encontrado' }, { status: 404 });
       }
 
       // 1. Criar um único registro em purchase_requests (sem first_payment e installments)
@@ -108,28 +136,36 @@ export async function POST(request: NextRequest) {
           [
             purchaseRequestId,
             lotDetail.lotId,
-            lotDetail.price || null,
-            lotDetail.firstPayment || null,
-            lotDetail.installments || null,
-            lotDetail.paymentMethod || null,
+            lotDetail.price ?? null,
+            lotDetail.firstPayment ?? null,
+            lotDetail.installments ?? null,
+            lotDetail.paymentMethod ?? null,
           ]
         );
       }
 
       // 3. Atualizar status dos lotes para 'reserved'
-      await connection.execute(
-        `UPDATE lots SET status = 'reserved', updated_at = NOW() WHERE id IN (${placeholders})`,
-        lotIds
+      const [updateResult] = await connection.execute(
+        `UPDATE lots SET status = 'reserved', updated_at = NOW() WHERE id IN (${placeholders}) AND status = 'available'`,
+        ids
       );
+
+      if ((updateResult as ResultSetHeader).affectedRows !== ids.length) {
+        await connection.rollback();
+        return NextResponse.json(
+          { error: 'Um ou mais lotes não estão mais disponíveis' },
+          { status: 409 }
+        );
+      }
 
       // Commit da transação
       await connection.commit();
 
       return NextResponse.json(
         {
-          message: `Reserva criada com sucesso para ${lotIds.length} lote(s)`,
+          message: `Reserva criada com sucesso para ${ids.length} lote(s)`,
           purchaseRequestId,
-          lotIds,
+          lotIds: ids,
         },
         { status: 201 }
       );
@@ -140,13 +176,7 @@ export async function POST(request: NextRequest) {
     }
   } catch (error) {
     console.error('[API /mapas/lotes/reservar] ❌ Erro ao criar reserva:', error);
-    return NextResponse.json(
-      {
-        error: 'Erro ao criar reserva',
-        details: error instanceof Error ? error.message : 'Erro desconhecido',
-      },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Erro ao criar reserva' }, { status: 500 });
   } finally {
     if (connection) await connection.end();
   }

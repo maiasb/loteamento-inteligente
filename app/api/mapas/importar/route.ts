@@ -38,6 +38,8 @@ interface ImportMap {
   blocks: ImportBlock[];
 }
 
+const LOT_STATUSES = ['available', 'reserved', 'sold', 'unavailable', 'blocked'];
+
 export async function POST(request: NextRequest) {
   let connection;
 
@@ -121,12 +123,35 @@ export async function POST(request: NextRequest) {
               );
             }
 
-            if (!lotData.price || !lotData.size) {
+            if (lotData.price == null || lotData.size == null) {
               await connection.rollback();
               return NextResponse.json(
                 {
                   error: 'Preço e tamanho são obrigatórios',
                   message: `Lote ${lotData.lotNumber} da quadra "${blockData.name}" deve ter price e size`,
+                },
+                { status: 400 }
+              );
+            }
+
+            const lotStatus = lotData.status ?? 'available';
+            if (!LOT_STATUSES.includes(lotStatus)) {
+              await connection.rollback();
+              return NextResponse.json(
+                {
+                  error: 'Status do lote inválido',
+                  message: `Lote ${lotData.lotNumber} da quadra "${blockData.name}" tem status inválido. Valores aceitos: ${LOT_STATUSES.join(', ')}`,
+                },
+                { status: 400 }
+              );
+            }
+
+            if ((lotStatus === 'reserved' || lotStatus === 'sold') && !lotData.reservation) {
+              await connection.rollback();
+              return NextResponse.json(
+                {
+                  error: 'Dados de reserva obrigatórios',
+                  message: `Lote ${lotData.lotNumber} (${lotStatus}) requer os dados da reserva (reservation)`,
                 },
                 { status: 400 }
               );
@@ -144,7 +169,7 @@ export async function POST(request: NextRequest) {
                 mapId,
                 blockId,
                 lotData.lotNumber,
-                lotData.status || 'available',
+                lotStatus,
                 lotData.price,
                 lotData.size,
                 lotData.description || '',
@@ -156,10 +181,7 @@ export async function POST(request: NextRequest) {
             totalLots++;
 
             // Se o lote está reservado ou vendido e tem dados de reserva, criar purchase_request
-            if (
-              (lotData.status === 'reserved' || lotData.status === 'sold') &&
-              lotData.reservation
-            ) {
+            if ((lotStatus === 'reserved' || lotStatus === 'sold') && lotData.reservation) {
               const reservation = lotData.reservation;
 
               // Validar dados obrigatórios da reserva
@@ -172,21 +194,19 @@ export async function POST(request: NextRequest) {
                 return NextResponse.json(
                   {
                     error: 'Dados de reserva incompletos',
-                    message: `Lote ${lotData.lotNumber} (${lotData.status}) requer customer_name, customer_email e customer_phone na reserva`,
+                    message: `Lote ${lotData.lotNumber} (${lotStatus}) requer customer_name, customer_email e customer_phone na reserva`,
                   },
                   { status: 400 }
                 );
               }
 
               // Mapear status da reserva para valores válidos na tabela
-              // Valores aceitos: 'pending', 'contacted', 'completed', 'cancelled'
+              // Valores gravados: 'pending', 'completed', 'cancelled' ('contacted' vira 'pending')
               let reservationStatus = 'pending';
               if (reservation.status === 'completed' || reservation.status === 'approved') {
                 reservationStatus = 'completed';
               } else if (reservation.status === 'cancelled' || reservation.status === 'rejected') {
                 reservationStatus = 'cancelled';
-              } else if (reservation.status === 'contacted') {
-                reservationStatus = 'contacted';
               }
 
               // Criar purchase_request com a estrutura correta (sem map_id e lot_id)
@@ -217,9 +237,9 @@ export async function POST(request: NextRequest) {
 
               // Criar relacionamento em purchase_request_lots
               await connection.execute(
-                `INSERT INTO purchase_request_lots (purchase_request_id, lot_id)
-                 VALUES (?, ?)`,
-                [purchaseRequestId, lotId]
+                `INSERT INTO purchase_request_lots (purchase_request_id, lot_id, agreed_price)
+                 VALUES (?, ?, ?)`,
+                [purchaseRequestId, lotId, lotData.price]
               );
             }
           }
@@ -261,9 +281,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         error: 'Erro ao importar loteamento',
-        message:
-          dbError.message ||
-          'Ocorreu um erro ao processar o arquivo. Verifique o formato dos dados.',
+        message: 'Ocorreu um erro ao processar o arquivo. Verifique o formato dos dados.',
       },
       { status: 500 }
     );

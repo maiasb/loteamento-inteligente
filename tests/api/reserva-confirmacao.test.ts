@@ -32,24 +32,68 @@ describe('PUT /api/reserva/confirmacao', () => {
     expect((await confirmar({ ...base, lotStatus: 'reserved' })).status).toBe(400);
   });
 
-  it('retorna 404 e desfaz quando a reserva não tem lotes', async () => {
+  it('retorna 404 quando a reserva não existe', async () => {
     conn.execute.mockResolvedValueOnce([[]]);
     expect((await confirmar(base)).status).toBe(404);
     expect(conn.rollback).toHaveBeenCalled();
   });
 
+  it('retorna 409 quando a reserva já está finalizada', async () => {
+    for (const atual of ['completed', 'cancelled']) {
+      conn.execute.mockResolvedValueOnce([[{ status: atual }]]);
+      expect((await confirmar(base)).status).toBe(409);
+    }
+    expect(conn.execute).toHaveBeenCalledTimes(2);
+    expect(conn.commit).not.toHaveBeenCalled();
+  });
+
+  it('ignora o lotStatus do cliente e deriva do status', async () => {
+    conn.execute
+      .mockResolvedValueOnce([[{ status: 'pending' }]])
+      .mockResolvedValueOnce([[{ lot_id: 10 }]])
+      .mockResolvedValue([{}]);
+    const res = await confirmar({ ...base, status: 'cancelled', lotStatus: 'sold' });
+    expect(res.status).toBe(200);
+    expect((await res.json()).lotStatus).toBe('available');
+    expect(conn.execute.mock.calls[3][1]).toEqual(['available', 10]);
+    expect(sqlOf(conn.execute.mock.calls[3])).toContain("AND status = 'reserved'");
+  });
+
+  it('informa só os lotes que realmente mudaram de status', async () => {
+    conn.execute
+      .mockResolvedValueOnce([[{ status: 'pending' }]])
+      .mockResolvedValueOnce([[{ lot_id: 10 }, { lot_id: 11 }]])
+      .mockResolvedValueOnce([{}])
+      .mockResolvedValueOnce([{ affectedRows: 1 }]);
+    const res = await confirmar({ ...base, status: 'cancelled', lotStatus: 'available' });
+    expect((await res.json()).lotsUpdated).toBe(1);
+  });
+
+  it('retorna 404 e desfaz quando a reserva não tem lotes', async () => {
+    conn.execute.mockResolvedValueOnce([[{ status: 'pending' }]]).mockResolvedValueOnce([[]]);
+    expect((await confirmar(base)).status).toBe(404);
+    expect(conn.rollback).toHaveBeenCalled();
+  });
+
   it('confirmar marca a reserva como completed e os lotes como sold', async () => {
-    conn.execute.mockResolvedValueOnce([[{ lot_id: 10 }, { lot_id: 11 }]]).mockResolvedValue([{}]);
+    conn.execute
+      .mockResolvedValueOnce([[{ status: 'approved' }]])
+      .mockResolvedValueOnce([[{ lot_id: 10 }, { lot_id: 11 }]])
+      .mockResolvedValueOnce([{}])
+      .mockResolvedValueOnce([{ affectedRows: 2 }]);
     const res = await confirmar(base);
     expect(res.status).toBe(200);
     expect((await res.json()).lotsUpdated).toBe(2);
-    expect(conn.execute.mock.calls[1][1]).toEqual(['completed', 4]);
-    expect(conn.execute.mock.calls[2][1]).toEqual(['sold', 10, 11]);
+    expect(conn.execute.mock.calls[2][1]).toEqual(['completed', 4]);
+    expect(conn.execute.mock.calls[3][1]).toEqual(['sold', 10, 11]);
     expect(conn.commit).toHaveBeenCalled();
   });
 
   it('cancelar devolve os lotes para available (dev também pode)', async () => {
-    conn.execute.mockResolvedValueOnce([[{ lot_id: 10 }]]).mockResolvedValue([{}]);
+    conn.execute
+      .mockResolvedValueOnce([[{ status: 'pending' }]])
+      .mockResolvedValueOnce([[{ lot_id: 10 }]])
+      .mockResolvedValue([{}]);
     const res = await confirmar({
       ...base,
       status: 'cancelled',
@@ -57,7 +101,17 @@ describe('PUT /api/reserva/confirmacao', () => {
       userRole: 'dev',
     });
     expect(res.status).toBe(200);
-    expect(sqlOf(conn.execute.mock.calls[2])).toContain('UPDATE lots SET status = ?');
-    expect(conn.execute.mock.calls[2][1]).toEqual(['available', 10]);
+    expect(sqlOf(conn.execute.mock.calls[3])).toContain('UPDATE lots SET status = ?');
+    expect(conn.execute.mock.calls[3][1]).toEqual(['available', 10]);
+  });
+
+  it('ordena os lotes por id antes de atualizá-los', async () => {
+    conn.execute
+      .mockResolvedValueOnce([[{ status: 'pending' }]])
+      .mockResolvedValueOnce([[{ lot_id: 12 }, { lot_id: 10 }, { lot_id: 11 }]])
+      .mockResolvedValue([{ affectedRows: 3 }]);
+    await confirmar(base);
+    expect(sqlOf(conn.execute.mock.calls[1])).toContain('ORDER BY lot_id');
+    expect(conn.execute.mock.calls[3][1]).toEqual(['sold', 10, 11, 12]);
   });
 });

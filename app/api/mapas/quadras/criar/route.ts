@@ -1,13 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import mysql, { type RowDataPacket } from 'mysql2/promise';
-import { dbConfig } from '@/lib/db';
+import type { ResultSetHeader } from 'mysql2/promise';
+import { executeQuery } from '@/lib/db';
 
 // Forçar rota dinâmica
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
-  let connection;
-
   try {
     const body = await request.json();
     const { mapId, name, description } = body;
@@ -16,20 +14,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'mapId e name são obrigatórios' }, { status: 400 });
     }
 
-    connection = await mysql.createConnection(dbConfig);
-
     // INSERT incluindo createdAt e updatedAt (campos obrigatórios)
-    await connection.execute(
+    const result = await executeQuery<ResultSetHeader>(
       'INSERT INTO blocks (mapId, name, description, createdAt, updatedAt) VALUES (?, ?, ?, NOW(), NOW())',
       [mapId, name, description || '']
     );
 
-    // Buscar o ID inserido
-    const [rows] = await connection.execute('SELECT LAST_INSERT_ID() as insertedId');
-    const insertedId = (rows as RowDataPacket[])[0].insertedId;
-
     const newBlock = {
-      id: insertedId.toString(),
+      id: result.insertId.toString(),
       mapId,
       name,
       description: description || '',
@@ -37,9 +29,14 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(newBlock, { status: 201 });
   } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ER_DUP_ENTRY') {
+      return NextResponse.json(
+        { error: 'Já existe uma quadra com este nome no mapa' },
+        { status: 409 }
+      );
+    }
+
     console.error('[API /mapas/quadras/criar] Erro:', error);
     return NextResponse.json({ error: 'Erro ao criar quadra' }, { status: 500 });
-  } finally {
-    if (connection) await connection.end();
   }
 }

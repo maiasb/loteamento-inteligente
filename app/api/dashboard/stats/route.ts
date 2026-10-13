@@ -1,141 +1,95 @@
 import { NextResponse } from 'next/server';
 import type { RowDataPacket } from 'mysql2/promise';
-import { withDbConnection } from '@/lib/dbConnection';
+import { executeQuery } from '@/lib/db';
 
 // Forçar rota dinâmica
 export const dynamic = 'force-dynamic';
 
 /**
  * GET /api/dashboard/stats
- * Retorna estatísticas agregadas do dashboard (quantidades e valores financeiros)
- * Otimizado para não trazer dados detalhados desnecessários
+ * Retorna estatísticas agregadas do dashboard (quantidades e valores financeiros).
+ * Os valores em dinheiro são somados no SQL (DECIMAL) e só convertidos para número na resposta,
+ * porque o dashboard os exibe formatados; nenhuma soma é feita em JavaScript.
  */
 export async function GET() {
   try {
-    const result = await withDbConnection(async (connection) => {
-      // Executar queries em paralelo para melhor performance
-      const [[mapsCount], [lotsStats], [reservationsStats], [mapStats]] = await Promise.all([
-        // Contar total de mapas
-        connection.execute('SELECT COUNT(*) as total FROM maps'),
+    const [mapsCount, lotsByStatus, financial, mapStats] = await Promise.all([
+      executeQuery<RowDataPacket[]>('SELECT COUNT(*) AS total FROM maps'),
 
-        // Estatísticas de lotes por status (contagem e valor)
-        connection.execute(`
-          SELECT 
-            status,
-            COUNT(*) as count,
-            SUM(price) as total_value
-          FROM lots
-          GROUP BY status
-        `),
+      // Quantidade de lotes por status
+      executeQuery<RowDataPacket[]>('SELECT status, COUNT(*) AS count FROM lots GROUP BY status'),
 
-        // Buscar dados agregados das reservas
-        connection.execute(`
-          SELECT 
-            pr.status,
-            SUM(prl.agreed_price) as total_agreed,
-            SUM(prl.first_payment) as total_first_payment
+      // Valores: disponível/bloqueado pelo preço de tabela; reservado/vendido pelo preço acordado
+      // nas reservas pendentes/concluídas; entradas das reservas pendentes e concluídas
+      executeQuery<RowDataPacket[]>(`
+        SELECT
+          t.*,
+          (t.available_value + t.reserved_value + t.sold_value + t.blocked_value) AS total_value
+        FROM (
+          SELECT
+            (SELECT COALESCE(SUM(price), 0) FROM lots WHERE status = 'available') AS available_value,
+            (SELECT COALESCE(SUM(price), 0) FROM lots WHERE status = 'blocked') AS blocked_value,
+            COALESCE(SUM(CASE WHEN pr.status = 'pending' THEN prl.agreed_price END), 0) AS reserved_value,
+            COALESCE(SUM(CASE WHEN pr.status = 'completed' THEN prl.agreed_price END), 0) AS sold_value,
+            COALESCE(SUM(CASE WHEN pr.status IN ('pending', 'completed') THEN prl.first_payment END), 0) AS total_first_payments
           FROM purchase_requests pr
-          INNER JOIN purchase_request_lots prl ON pr.id = prl.purchase_request_id
-          GROUP BY pr.status
-        `),
+          INNER JOIN purchase_request_lots prl ON prl.purchase_request_id = pr.id
+        ) t
+      `),
 
-        // Buscar estatísticas por mapa
-        connection.execute(`
-          SELECT 
-            m.id,
-            m.name,
-            m.description,
-            COUNT(l.id) as total_lots,
-            SUM(CASE WHEN l.status = 'available' THEN 1 ELSE 0 END) as available_lots,
-            SUM(CASE WHEN l.status = 'reserved' THEN 1 ELSE 0 END) as reserved_lots,
-            SUM(CASE WHEN l.status = 'sold' THEN 1 ELSE 0 END) as sold_lots,
-            SUM(CASE WHEN l.status = 'blocked' THEN 1 ELSE 0 END) as blocked_lots
-          FROM maps m
-          LEFT JOIN lots l ON m.id = l.map_id
-          GROUP BY m.id, m.name, m.description
-          ORDER BY m.created_at DESC
-        `),
-      ]);
+      // Estatísticas por mapa
+      executeQuery<RowDataPacket[]>(`
+        SELECT 
+          m.id,
+          m.name,
+          m.description,
+          COUNT(l.id) AS total_lots,
+          SUM(CASE WHEN l.status = 'available' THEN 1 ELSE 0 END) AS available_lots,
+          SUM(CASE WHEN l.status = 'reserved' THEN 1 ELSE 0 END) AS reserved_lots,
+          SUM(CASE WHEN l.status = 'sold' THEN 1 ELSE 0 END) AS sold_lots,
+          SUM(CASE WHEN l.status = 'blocked' THEN 1 ELSE 0 END) AS blocked_lots
+        FROM maps m
+        LEFT JOIN lots l ON m.id = l.map_id
+        GROUP BY m.id, m.name, m.description
+        ORDER BY m.created_at DESC
+      `),
+    ]);
 
-      const totalMaps = (mapsCount as RowDataPacket[])[0]?.total || 0;
+    const countOf = (status: string) =>
+      Number(lotsByStatus.find((row) => row.status === status)?.count) || 0;
+    const totalLots = lotsByStatus.reduce((sum, row) => sum + (Number(row.count) || 0), 0);
+    const money = financial[0] ?? {};
 
-      // Processar estatísticas de lotes
-      const lotsStatsMap = (lotsStats as RowDataPacket[]).reduce(
-        (acc, row) => {
-          acc[row.status] = {
-            count: Number(row.count) || 0,
-            totalValue: Number(row.total_value) || 0,
-          };
-          return acc;
-        },
-        {} as Record<string, { count: number; totalValue: number }>
-      );
+    const response = {
+      summary: {
+        totalMaps: Number(mapsCount[0]?.total) || 0,
+        totalLots,
+        availableLots: countOf('available'),
+        reservedLots: countOf('reserved'),
+        soldLots: countOf('sold'),
+        blockedLots: countOf('blocked'),
+      },
+      financial: {
+        totalValue: Number(money.total_value) || 0,
+        availableValue: Number(money.available_value) || 0,
+        reservedValue: Number(money.reserved_value) || 0,
+        soldValue: Number(money.sold_value) || 0,
+        blockedValue: Number(money.blocked_value) || 0,
+        totalFirstPayments: Number(money.total_first_payments) || 0,
+      },
+      maps: mapStats.map((map) => ({
+        id: map.id?.toString() || '',
+        name: map.name || '',
+        description: map.description || '',
+        totalLots: Number(map.total_lots) || 0,
+        availableLots: Number(map.available_lots) || 0,
+        reservedLots: Number(map.reserved_lots) || 0,
+        soldLots: Number(map.sold_lots) || 0,
+        blockedLots: Number(map.blocked_lots) || 0,
+      })),
+    };
 
-      // Processar estatísticas de reservas
-      const reservationsStatsMap = (reservationsStats as RowDataPacket[]).reduce(
-        (acc, row) => {
-          acc[row.status] = {
-            totalAgreed: Number(row.total_agreed) || 0,
-            totalFirstPayment: Number(row.total_first_payment) || 0,
-          };
-          return acc;
-        },
-        {} as Record<string, { totalAgreed: number; totalFirstPayment: number }>
-      );
-
-      // Calcular totais
-      const availableCount = lotsStatsMap['available']?.count || 0;
-      const reservedCount = lotsStatsMap['reserved']?.count || 0;
-      const soldCount = lotsStatsMap['sold']?.count || 0;
-      const blockedCount = lotsStatsMap['blocked']?.count || 0;
-      const totalLots = availableCount + reservedCount + soldCount + blockedCount;
-
-      const availableValue = lotsStatsMap['available']?.totalValue || 0;
-      const blockedValue = lotsStatsMap['blocked']?.totalValue || 0;
-      const reservedValue = reservationsStatsMap['pending']?.totalAgreed || 0;
-      const soldValue = reservationsStatsMap['completed']?.totalAgreed || 0;
-
-      // Somar entradas dos lotes vendidos E reservados
-      const totalFirstPayments =
-        (reservationsStatsMap['completed']?.totalFirstPayment || 0) +
-        (reservationsStatsMap['pending']?.totalFirstPayment || 0);
-
-      const totalValue = availableValue + reservedValue + soldValue + blockedValue;
-
-      // Formatar resposta
-      const response = {
-        summary: {
-          totalMaps,
-          totalLots,
-          availableLots: availableCount,
-          reservedLots: reservedCount,
-          soldLots: soldCount,
-          blockedLots: blockedCount,
-        },
-        financial: {
-          totalValue,
-          availableValue,
-          reservedValue,
-          soldValue,
-          blockedValue,
-          totalFirstPayments,
-        },
-        maps: (mapStats as RowDataPacket[]).map((map) => ({
-          id: map.id?.toString() || '',
-          name: map.name || '',
-          description: map.description || '',
-          totalLots: Number(map.total_lots) || 0,
-          availableLots: Number(map.available_lots) || 0,
-          reservedLots: Number(map.reserved_lots) || 0,
-          soldLots: Number(map.sold_lots) || 0,
-          blockedLots: Number(map.blocked_lots) || 0,
-        })),
-      };
-
-      return response;
-    });
-
-    return NextResponse.json(result, { status: 200 });
+    return NextResponse.json(response, { status: 200 });
   } catch (error) {
     console.error('[API /dashboard/stats GET] ❌ Erro:', error);
     return NextResponse.json(

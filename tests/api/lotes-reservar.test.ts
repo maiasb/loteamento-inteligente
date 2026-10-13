@@ -33,6 +33,74 @@ describe('POST /api/mapas/lotes/reservar', () => {
     expect(conn.beginTransaction).not.toHaveBeenCalled();
   });
 
+  it('exige lotDetails como array com um item para cada lote', async () => {
+    expect((await reservar({ ...body, lotDetails: undefined })).status).toBe(400);
+    expect((await reservar({ ...body, lotDetails: 'x' })).status).toBe(400);
+    expect((await reservar({ ...body, lotDetails: [{ lotId: 2, price: 1 }] })).status).toBe(400);
+    expect((await reservar({ ...body, lotIds: [1, 2] })).status).toBe(400);
+    expect(conn.beginTransaction).not.toHaveBeenCalled();
+  });
+
+  it('retorna 404 quando algum lote não existe', async () => {
+    const dois = {
+      ...body,
+      lotIds: [2, 1],
+      lotDetails: [
+        { lotId: 1, price: 1 },
+        { lotId: 2, price: 1 },
+      ],
+    };
+    conn.execute.mockResolvedValueOnce([[{ id: 1, status: 'available', map_id: 5, block_id: 2 }]]);
+    expect((await reservar(dois)).status).toBe(404);
+    expect(conn.rollback).toHaveBeenCalled();
+  });
+
+  it('trava os lotes deduplicados e ordenados com FOR UPDATE', async () => {
+    const dois = {
+      ...body,
+      lotIds: [2, 1, 2],
+      lotDetails: [
+        { lotId: 1, price: 1 },
+        { lotId: 2, price: 1 },
+      ],
+    };
+    conn.execute.mockResolvedValueOnce([[]]);
+    await reservar(dois);
+    expect(sqlOf(conn.execute.mock.calls[0])).toContain('ORDER BY id FOR UPDATE');
+    expect(conn.execute.mock.calls[0][1]).toEqual([1, 2]);
+  });
+
+  it('retorna 409 e desfaz quando o UPDATE não afeta todos os lotes', async () => {
+    conn.execute
+      .mockResolvedValueOnce([[{ id: 1, status: 'available', map_id: 5, block_id: 2 }]])
+      .mockResolvedValueOnce([{ insertId: 9 }])
+      .mockResolvedValueOnce([{}])
+      .mockResolvedValueOnce([{ affectedRows: 0 }]);
+    const res = await reservar(body);
+    expect(res.status).toBe(409);
+    expect(conn.rollback).toHaveBeenCalled();
+    expect(conn.commit).not.toHaveBeenCalled();
+  });
+
+  it('preserva preço 0 e não vaza detalhes do erro no 500', async () => {
+    conn.execute
+      .mockResolvedValueOnce([[{ id: 1, status: 'available', map_id: 5, block_id: 2 }]])
+      .mockResolvedValueOnce([{ insertId: 9 }])
+      .mockResolvedValueOnce([{}])
+      .mockResolvedValueOnce([{ affectedRows: 1 }]);
+    const zero = { ...body, lotDetails: [{ lotId: 1, price: 0, firstPayment: 0 }] };
+    expect((await reservar(zero)).status).toBe(201);
+    expect(conn.execute.mock.calls[2][1]).toEqual([9, 1, 0, 0, null, null]);
+
+    conn.execute.mockReset();
+    conn.execute
+      .mockResolvedValueOnce([[{ id: 1, status: 'available', map_id: 5, block_id: 2 }]])
+      .mockRejectedValueOnce(new Error('segredo do banco'));
+    const res = await reservar(body);
+    expect(res.status).toBe(500);
+    expect(JSON.stringify(await res.json())).not.toContain('segredo');
+  });
+
   it('retorna 404 quando nenhum lote existe', async () => {
     conn.execute.mockResolvedValueOnce([[]]);
     expect((await reservar(body)).status).toBe(404);
@@ -54,7 +122,8 @@ describe('POST /api/mapas/lotes/reservar', () => {
     conn.execute
       .mockResolvedValueOnce([[{ id: 1, status: 'available', map_id: 5, block_id: 2 }]])
       .mockResolvedValueOnce([{ insertId: 9 }])
-      .mockResolvedValue([{}]);
+      .mockResolvedValueOnce([{}])
+      .mockResolvedValueOnce([{ affectedRows: 1 }]);
     const res = await reservar(body);
     const json = await res.json();
 

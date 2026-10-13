@@ -1,50 +1,79 @@
 import { NextRequest, NextResponse } from 'next/server';
-import mysql, { type RowDataPacket } from 'mysql2/promise';
-import { dbConfig } from '@/lib/db';
+import type { PoolConnection, RowDataPacket } from 'mysql2/promise';
+import { getPool } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
+const ER_ROW_IS_REFERENCED = 1451;
+
 export async function DELETE(request: NextRequest) {
-  let connection;
+  const { searchParams } = new URL(request.url);
+  const blockId = searchParams.get('blockId');
+
+  if (!blockId) {
+    return NextResponse.json({ error: 'blockId é obrigatório' }, { status: 400 });
+  }
+
+  let connection: PoolConnection | undefined;
 
   try {
-    const { searchParams } = new URL(request.url);
-    const blockId = searchParams.get('blockId');
+    connection = await getPool().getConnection();
+    await connection.beginTransaction();
 
-    if (!blockId) {
-      return NextResponse.json({ error: 'blockId é obrigatório' }, { status: 400 });
-    }
-
-    connection = await mysql.createConnection(dbConfig);
-
-    // Verificar se há lotes reservados ou vendidos na quadra
-    const [lotsCheck] = await connection.execute<RowDataPacket[]>(
-      `SELECT COUNT(*) as count FROM lots 
-       WHERE block_id = ? AND status IN ('reserved', 'sold')`,
+    // Trava os lotes da quadra (em ordem de id) para ninguém reservá-los durante a exclusão
+    const [lots] = await connection.execute<RowDataPacket[]>(
+      'SELECT id, status FROM lots WHERE block_id = ? ORDER BY id FOR UPDATE',
       [blockId]
     );
 
-    if (lotsCheck[0].count > 0) {
+    const inUse = lots.filter((lot) => lot.status === 'reserved' || lot.status === 'sold').length;
+    if (inUse > 0) {
+      await connection.rollback();
       return NextResponse.json(
         {
-          error: `Não é possível excluir esta quadra. Existem ${lotsCheck[0].count} lote(s) reservado(s) ou vendido(s).`,
-          count: lotsCheck[0].count,
+          error: `Não é possível excluir esta quadra. Existem ${inUse} lote(s) reservado(s) ou vendido(s).`,
+          count: inUse,
         },
         { status: 409 }
       );
     }
 
-    // Primeiro deletar todos os lotes da quadra (apenas disponíveis)
-    await connection.execute('DELETE FROM lots WHERE block_id = ?', [blockId]);
+    const [history] = await connection.execute<RowDataPacket[]>(
+      `SELECT COUNT(*) AS count FROM purchase_request_lots prl
+       INNER JOIN lots l ON l.id = prl.lot_id
+       WHERE l.block_id = ?`,
+      [blockId]
+    );
 
-    // Depois deletar a quadra
+    if (history[0].count > 0) {
+      await connection.rollback();
+      return NextResponse.json(
+        {
+          error:
+            'Não é possível excluir esta quadra. Existem lotes com reservas registradas (mesmo canceladas).',
+        },
+        { status: 409 }
+      );
+    }
+
+    await connection.execute('DELETE FROM lots WHERE block_id = ?', [blockId]);
     await connection.execute('DELETE FROM blocks WHERE id = ?', [blockId]);
+    await connection.commit();
 
     return NextResponse.json({ message: 'Quadra deletada com sucesso' }, { status: 200 });
   } catch (error) {
+    await connection?.rollback();
+
+    if ((error as { errno?: number }).errno === ER_ROW_IS_REFERENCED) {
+      return NextResponse.json(
+        { error: 'Não é possível excluir esta quadra. Existem lotes com reservas registradas.' },
+        { status: 409 }
+      );
+    }
+
     console.error('[API /mapas/quadras/deletar] Erro:', error);
     return NextResponse.json({ error: 'Erro ao deletar quadra' }, { status: 500 });
   } finally {
-    if (connection) await connection.end();
+    connection?.release();
   }
 }

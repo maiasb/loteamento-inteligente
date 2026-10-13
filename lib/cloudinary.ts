@@ -1,12 +1,12 @@
 import { v2 as cloudinary } from 'cloudinary';
 
 cloudinary.config({
-  cloud_name: process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME || process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.NEXT_PUBLIC_CLOUDINARY_API_KEY || process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.NEXT_PUBLIC_CLOUDINARY_API_SECRET || process.env.CLOUDINARY_API_SECRET,
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-const FOLDER = process.env.NEXT_PUBLIC_CLOUDINARY_FOLDER || process.env.CLOUDINARY_FOLDER || 'vale-dos-carajas';
+const FOLDER = process.env.CLOUDINARY_FOLDER || 'vale-dos-carajas';
 
 /**
  * Upload de data URL (base64) para o Cloudinary
@@ -14,15 +14,16 @@ const FOLDER = process.env.NEXT_PUBLIC_CLOUDINARY_FOLDER || process.env.CLOUDINA
  */
 export async function uploadToCloudinary(
   dataUrl: string,
-  options?: { folder?: string; publicId?: string }
+  options?: { folder?: string; publicId?: string; allowedFormats?: string[] }
 ): Promise<{ url: string; publicId: string }> {
   const folder = options?.folder || `${FOLDER}/overlays`;
-  
+
   const result = await cloudinary.uploader.upload(dataUrl, {
     folder,
     public_id: options?.publicId,
     resource_type: 'image',
     overwrite: true,
+    ...(options?.allowedFormats && { allowed_formats: options.allowedFormats }),
   });
 
   return {

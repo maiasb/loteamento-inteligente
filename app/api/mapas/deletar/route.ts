@@ -1,47 +1,78 @@
 import { NextRequest, NextResponse } from 'next/server';
-import mysql, { type RowDataPacket } from 'mysql2/promise';
-import { dbConfig } from '@/lib/db';
+import type { PoolConnection, RowDataPacket } from 'mysql2/promise';
+import { getPool } from '@/lib/db';
 
-// Forçar rota dinâmica
 export const dynamic = 'force-dynamic';
 
+const ER_ROW_IS_REFERENCED = 1451;
+
 export async function DELETE(request: NextRequest) {
-  let connection;
+  const { searchParams } = new URL(request.url);
+  const mapId = searchParams.get('mapId');
+
+  if (!mapId) {
+    return NextResponse.json({ error: 'mapId é obrigatório' }, { status: 400 });
+  }
+
+  let connection: PoolConnection | undefined;
 
   try {
-    const { searchParams } = new URL(request.url);
-    const mapId = searchParams.get('mapId');
+    connection = await getPool().getConnection();
+    await connection.beginTransaction();
 
-    if (!mapId) {
-      return NextResponse.json({ error: 'mapId é obrigatório' }, { status: 400 });
-    }
-
-    connection = await mysql.createConnection(dbConfig);
-
-    // Verificar se há lotes reservados ou vendidos no mapa
-    const [lotsCheck] = await connection.execute<RowDataPacket[]>(
-      `SELECT COUNT(*) as count FROM lots 
-       WHERE map_id = ? AND status IN ('reserved', 'sold')`,
+    // Trava os lotes do mapa (em ordem de id) para ninguém reservá-los durante a exclusão
+    const [lots] = await connection.execute<RowDataPacket[]>(
+      'SELECT id, status FROM lots WHERE map_id = ? ORDER BY id FOR UPDATE',
       [mapId]
     );
 
-    if (lotsCheck[0].count > 0) {
+    const inUse = lots.filter((lot) => lot.status === 'reserved' || lot.status === 'sold').length;
+    if (inUse > 0) {
+      await connection.rollback();
       return NextResponse.json(
         {
-          error: `Não é possível excluir este mapa. Existem ${lotsCheck[0].count} lote(s) reservado(s) ou vendido(s).`,
-          count: lotsCheck[0].count,
+          error: `Não é possível excluir este mapa. Existem ${inUse} lote(s) reservado(s) ou vendido(s).`,
+          count: inUse,
+        },
+        { status: 409 }
+      );
+    }
+
+    const [history] = await connection.execute<RowDataPacket[]>(
+      `SELECT COUNT(*) AS count FROM purchase_request_lots prl
+       INNER JOIN lots l ON l.id = prl.lot_id
+       WHERE l.map_id = ?`,
+      [mapId]
+    );
+
+    if (history[0].count > 0) {
+      await connection.rollback();
+      return NextResponse.json(
+        {
+          error:
+            'Não é possível excluir este mapa. Existem lotes com reservas registradas (mesmo canceladas).',
         },
         { status: 409 }
       );
     }
 
     await connection.execute('DELETE FROM maps WHERE id = ?', [mapId]);
+    await connection.commit();
 
     return NextResponse.json({ message: 'Mapa deletado com sucesso' }, { status: 200 });
   } catch (error) {
+    await connection?.rollback();
+
+    if ((error as { errno?: number }).errno === ER_ROW_IS_REFERENCED) {
+      return NextResponse.json(
+        { error: 'Não é possível excluir este mapa. Existem lotes com reservas registradas.' },
+        { status: 409 }
+      );
+    }
+
     console.error('[API /mapas/deletar] Erro:', error);
     return NextResponse.json({ error: 'Erro ao deletar mapa' }, { status: 500 });
   } finally {
-    if (connection) await connection.end();
+    connection?.release();
   }
 }

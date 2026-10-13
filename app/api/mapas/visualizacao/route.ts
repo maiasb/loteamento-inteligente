@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import mysql, { Connection, type RowDataPacket } from 'mysql2/promise';
-import { dbConfig } from '@/lib/db';
+import type { RowDataPacket } from 'mysql2/promise';
+import { executeQuery } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
@@ -9,8 +9,6 @@ export const dynamic = 'force-dynamic';
  * Retorna dados completos do mapa para visualização pública: mapa, quadras e lotes
  */
 export async function GET(request: NextRequest) {
-  let connection: Connection | undefined;
-
   try {
     const { searchParams } = new URL(request.url);
     const mapId = searchParams.get('mapId');
@@ -19,23 +17,14 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'mapId é obrigatório' }, { status: 400 });
     }
 
-    connection = await mysql.createConnection(dbConfig);
-
-    // Verificar se a coluna overlay_config existe
-    const [overlayCols] = await connection.execute<RowDataPacket[]>(
-      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS 
-       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'maps' AND COLUMN_NAME = 'overlay_config'`
-    );
-    const hasOverlay = Array.isArray(overlayCols) && overlayCols.length > 0;
-
     // Buscar dados do mapa
-    const [mapRows] = await connection.execute<RowDataPacket[]>(
+    const mapRows = await executeQuery<RowDataPacket[]>(
       `SELECT 
         id, 
         name, 
         description, 
         address, 
-        ${hasOverlay ? 'overlay_config as overlayConfig,' : ''}
+        overlay_config as overlayConfig,
         image_url as imageUrl,
         created_at as createdAt, 
         updated_at as updatedAt 
@@ -51,7 +40,7 @@ export async function GET(request: NextRequest) {
     const mapData = mapRows[0];
 
     // Buscar quadras do mapa
-    const [blockRows] = await connection.execute<RowDataPacket[]>(
+    const blockRows = await executeQuery<RowDataPacket[]>(
       `SELECT 
         id, 
         mapId, 
@@ -77,7 +66,7 @@ export async function GET(request: NextRequest) {
     });
 
     // Buscar lotes do mapa com coordenadas
-    const [lotRows] = await connection.execute<RowDataPacket[]>(
+    const lotRows = await executeQuery<RowDataPacket[]>(
       `SELECT 
         l.id, 
         l.map_id as mapId, 
@@ -180,9 +169,5 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('[API /mapas/visualizacao GET] Erro:', error);
     return NextResponse.json({ error: 'Erro ao buscar dados de visualização' }, { status: 500 });
-  } finally {
-    if (connection) {
-      await connection.end();
-    }
   }
 }

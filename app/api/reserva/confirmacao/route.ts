@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import mysql, { type RowDataPacket } from 'mysql2/promise';
+import mysql, { type ResultSetHeader, type RowDataPacket } from 'mysql2/promise';
 import { dbConfig } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
@@ -40,13 +40,33 @@ export async function PUT(request: NextRequest) {
       );
     }
 
+    const derivedLotStatus = status === 'completed' ? 'sold' : 'available';
+
     connection = await mysql.createConnection(dbConfig);
     await connection.beginTransaction();
 
     try {
+      const [requests] = await connection.execute<RowDataPacket[]>(
+        'SELECT status FROM purchase_requests WHERE id = ? FOR UPDATE',
+        [reservationId]
+      );
+
+      if (requests.length === 0) {
+        await connection.rollback();
+        return NextResponse.json({ error: 'Reserva não encontrada' }, { status: 404 });
+      }
+
+      if (!['pending', 'approved'].includes(requests[0].status)) {
+        await connection.rollback();
+        return NextResponse.json(
+          { error: 'Esta reserva já foi finalizada e não pode mais ser alterada' },
+          { status: 409 }
+        );
+      }
+
       // Buscar todos os lotes associados à reserva via purchase_request_lots
       const [lotRelations] = await connection.execute(
-        'SELECT lot_id FROM purchase_request_lots WHERE purchase_request_id = ?',
+        'SELECT lot_id FROM purchase_request_lots WHERE purchase_request_id = ? ORDER BY lot_id',
         [reservationId]
       );
 
@@ -58,7 +78,10 @@ export async function PUT(request: NextRequest) {
         );
       }
 
-      const lotIds = (lotRelations as RowDataPacket[]).map((rel) => rel.lot_id);
+      // Ordem crescente: o UPDATE dos lotes trava as linhas sempre na mesma ordem (evita deadlock)
+      const lotIds = (lotRelations as RowDataPacket[])
+        .map((rel) => Number(rel.lot_id))
+        .sort((a, b) => a - b);
 
       // Atualizar status da reserva
       await connection.execute('UPDATE purchase_requests SET status = ? WHERE id = ?', [
@@ -68,9 +91,9 @@ export async function PUT(request: NextRequest) {
 
       // Atualizar status de todos os lotes associados
       const placeholders = lotIds.map(() => '?').join(',');
-      await connection.execute(
-        `UPDATE lots SET status = ?, updated_at = NOW() WHERE id IN (${placeholders})`,
-        [lotStatus, ...lotIds]
+      const [lotsResult] = await connection.execute<ResultSetHeader>(
+        `UPDATE lots SET status = ?, updated_at = NOW() WHERE id IN (${placeholders}) AND status = 'reserved'`,
+        [derivedLotStatus, ...lotIds]
       );
 
       await connection.commit();
@@ -80,8 +103,8 @@ export async function PUT(request: NextRequest) {
           message: 'Reserva atualizada com sucesso',
           reservationId,
           status,
-          lotStatus,
-          lotsUpdated: lotIds.length,
+          lotStatus: derivedLotStatus,
+          lotsUpdated: lotsResult.affectedRows,
         },
         { status: 200 }
       );

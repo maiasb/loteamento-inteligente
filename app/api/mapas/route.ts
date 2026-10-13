@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import mysql, { type RowDataPacket } from 'mysql2/promise';
-import { dbConfig, type QueryParam } from '@/lib/db';
+import type { RowDataPacket } from 'mysql2/promise';
+import { executeQuery, type QueryParam } from '@/lib/db';
 
 // Forçar rota dinâmica
 export const dynamic = 'force-dynamic';
@@ -19,21 +19,7 @@ interface MapResponse {
 }
 
 export async function GET(request: NextRequest) {
-  let connection;
-
   try {
-    // Conectar ao banco de dados
-    connection = await mysql.createConnection(dbConfig);
-
-    // Verificar se a coluna overlay_config existe
-    const [overlayCols] = await connection.execute<RowDataPacket[]>(
-      `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS 
-       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'maps' AND COLUMN_NAME = 'overlay_config'`
-    );
-    const hasOverlay = Array.isArray(overlayCols) && overlayCols.length > 0;
-    const overlayCol = hasOverlay ? ', overlay_config' : '';
-    const overlayColM = hasOverlay ? ', m.overlay_config' : '';
-
     // Verificar se é requisição do dashboard (sem imagem) ou filtro por ID
     const { searchParams } = new URL(request.url);
     const minimal = searchParams.get('minimal') === 'true';
@@ -46,40 +32,23 @@ export async function GET(request: NextRequest) {
 
     if (mapId) {
       // Buscar mapa específico por ID (sempre com imageUrl)
-      query = `SELECT id, name, description, image_url, width, height, address${overlayCol}, created_at, updated_at FROM maps WHERE id = ?`;
+      query = `SELECT id, name, description, image_url, width, height, address, overlay_config, created_at, updated_at FROM maps WHERE id = ?`;
       params = [mapId];
     } else if (withLots) {
-      // Buscar apenas mapas que tenham pelo menos um lote cadastrado em qualquer quadra
-      if (minimal) {
-        query = `
-          SELECT DISTINCT m.id, m.name, m.description, m.width, m.height, m.address${overlayColM}, m.created_at, m.updated_at
-          FROM maps m
-          INNER JOIN blocks b ON b.mapId = m.id
-          INNER JOIN lots l ON l.block_id = b.id
-          ORDER BY m.created_at DESC
-        `;
-      } else {
-        query = `
-          SELECT DISTINCT m.id, m.name, m.description, m.image_url, m.width, m.height, m.address${overlayColM}, m.created_at, m.updated_at
-          FROM maps m
-          INNER JOIN blocks b ON b.mapId = m.id
-          INNER JOIN lots l ON l.block_id = b.id
-          ORDER BY m.created_at DESC
-        `;
-      }
-    } else if (minimal) {
-      // Buscar todos sem image_url
-      query = `SELECT id, name, description, width, height, address${overlayCol}, created_at, updated_at FROM maps ORDER BY created_at DESC`;
+      // Buscar apenas mapas que tenham pelo menos um lote cadastrado
+      const imageCol = minimal ? '' : ' m.image_url,';
+      query = `
+        SELECT m.id, m.name, m.description,${imageCol} m.width, m.height, m.address, m.overlay_config, m.created_at, m.updated_at
+        FROM maps m
+        WHERE EXISTS (SELECT 1 FROM lots l WHERE l.map_id = m.id)
+        ORDER BY m.created_at DESC
+      `;
     } else {
-      // Buscar todos com image_url
-      query = `SELECT id, name, description, image_url, width, height, address${overlayCol}, created_at, updated_at FROM maps ORDER BY created_at DESC`;
+      const imageCol = minimal ? '' : ' image_url,';
+      query = `SELECT id, name, description,${imageCol} width, height, address, overlay_config, created_at, updated_at FROM maps ORDER BY created_at DESC`;
     }
 
-    const [rows] = await connection.execute<RowDataPacket[]>(query, params);
-
-    if (!Array.isArray(rows)) {
-      return NextResponse.json([], { status: 200 });
-    }
+    const rows = await executeQuery<RowDataPacket[]>(query, params);
 
     // Formatar resposta (mesmo formato do n8n)
     const formattedMaps = rows.map((map) => {
@@ -124,9 +93,5 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('[API /mapas GET] ❌ Erro:', error);
     return NextResponse.json({ error: 'Erro ao buscar mapas' }, { status: 500 });
-  } finally {
-    if (connection) {
-      await connection.end();
-    }
   }
 }

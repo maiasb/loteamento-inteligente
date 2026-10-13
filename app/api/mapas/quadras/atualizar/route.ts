@@ -1,13 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import mysql, { type RowDataPacket } from 'mysql2/promise';
-import { dbConfig } from '@/lib/db';
+import type { ResultSetHeader } from 'mysql2/promise';
+import { executeQuery } from '@/lib/db';
 
 // Forçar rota dinâmica
 export const dynamic = 'force-dynamic';
 
 export async function PATCH(request: NextRequest) {
-  let connection;
-
   try {
     const body = await request.json();
     const { id, mapId, name, description, coordinates } = body;
@@ -15,33 +13,19 @@ export async function PATCH(request: NextRequest) {
     if (!id || !mapId) {
       return NextResponse.json({ error: 'id e mapId são obrigatórios' }, { status: 400 });
     }
-
-    connection = await mysql.createConnection(dbConfig);
-
-    // Verificar se a coluna coordinates existe
-    const [columns] = await connection.execute<RowDataPacket[]>(
-      `SELECT COLUMN_NAME 
-       FROM INFORMATION_SCHEMA.COLUMNS 
-       WHERE TABLE_SCHEMA = DATABASE() 
-       AND TABLE_NAME = 'blocks' 
-       AND COLUMN_NAME = 'coordinates'`
-    );
-
-    const hasCoordinates = Array.isArray(columns) && columns.length > 0;
-
-    // Criar coluna coordinates se não existir
-    if (!hasCoordinates) {
-      await connection.execute(
-        `ALTER TABLE blocks 
-         ADD COLUMN coordinates JSON AFTER description`
-      );
+    if (!name || typeof name !== 'string') {
+      return NextResponse.json({ error: 'Nome da quadra é obrigatório' }, { status: 400 });
     }
 
-    // UPDATE com coordenadas
-    await connection.execute(
+    // A coluna blocks.coordinates é criada pela migration 013
+    const result = await executeQuery<ResultSetHeader>(
       'UPDATE blocks SET name = ?, description = ?, coordinates = ?, updatedAt = NOW() WHERE id = ? AND mapId = ?',
       [name, description || '', coordinates ? JSON.stringify(coordinates) : null, id, mapId]
     );
+
+    if (result.affectedRows === 0) {
+      return NextResponse.json({ error: 'Quadra não encontrada' }, { status: 404 });
+    }
 
     const updatedBlock = {
       id,
@@ -54,9 +38,14 @@ export async function PATCH(request: NextRequest) {
 
     return NextResponse.json(updatedBlock, { status: 200 });
   } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ER_DUP_ENTRY') {
+      return NextResponse.json(
+        { error: 'Já existe uma quadra com este nome no mapa' },
+        { status: 409 }
+      );
+    }
+
     console.error('[API /mapas/quadras PATCH] Erro:', error);
     return NextResponse.json({ error: 'Erro ao atualizar quadra' }, { status: 500 });
-  } finally {
-    if (connection) await connection.end();
   }
 }
