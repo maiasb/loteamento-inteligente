@@ -99,11 +99,13 @@ describe('GET /api/mapas/visualizacao', () => {
     expect(json.map.overlayConfig).toEqual({ x: 1 });
     expect(json.lots[0]).toMatchObject({
       blockId: null,
-      price: 1000,
-      pricePerM2: 4,
+      size: 250,
       lat: 1,
       lng: 2,
     });
+    expect(json.lots[0]).not.toHaveProperty('price');
+    expect(json.lots[0]).not.toHaveProperty('pricePerM2');
+    expect(sqlOf(query.mock.calls[2])).not.toMatch(/\bprice\b/);
     expect(json.blocks[0].id).toBe('1');
   });
 });

@@ -74,7 +74,6 @@ export async function GET(request: NextRequest) {
         b.name as blockName,
         l.lot_number as lotNumber, 
         l.status, 
-        l.price,
         l.size, 
         l.description, 
         l.features,
@@ -114,9 +113,7 @@ export async function GET(request: NextRequest) {
         }
       }
 
-      const price = parseFloat(lot.price) || 0;
       const size = parseFloat(lot.size) || 0;
-      const pricePerM2 = size > 0 ? price / size : null;
 
       return {
         id: lot.id.toString(),
@@ -125,8 +122,6 @@ export async function GET(request: NextRequest) {
         blockName: lot.blockName || null,
         lotNumber: lot.lotNumber,
         status: lot.status,
-        price,
-        pricePerM2,
         size,
         description: lot.description || null,
         features,
