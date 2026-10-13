@@ -1,29 +1,19 @@
 -- Migration: Move payment fields to lots
--- Created: 2024-11-29T00:00:00.000Z
--- Description: Move campos first_payment e installments para purchase_request_lots
+-- Description: Entrada e parcelas passam a ser por lote (purchase_request_lots) e saem de
+--   purchase_requests. Sem indices em first_payment/installments: nunca sao filtradas.
+-- Rollback:
+--   ALTER TABLE `purchase_requests` ADD COLUMN `installments` INT NULL DEFAULT NULL;
+--   ALTER TABLE `purchase_request_lots` DROP COLUMN `first_payment`, DROP COLUMN `installments`;
+--   (perde os valores por lote)
 
--- ==========================================
--- UP Migration
--- ==========================================
-
--- Adicionar colunas first_payment e installments na tabela purchase_request_lots
 ALTER TABLE `purchase_request_lots`
-ADD COLUMN IF NOT EXISTS `first_payment` DECIMAL(10,2) DEFAULT NULL COMMENT 'Valor de entrada específico para este lote',
-ADD COLUMN IF NOT EXISTS `installments` INT DEFAULT NULL COMMENT 'Número de parcelas específico para este lote';
+  ADD COLUMN `first_payment` DECIMAL(10,2) DEFAULT NULL COMMENT 'Valor de entrada especifico para este lote',
+  ADD COLUMN `installments` INT DEFAULT NULL COMMENT 'Numero de parcelas especifico para este lote';
 
--- Migrar o numero de parcelas existente para os lotes.
--- (first_payment nunca existiu em purchase_requests nas migrations anteriores;
--- referenciar essa coluna fazia a migration falhar em banco novo.)
 UPDATE `purchase_request_lots` prl
 INNER JOIN `purchase_requests` pr ON prl.purchase_request_id = pr.id
 SET prl.installments = pr.installments
 WHERE pr.installments IS NOT NULL;
 
--- Remover as colunas antigas da tabela purchase_requests se existirem
 ALTER TABLE `purchase_requests`
-DROP COLUMN IF EXISTS `first_payment`,
-DROP COLUMN IF EXISTS `installments`;
-
--- Criar índices para melhor performance
-CREATE INDEX IF NOT EXISTS idx_first_payment ON purchase_request_lots(first_payment);
-CREATE INDEX IF NOT EXISTS idx_installments ON purchase_request_lots(installments);
+  DROP COLUMN `installments`;

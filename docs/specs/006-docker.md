@@ -3,9 +3,11 @@
 **Status:** implementada
 **Autor / data:** Caio Maia / 2026-10-05
 
+> **Nota (2026-10-13):** o banco passou a ser MySQL 8.4 (`mysql:8.4`), conforme [ADR 001](../decisions/001-stack.md); o ADR 002 está superado. As migrations 001–015 foram reescritas para MySQL 8 e há o runner `yarn migrate` / `yarn migrate status`. O texto abaixo é o registro da época.
+
 ## Contexto e problema
 
-O banco original foi perdido e o ambiente depende de um MariaDB instalado na máquina. Não há forma reproduzível de subir app e banco.
+O banco original foi perdido e o ambiente depende de um banco instalado na máquina. Não há forma reproduzível de subir app e banco.
 
 ## Objetivo
 
@@ -21,7 +23,7 @@ Quem desenvolve ou opera o projeto.
 
 ## Regras de negócio
 
-1. O banco é **MariaDB** (as migrations usam `ADD COLUMN IF NOT EXISTS`, sintaxe que o MySQL 8 não aceita).
+1. O banco é **MySQL 8** (imagem `mysql:8.4`; originalmente MariaDB 11, ver nota no topo).
 2. As credenciais vêm de variáveis de ambiente (`.env`, nunca versionado); nenhum valor fica nos arquivos Docker.
 3. Na primeira subida (volume vazio), `docker/db-init.sh` executa os `.sql` de `migrations/` em ordem (erro interrompe a subida) e cria o usuário dev a partir de `DEV_CPF`, `DEV_NAME`, `DEV_EMAIL` e `DEV_PASSWORD` (a senha é obrigatória e vem do `.env`; hash MD5, como o login atual).
 4. O banco persiste em volume nomeado; `docker compose down -v` apaga os dados.

@@ -12,8 +12,9 @@ com recursos limitados (PM2, uma instância, limite de memória de 1 GB).
 
 - Next.js 16 com App Router e React 19, em TypeScript estrito; front e API no mesmo projeto
   (`app/api`).
-- MariaDB (compatível com MySQL) acessado por `mysql2` com SQL cru e migrations `.sql` próprias.
-  A escolha do MariaDB como referência está no [ADR 002](002-docker-mariadb.md).
+- MySQL 8 acessado por `mysql2` com SQL cru e migrations `.sql` próprias. Produção é MySQL 8
+  (decisão do dono, 2026-10); o uso de MariaDB como referência no [ADR 002](002-docker-mariadb.md)
+  está superado.
 - Tailwind v4 com tokens em variáveis CSS e tema claro/escuro.
 - Estado por Context API e hooks; chamadas à API com axios.
 - Cloudinary para imagens, Google Maps para overlay de lotes, `xlsx` para importação.

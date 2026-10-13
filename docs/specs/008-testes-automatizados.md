@@ -3,6 +3,8 @@
 **Status:** implementada
 **Autor / data:** Caio Maia / 2026-10-05
 
+> **Nota (2026-10-13):** o banco passou a ser MySQL 8.4 (`mysql:8.4`), conforme [ADR 001](../decisions/001-stack.md); o ADR 002 está superado. As migrations 001–015 foram reescritas para MySQL 8 e há o runner `yarn migrate` / `yarn migrate status`. O texto abaixo é o registro da época.
+
 ## Contexto e problema
 
 O projeto não tinha testes. Qualquer refatoração (inclusive a limpeza do ESLint, spec 009) corria sem rede de segurança.
@@ -48,6 +50,6 @@ Nenhum.
 
 ## Riscos e dúvidas em aberto
 
-- Com `mysql2` mockado, os testes não validam o SQL em si; uma consulta com coluna errada passa. Testes de integração contra o MariaDB do Docker são o próximo passo, em spec própria.
+- Com `mysql2` mockado, os testes não validam o SQL em si; uma consulta com coluna errada passa. Testes de integração contra o MySQL 8 do Docker são o próximo passo, em spec própria.
 - Hooks e componentes (`useInteractiveMap`, `MapDetails`…) continuam sem testes.
 - Cobertura atual: login, cadastro, reserva, confirmação/cancelamento, edição de reserva, exclusão de quadra e lote, validações de importação, aprovação e papel, formatadores.

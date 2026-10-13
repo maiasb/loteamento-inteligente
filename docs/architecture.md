@@ -14,7 +14,7 @@ Servidor Next.js 16 (App Router)
   app/api/**/route.ts regras de negócio + SQL
         │
         ▼
-mysql2 (lib/db.ts)  →  MariaDB
+mysql2 (lib/db.ts)  →  MySQL 8
 Serviços externos: Cloudinary (imagens/SVG), Google Maps (overlay de lotes)
 ```
 
@@ -68,15 +68,15 @@ Exemplo: reservar lotes (`LotSelector` / `PurchaseModal`).
 ## Deploy
 
 - `.github/workflows/deploy-hostgator-main.yml`: em push na `main`, conecta por SSH na VPS, faz
-  `git reset --hard origin/main`, `npm ci`, `npm run migrate`, `npm run build` e recarrega o PM2
-  (`ecosystem.config.js`, 1 instância, reinicia acima de 1 GB). O projeto usa yarn (`yarn.lock`),
-  mas o workflow roda `npm ci` e não há `package-lock.json`; os scripts `migrate` não existem.
+  `git reset --hard origin/main`, `yarn install --frozen-lockfile`, `yarn migrate` (com `yarn migrate status`
+  em seguida), `yarn build` e recarrega o PM2 (`ecosystem.config.js`, 1 instância, reinicia acima de
+  1 GB). O runner é `scripts/migrate.ts`.
 - `.github/workflows/deploy.yml` (GitHub Pages, publica `out/`): **legado**. O projeto não usa
   `output: export`, então esse workflow não corresponde ao app atual.
 
 ## Ambiente local com Docker
 
-`docker-compose.yml` sobe `db` (MariaDB 11, migrations executadas na primeira subida) e `app` (build
+`docker-compose.yml` sobe `db` (MySQL 8.4, migrations executadas na primeira subida) e `app` (build
 de produção do `Dockerfile`, Node 20). Ver [specs/006-docker.md](specs/006-docker.md). O deploy
 de produção continua sendo o workflow com SSH e PM2.
 

@@ -6,14 +6,12 @@ Este documento registra todas as migrations executadas no projeto.
 
 ### 001_initial_schema.sql
 
-**Data**: 2024-01-01  
-**Descrição**: Schema inicial completo do banco de dados
+**Descrição**: Schema inicial do banco de dados (reescrita em 2026-10 para MySQL 8)
 
 - Criação das tabelas: users, maps, blocks, lots, purchase_requests, purchase_request_lots
 - Definição de foreign keys e constraints
-- Criação de views úteis (vw_map_statistics, vw_lot_details)
 - Índices para performance
-- Triggers para automação de status
+- Sem views: `vw_map_statistics` e `vw_lot_details` foram removidas (o código não as usa)
 
 **Tabelas Criadas**:
 
@@ -68,12 +66,11 @@ Este documento registra todas as migrations executadas no projeto.
 
 ### 006_add_theme_preference.sql
 
-**Data**: 2024-12-10  
 **Descrição**: Adiciona preferência de tema do usuário
 
 - Campo ENUM('light', 'dark') na tabela users
 - Default: 'light'
-- Índice para otimização
+- Sem índice (a coluna nunca é filtrada)
 
 ---
 
@@ -83,24 +80,21 @@ Este documento registra todas as migrations executadas no projeto.
 **Descrição**: Move campos de pagamento para tabela de lotes
 
 - Adiciona `first_payment` e `installments` em purchase_request_lots
-- Migra dados existentes de purchase_requests
+- Copia as parcelas de purchase_requests para os lotes
 - Remove colunas antigas de purchase_requests
-- Cria índices para performance
+- Sem índices em `first_payment` e `installments` (nunca filtradas)
 
 ---
 
 ## Comandos Úteis
 
 ```bash
-# Ver status das migrations
-npm run migrate:status
-
-# Executar migrations pendentes
-npm run migrate
-
-# Criar nova migration
-npm run migrate:create nome_da_migration
+yarn migrate status   # lista executadas e pendentes
+yarn migrate          # executa as pendentes
 ```
+
+Os scripts `migrate`/`migrate:status` antigos (`npm run`) e `migrate:create` não existem; novas
+migrations são criadas à mão em `migrations/`.
 
 ## Estrutura de Controle
 
@@ -120,10 +114,9 @@ Cada migration é executada apenas uma vez e registrada automaticamente.
 
 Para adicionar novas alterações no schema:
 
-1. Criar migration: `npm run migrate:create nome_descritivo`
-2. Editar arquivo gerado em `migrations/`
-3. Executar: `npm run migrate`
-4. Documentar aqui
+1. Criar `migrations/NNN_nome_descritivo.sql` (próxima: 016) com descrição e rollback no cabeçalho
+2. Executar: `yarn migrate`
+3. Documentar aqui
 
 ## Rollback
 
@@ -137,28 +130,39 @@ Para reverter uma migration:
 
 ## Boas Práticas
 
-- ✅ Sempre use `IF NOT EXISTS` / `IF EXISTS`
+- ✅ Use só sintaxe do MySQL 8 (sem `IF NOT EXISTS` em `ALTER`/`CREATE INDEX`); a migration roda uma vez
 - ✅ Teste localmente antes de produção
 - ✅ Faça backup antes de executar em produção
 - ✅ Documente as alterações neste arquivo
-- ✅ Nunca edite migrations já executadas
+- ✅ Nunca edite migrations já executadas num banco com dados reais
 - ✅ Use nomes descritivos para migrations
 - ✅ Uma migration = uma responsabilidade
 
 ### 013_reconcile_schema_with_code.sql
 
-**Data**: 2026-10-05
-**Descrição**: Alinha o schema ao que o código usa (spec 007). Requer MariaDB.
+**Data**: 2026-10-05 (reescrita para MySQL 8 em 2026-10-13)
+**Descrição**: Alinha o schema ao que o código usa (spec 007). Assume banco recriado do zero.
 
 - `users`: adiciona `cpf` (único), `name`, `phone`, `creci`, `status`; `role` passa a `dev|admin|vendedor`; `username` opcional
 - `maps`: `id` BIGINT; adiciona `address`, `width`, `height`, `overlay_config`
-- `blocks`, `lots`, `purchase_requests`: colunas de mapa em BIGINT e FKs recriadas; `identifier`, `block_id`, `lot_id`, `map_id`, `customer_email`, `customer_phone` opcionais; `lots.status` aceita `blocked`
+- `blocks`: `mapId` BIGINT, `identifier` opcional, adiciona `coordinates` (JSON; antes a rota de atualizar criava a coluna em tempo de execução)
+- `lots`, `purchase_requests`: colunas de mapa em BIGINT e FKs recriadas; `block_id`, `lot_id`, `map_id`, `customer_email`, `customer_phone` opcionais; `lots.status` aceita `blocked`
 - `purchase_requests`: adiciona `user_id`, `message`, `seller_*`
 - `purchase_request_lots`: adiciona `payment_method`
-
-**Correção na 007**: removida a referência a `purchase_requests.first_payment` (coluna inexistente), que fazia a migration falhar em banco novo.
 
 ### 014_payment_method_text.sql
 
 **Data**: 2026-10-06
 **Descrição**: `purchase_requests.payment_method` passa de ENUM para `VARCHAR(255)`, porque o formulário de reserva envia várias formas separadas por vírgula (ex.: `cash, financing`). Com o ENUM, reservar pela tela retornava erro 500 (`Data truncated`).
+
+### 015_integrity_and_indexes.sql
+
+**Data**: 2026-10-13
+**Descrição**: Integridade e índices (requer MySQL 8.0.16+ para os CHECKs).
+
+- `purchase_request_lots.lot_id`: FK `ON DELETE RESTRICT` (lote com histórico de reserva não é excluído, nem em cascata)
+- `lots.block_key` (coluna gerada VIRTUAL, `IFNULL(block_id, 0)`) e `UNIQUE (map_id, block_key, lot_number)`: o UNIQUE anterior não barrava duplicata de lote sem quadra (NULL ≠ NULL). VIRTUAL porque `block_id` tem FK com CASCADE
+- `lots.price` e `purchase_request_lots.first_payment` em `DECIMAL(15,2)`; CHECKs `price >= 0`, `agreed_price >= 0`, `first_payment >= 0`, `installments > 0`
+- Índices `purchase_requests (status, created_at, id)` e `(user_id, created_at, id)` para a paginação (`ORDER BY created_at DESC, id DESC`, sem filesort)
+- Removidos por redundância ou falta de uso: `purchase_request_lots.idx_purchase_request_id`, `users.idx_role`, `lots.idx_map_id`, `lots.idx_lot_number`, `blocks.idx_mapId`, `blocks.idx_name`, `purchase_requests.idx_status`, `purchase_requests.idx_pr_user_id`
+- Rollback no cabeçalho do arquivo (testado)

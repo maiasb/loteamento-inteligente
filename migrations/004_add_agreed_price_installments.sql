@@ -1,15 +1,12 @@
 -- Migration: Add agreed price and installments
--- Created: 2024-12-01T00:00:00.000Z
--- Description: Adiciona colunas para preço acordado em lotes e parcelas na reserva
+-- Description: Preco acordado por lote na reserva e numero de parcelas na reserva
+--   (as parcelas passam para purchase_request_lots na 007)
+-- Rollback:
+--   ALTER TABLE `purchase_requests` DROP COLUMN `installments`;
+--   ALTER TABLE `purchase_request_lots` DROP COLUMN `agreed_price`;
 
--- ==========================================
--- UP Migration
--- ==========================================
+ALTER TABLE `purchase_request_lots`
+  ADD COLUMN `agreed_price` DECIMAL(15,2) NULL COMMENT 'Preco acordado para este lote na reserva';
 
--- Adiciona preço acordado na tabela purchase_request_lots
-ALTER TABLE purchase_request_lots 
-ADD COLUMN IF NOT EXISTS agreed_price DECIMAL(15,2) NULL COMMENT 'Preço acordado para este lote na reserva';
-
--- Adiciona número de parcelas na tabela purchase_requests
-ALTER TABLE purchase_requests 
-ADD COLUMN IF NOT EXISTS installments INT NULL DEFAULT NULL COMMENT 'Número de parcelas para pagamento';
+ALTER TABLE `purchase_requests`
+  ADD COLUMN `installments` INT NULL DEFAULT NULL COMMENT 'Numero de parcelas para pagamento';

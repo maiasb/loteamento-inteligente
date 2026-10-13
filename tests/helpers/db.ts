@@ -1,6 +1,7 @@
 import { vi } from 'vitest';
 import mysql from 'mysql2/promise';
 import { NextRequest } from 'next/server';
+import { getPool } from '@/lib/db';
 
 export type FakeConnection = ReturnType<typeof createFakeConnection>;
 
@@ -12,6 +13,7 @@ export function createFakeConnection() {
     commit: vi.fn().mockResolvedValue(undefined),
     rollback: vi.fn().mockResolvedValue(undefined),
     end: vi.fn().mockResolvedValue(undefined),
+    release: vi.fn(),
   };
 }
 
@@ -19,6 +21,18 @@ export function createFakeConnection() {
 export function useFakeConnection() {
   const connection = createFakeConnection();
   vi.mocked(mysql.createConnection).mockResolvedValue(connection as never);
+  return connection;
+}
+
+/**
+ * Faz getPool().getConnection() (getPool mockado no arquivo de teste com
+ * vi.mock('@/lib/db')) devolver uma conexão falsa.
+ */
+export function useFakePool() {
+  const connection = createFakeConnection();
+  vi.mocked(getPool).mockReturnValue({
+    getConnection: vi.fn().mockResolvedValue(connection),
+  } as never);
   return connection;
 }
 

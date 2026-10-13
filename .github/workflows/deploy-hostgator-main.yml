@@ -8,9 +8,15 @@ on:
 permissions:
   contents: read
 
+# Nunca cancela um deploy em andamento (migration pela metade); o próximo espera na fila.
+concurrency:
+  group: deploy-hostgator-main
+  cancel-in-progress: false
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
       - name: Checkout
@@ -20,66 +26,94 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
+          cache: 'yarn'
 
       - name: Install dependencies
-        run: npm ci
+        run: yarn install --frozen-lockfile
 
       - name: Deploy to VPS via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
+          command_timeout: 15m
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USERNAME }}
           key: ${{ secrets.VPS_SSH_KEY }}
           port: ${{ secrets.VPS_PORT }}
           script: |
             set -e  # Exit immediately if any command fails
-            
+
             echo "🚀 Starting deployment to VPS..."
-            
+
             # Define application directory
             APP_DIR="${{ secrets.VPS_APP_DIR }}"
-            
+
             # Check if directory exists
             if [ ! -d "$APP_DIR" ]; then
               echo "❌ Error: Directory $APP_DIR does not exist!"
               exit 1
             fi
-            
+
             # Navigate to application directory
             cd "$APP_DIR"
             echo "📁 Changed to application directory"
-            
+
             # Check for uncommitted changes
             if ! git diff-index --quiet HEAD --; then
               echo "⚠️  Warning: Uncommitted changes detected. Stashing..."
               git stash
             fi
-            
+
             # Update code from main branch
             echo "🔄 Pulling latest code from main branch..."
             git fetch origin
             git reset --hard origin/main
-            
-            # Install dependencies
+
+            # Install dependencies (yarn, igual ao resto do projeto)
             echo "📦 Installing dependencies..."
-            npm ci
-            
-            # Execute migrations automatically
-            echo "🔧 Running database migrations..."
-            if ! npm run migrate; then
-              echo "❌ Error: Database migrations failed!"
+            command -v yarn >/dev/null 2>&1 || corepack enable
+            yarn install --frozen-lockfile
+
+            # Backup do banco ANTES de qualquer migration (credenciais lidas do .env do servidor;
+            # a senha vai por MYSQL_PWD, nunca na linha de comando nem no log)
+            echo "💾 Backing up database..."
+            env_get() { grep -E "^$1=" .env | tail -n1 | cut -d= -f2- | sed -e "s/^['\"]//" -e "s/['\"]$//"; }
+            BACKUP_DIR="${HOME}/backups/vale-dos-carajas"
+            mkdir -p "$BACKUP_DIR"
+            chmod 700 "$BACKUP_DIR"
+            BACKUP_FILE="$BACKUP_DIR/pre-deploy-$(date +%Y%m%d-%H%M%S)-$(git rev-parse --short HEAD).sql"
+            if ! MYSQL_PWD="$(env_get DB_PASSWORD)" mysqldump --single-transaction --routines --triggers \
+                -h "$(env_get DB_HOST)" -P "$(env_get DB_PORT | grep . || echo 3306)" -u "$(env_get DB_USER)" \
+                "$(env_get DB_NAME)" > "$BACKUP_FILE"; then
+              rm -f "$BACKUP_FILE"
+              echo "❌ Error: database backup failed! Aborting before migrations."
               exit 1
             fi
-            
+            if [ ! -s "$BACKUP_FILE" ]; then
+              echo "❌ Error: backup file is empty! Aborting before migrations."
+              exit 1
+            fi
+            gzip -f "$BACKUP_FILE"
+            echo "✅ Backup saved to $BACKUP_FILE.gz"
+            # Retenção local: 14 dias (cópia fora do servidor é responsabilidade à parte)
+            find "$BACKUP_DIR" -name 'pre-deploy-*.sql.gz' -mtime +14 -delete
+
+            # Execute migrations (falha aborta o deploy: a aplicação em execução não é tocada)
+            echo "🔧 Running database migrations..."
+            if ! yarn migrate; then
+              echo "❌ Error: Database migrations failed! PM2 was NOT reloaded."
+              echo "   Backup available at $BACKUP_FILE.gz"
+              echo "   Migrations não são transacionais: restaure o backup antes de tentar de novo."
+              exit 1
+            fi
+
             # Verify migration status
             echo "✅ Checking migration status..."
-            npm run migrate:status
-            
+            yarn migrate status
+
             # Build application
             echo "🏗️  Building application..."
-            npm run build
-            
+            yarn build
+
             # Restart application with PM2
             echo "🔄 Restarting application with PM2..."
             if pm2 list | grep -q "vale-dos-carajas"; then
@@ -89,22 +123,22 @@ jobs:
               echo "▶️  Starting new PM2 process..."
               pm2 start npm --name vale-dos-carajas -- start
             fi
-            
+
             # Save PM2 configuration
             echo "💾 Saving PM2 configuration..."
             pm2 save
-            
+
             # Display application status
             echo "📊 Application status:"
             pm2 list
-            
+
             # Verify process is online
             echo "🔍 Verifying process status..."
             if ! pm2 show vale-dos-carajas --no-color > /dev/null 2>&1; then
               echo "❌ Error: PM2 process 'vale-dos-carajas' not found!"
               exit 1
             fi
-            
+
             # Check if process is in online state
             PM2_STATUS=$(pm2 jlist | grep -o '"name":"vale-dos-carajas"[^}]*"status":"[^"]*"' | grep -o 'status":"[^"]*"' | cut -d'"' -f3)
             if [ "$PM2_STATUS" != "online" ]; then
@@ -112,7 +146,7 @@ jobs:
               pm2 show vale-dos-carajas
               exit 1
             fi
-            
+
             echo "✅ Process is running in online state"
             echo "✅ Deployment completed successfully!"
 

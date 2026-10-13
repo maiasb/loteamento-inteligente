@@ -1,7 +1,9 @@
 # 002 – Docker e MariaDB como banco de referência
 
-**Status:** aceita
+**Status:** Superado por [001-stack.md](001-stack.md) (2026-10-13)
 **Data:** 2026-10-05
+
+> **Nota (2026-10-13):** o banco de referência passou a ser **MySQL 8.4** (imagem `mysql:8.4`). A produção usa MySQL, e a sintaxe exclusiva do MariaDB (`ADD COLUMN IF NOT EXISTS` e similares) foi removida das migrations 001–015. O texto abaixo é o registro histórico da decisão original; vale o [ADR 001](001-stack.md).
 
 ## Contexto
 

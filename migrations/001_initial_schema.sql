@@ -1,11 +1,13 @@
 -- Migration: Initial database schema
--- Created: 2024-01-01T00:00:00.000Z
--- Description: Cria todas as tabelas iniciais do sistema
+-- Description: Cria as tabelas iniciais do sistema (MySQL 8.0.16+, InnoDB, utf8mb4).
+--   As views vw_map_statistics e vw_lot_details deixaram de existir: o codigo nao as usa.
+-- Rollback: DROP TABLE purchase_request_lots, purchase_requests, lots, blocks, maps, users;
+--   (ordem resolvida pelo MySQL numa unica instrucao; perde todos os dados)
 
 -- ==========================================
 -- TABELA USERS
 -- ==========================================
-CREATE TABLE IF NOT EXISTS `users` (
+CREATE TABLE `users` (
   `id` INT NOT NULL AUTO_INCREMENT,
   `username` VARCHAR(50) NOT NULL,
   `password` VARCHAR(255) NOT NULL,
@@ -26,7 +28,7 @@ CREATE TABLE IF NOT EXISTS `users` (
 -- ==========================================
 -- TABELA MAPS (Mapas/Loteamentos)
 -- ==========================================
-CREATE TABLE IF NOT EXISTS `maps` (
+CREATE TABLE `maps` (
   `id` INT NOT NULL AUTO_INCREMENT,
   `name` VARCHAR(255) NOT NULL,
   `description` TEXT,
@@ -45,7 +47,7 @@ CREATE TABLE IF NOT EXISTS `maps` (
 -- ==========================================
 -- TABELA BLOCKS (Quadras)
 -- ==========================================
-CREATE TABLE IF NOT EXISTS `blocks` (
+CREATE TABLE `blocks` (
   `id` INT NOT NULL AUTO_INCREMENT,
   `mapId` INT NOT NULL,
   `name` VARCHAR(100) NOT NULL,
@@ -63,7 +65,7 @@ CREATE TABLE IF NOT EXISTS `blocks` (
 -- ==========================================
 -- TABELA LOTS (Lotes)
 -- ==========================================
-CREATE TABLE IF NOT EXISTS `lots` (
+CREATE TABLE `lots` (
   `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   `block_id` INT NOT NULL,
   `map_id` INT NOT NULL,
@@ -81,6 +83,7 @@ CREATE TABLE IF NOT EXISTS `lots` (
   KEY `idx_map_id` (`map_id`),
   KEY `idx_status` (`status`),
   KEY `idx_lot_number` (`lot_number`),
+  KEY `idx_map_status` (`map_id`, `status`),
   CONSTRAINT `lots_ibfk_1` FOREIGN KEY (`map_id`) REFERENCES `maps` (`id`) ON DELETE CASCADE,
   CONSTRAINT `lots_ibfk_2` FOREIGN KEY (`block_id`) REFERENCES `blocks` (`id`) ON DELETE CASCADE,
   CONSTRAINT `lots_chk_1` CHECK ((`size` >= 0)),
@@ -90,7 +93,7 @@ CREATE TABLE IF NOT EXISTS `lots` (
 -- ==========================================
 -- TABELA PURCHASE_REQUESTS (Solicitações de Compra)
 -- ==========================================
-CREATE TABLE IF NOT EXISTS `purchase_requests` (
+CREATE TABLE `purchase_requests` (
   `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   `lot_id` BIGINT UNSIGNED NOT NULL,
   `map_id` INT NOT NULL,
@@ -110,6 +113,7 @@ CREATE TABLE IF NOT EXISTS `purchase_requests` (
   KEY `idx_status` (`status`),
   KEY `idx_customer_email` (`customer_email`),
   KEY `idx_created_at` (`created_at`),
+  KEY `idx_purchase_created` (`created_at`, `status`),
   CONSTRAINT `purchase_requests_ibfk_1` FOREIGN KEY (`lot_id`) REFERENCES `lots` (`id`) ON DELETE CASCADE,
   CONSTRAINT `purchase_requests_ibfk_2` FOREIGN KEY (`map_id`) REFERENCES `maps` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -117,7 +121,7 @@ CREATE TABLE IF NOT EXISTS `purchase_requests` (
 -- ==========================================
 -- TABELA PURCHASE_REQUEST_LOTS (Relacionamento Múltiplos Lotes)
 -- ==========================================
-CREATE TABLE IF NOT EXISTS `purchase_request_lots` (
+CREATE TABLE `purchase_request_lots` (
   `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   `purchase_request_id` BIGINT UNSIGNED NOT NULL,
   `lot_id` BIGINT UNSIGNED NOT NULL,
@@ -129,49 +133,3 @@ CREATE TABLE IF NOT EXISTS `purchase_request_lots` (
   CONSTRAINT `purchase_request_lots_ibfk_1` FOREIGN KEY (`purchase_request_id`) REFERENCES `purchase_requests` (`id`) ON DELETE CASCADE,
   CONSTRAINT `purchase_request_lots_ibfk_2` FOREIGN KEY (`lot_id`) REFERENCES `lots` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
--- ==========================================
--- ÍNDICES ADICIONAIS PARA PERFORMANCE
--- ==========================================
-CREATE INDEX IF NOT EXISTS idx_map_status ON lots(map_id, status);
-CREATE INDEX IF NOT EXISTS idx_purchase_created ON purchase_requests(created_at, status);
-
--- ==========================================
--- VIEWS ÚTEIS
--- ==========================================
-CREATE OR REPLACE VIEW vw_map_statistics AS
-SELECT 
-    m.id AS map_id,
-    m.name AS map_name,
-    COUNT(l.id) AS total_lots,
-    SUM(CASE WHEN l.status = 'available' THEN 1 ELSE 0 END) AS available_lots,
-    SUM(CASE WHEN l.status = 'reserved' THEN 1 ELSE 0 END) AS reserved_lots,
-    SUM(CASE WHEN l.status = 'sold' THEN 1 ELSE 0 END) AS sold_lots,
-    SUM(l.size) AS total_area,
-    SUM(l.price) AS total_value,
-    COUNT(DISTINCT b.id) AS total_blocks
-FROM maps m
-LEFT JOIN lots l ON m.id = l.map_id
-LEFT JOIN blocks b ON m.id = b.mapId
-GROUP BY m.id, m.name;
-
-CREATE OR REPLACE VIEW vw_lot_details AS
-SELECT 
-    l.id,
-    l.lot_number,
-    l.size,
-    l.price,
-    l.status,
-    l.description,
-    l.features,
-    b.id AS block_id,
-    b.name AS block_name,
-    b.identifier AS block_identifier,
-    m.id AS map_id,
-    m.name AS map_name,
-    m.location AS map_location,
-    l.created_at,
-    l.updated_at
-FROM lots l
-INNER JOIN blocks b ON l.block_id = b.id
-INNER JOIN maps m ON l.map_id = m.id;

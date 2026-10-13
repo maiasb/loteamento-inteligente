@@ -1,27 +1,37 @@
 services:
   db:
-    image: mariadb:11.8
+    image: mysql:8.4
     restart: unless-stopped
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
     environment:
-      MARIADB_RANDOM_ROOT_PASSWORD: '1'
-      MARIADB_DATABASE: ${DB_NAME:-vale_dos_carajas}
-      MARIADB_USER: ${DB_USER:-vale}
-      MARIADB_PASSWORD: ${DB_PASSWORD:?defina DB_PASSWORD no .env}
+      MYSQL_RANDOM_ROOT_PASSWORD: '1'
+      MYSQL_DATABASE: ${DB_NAME:-vale_dos_carajas}
+      MYSQL_USER: ${DB_USER:-vale}
+      MYSQL_PASSWORD: ${DB_PASSWORD:?defina DB_PASSWORD no .env}
       DEV_CPF: ${DEV_CPF:-99999999998}
       DEV_NAME: ${DEV_NAME:-Desenvolvedor}
       DEV_EMAIL: ${DEV_EMAIL:-dev@valedoscarajas.local}
       DEV_PASSWORD: ${DEV_PASSWORD:?defina DEV_PASSWORD no .env}
     ports:
-      - '${DB_HOST_PORT:-3306}:3306'
+      - '127.0.0.1:${DB_HOST_PORT:-3306}:3306'
     volumes:
       - db_data:/var/lib/mysql
       - ./migrations:/migrations:ro
       - ./docker/db-init.sh:/docker-entrypoint-initdb.d/init.sh:ro
     healthcheck:
-      test: ['CMD', 'healthcheck.sh', '--connect', '--innodb_initialized']
+      # Usa o usuário da aplicação (a senha root é aleatória). Conecta via TCP, então só fica
+      # saudável depois do init (o servidor temporário do entrypoint usa só socket).
+      test:
+        [
+          'CMD-SHELL',
+          'MYSQL_PWD="$$MYSQL_PASSWORD" mysqladmin ping -h 127.0.0.1 -u "$$MYSQL_USER" --silent',
+        ]
       interval: 5s
       timeout: 5s
-      retries: 20
+      retries: 30
+      start_period: 30s
 
   app:
     build:
@@ -30,10 +40,6 @@ services:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-/api}
         NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-}
         NEXT_PUBLIC_GOOGLE_MAPS_API_KEY: ${NEXT_PUBLIC_GOOGLE_MAPS_API_KEY:-}
-        NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME: ${NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME:-}
-        NEXT_PUBLIC_CLOUDINARY_API_KEY: ${NEXT_PUBLIC_CLOUDINARY_API_KEY:-}
-        NEXT_PUBLIC_CLOUDINARY_API_SECRET: ${NEXT_PUBLIC_CLOUDINARY_API_SECRET:-}
-        NEXT_PUBLIC_CLOUDINARY_FOLDER: ${NEXT_PUBLIC_CLOUDINARY_FOLDER:-}
     restart: unless-stopped
     depends_on:
       db:

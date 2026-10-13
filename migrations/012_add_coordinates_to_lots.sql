@@ -1,8 +1,7 @@
 -- Migration: 012_add_coordinates_to_lots
--- Adiciona campo para armazenar as coordenadas do polígono de cada lote no Google Maps
+-- Description: Posicao de cada lote no Google Maps. A coluna guarda um ponto, nao um poligono:
+--   {"lat": -6.064831, "lng": -50.045556}
+-- Rollback: ALTER TABLE `lots` DROP COLUMN `coordinates`;
 
-ALTER TABLE lots 
-ADD COLUMN coordinates JSON COMMENT 'Coordenadas do polígono que delimita o lote no mapa' AFTER status;
-
--- Exemplo de estrutura:
--- coordinates: [{"lat": -6.064831, "lng": -50.045556}, {"lat": -6.064931, "lng": -50.045656}, ...]
+ALTER TABLE `lots`
+  ADD COLUMN `coordinates` JSON NULL COMMENT 'Ponto do lote no mapa: {"lat": number, "lng": number}' AFTER `status`;

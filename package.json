@@ -11,14 +11,15 @@
     "format": "prettier --write",
     "prepare": "husky",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "migrate": "ts-node --transpile-only -O '{\"module\":\"commonjs\",\"moduleResolution\":\"node10\"}' scripts/migrate.ts"
   },
   "dependencies": {
     "@react-google-maps/api": "^2.19.3",
-    "axios": "^1.13.2",
+    "axios": "^1.20.0",
     "cloudinary": "^2.9.0",
-    "mysql2": "^3.15.3",
-    "next": "16.0.10",
+    "mysql2": "^3.24.6",
+    "next": "16.4.0",
     "pdfjs-dist": "^3.11.174",
     "react": "19.2.0",
     "react-dom": "19.2.0",

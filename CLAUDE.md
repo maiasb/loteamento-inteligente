@@ -4,7 +4,7 @@ Plataforma web da Imobiliária Vale dos Carajás para gerenciar loteamentos: map
 reservas de lotes por vendedores e usuários com papéis (dev, admin, vendedor). Também há uma
 visualização pública dos mapas.
 
-**Stack:** Next.js 16 (App Router) · React 19 · TypeScript estrito · Tailwind v4 · MariaDB (compatível com MySQL) via `mysql2`
+**Stack:** Next.js 16 (App Router) · React 19 · TypeScript estrito · Tailwind v4 · MySQL 8 via `mysql2`
 (SQL cru, sem ORM) · axios no cliente · Cloudinary · Google Maps. Gerenciador de pacotes: **yarn**.
 Detalhes e motivos: [docs/decisions/001-stack.md](docs/decisions/001-stack.md).
 
@@ -19,15 +19,15 @@ yarn typecheck      # tsc --noEmit
 yarn test           # Vitest (tests/); yarn test:watch para modo contínuo
 yarn format <arquivos>  # Prettier nos arquivos informados (nunca no projeto todo)
 
-docker compose up -d db       # só o MariaDB (dev com `yarn dev` na máquina)
+docker compose up -d db       # só o MySQL (dev com `yarn dev` na máquina)
 docker compose up --build     # banco + app em container (http://localhost:3000); exige .env
 ```
 
 - **Testes:** Vitest em `tests/` (`tests/api` para rotas, com `mysql2` mockado via
   `tests/helpers/db.ts`). Bug corrigido e regra nova ganham teste. Spec:
   [docs/specs/008-testes-automatizados.md](docs/specs/008-testes-automatizados.md).
-- **Banco:** MariaDB. Docker executa `migrations/*.sql` e cria o usuário dev (`DEV_*` no `.env`) em volume vazio. Não há scripts `migrate`,
-  `migrate:status` nem seed no `package.json`, embora o deploy chame `npm run migrate`. Regras de migration: [docs/database.md](docs/database.md).
+- **Banco:** MySQL 8. Docker executa `migrations/*.sql` e cria o usuário dev (`DEV_*` no `.env`) em volume vazio. `yarn migrate` e
+  `yarn migrate status` rodam `scripts/migrate.ts` (runner de `lib/migrations.ts`); não há seed. Regras de migration: [docs/database.md](docs/database.md).
 - **Variáveis de ambiente:** nomes em `.env.example`. Nunca ler, copiar ou expor valores de `.env*`.
 
 ## Estrutura e onde colocar cada coisa
@@ -42,7 +42,7 @@ docker compose up --build     # banco + app em container (http://localhost:3000)
 | `lib/`                              | Infra: banco (`db.ts`), Cloudinary, migrations, config de libs     |
 | `utils/`                            | Funções puras (formatação, validação)                              |
 | `types/index.ts`                    | Tipos de domínio                                                   |
-| `migrations/`                       | SQL numerado (MariaDB), executado em ordem; próxima: 015           |
+| `migrations/`                       | SQL numerado (MySQL 8), executado em ordem; próxima: 016           |
 | `docs/`                             | Arquitetura, banco, design system, specs, ADRs                     |
 
 ## Convenções (padrões dominantes do código)

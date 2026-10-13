@@ -25,7 +25,7 @@ export async function createMigrationsTable() {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
   } finally {
-    await connection.end();
+    connection.release();
   }
 }
 
@@ -40,7 +40,7 @@ export async function getExecutedMigrations(): Promise<string[]> {
     );
     return rows.map((row) => row.name);
   } finally {
-    await connection.end();
+    connection.release();
   }
 }
 
@@ -81,9 +81,12 @@ export async function executeMigration(filename: string): Promise<void> {
 
     // Dividir em statements individuais (separados por ;)
     const statements = sql
+      .split('\n')
+      .filter((line) => !line.trim().startsWith('--'))
+      .join('\n')
       .split(';')
       .map((stmt) => stmt.trim())
-      .filter((stmt) => stmt.length > 0 && !stmt.startsWith('--'));
+      .filter((stmt) => stmt.length > 0);
 
     // Executar cada statement
     for (const statement of statements) {
@@ -96,7 +99,7 @@ export async function executeMigration(filename: string): Promise<void> {
     console.error(`❌ Erro ao executar migration ${filename}:`, error);
     throw error;
   } finally {
-    await connection.end();
+    connection.release();
   }
 }
 
@@ -116,9 +119,26 @@ export async function runPendingMigrations(): Promise<void> {
   }
 }
 
+export interface MigrationStatus {
+  name: string;
+  executed: boolean;
+  /** Registrada como executada, mas o arquivo não existe mais em migrations/ */
+  fileMissing: boolean;
+}
+
 /**
- * Mostra o status das migrations
+ * Lista o status de cada migration: arquivos em migrations/ (executados ou pendentes) e
+ * migrations registradas no banco cujo arquivo não existe mais
  */
-export async function showMigrationsStatus(): Promise<void> {
+export async function showMigrationsStatus(): Promise<MigrationStatus[]> {
   await createMigrationsTable();
+  const available = getAvailableMigrations();
+  const executed = await getExecutedMigrations();
+
+  return [
+    ...available.map((name) => ({ name, executed: executed.includes(name), fileMissing: false })),
+    ...executed
+      .filter((name) => !available.includes(name))
+      .map((name) => ({ name, executed: true, fileMissing: true })),
+  ];
 }

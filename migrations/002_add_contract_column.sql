@@ -1,9 +1,6 @@
 -- Migration: Add contract column to purchase_requests
--- Created: 2024-11-27T00:00:00.000Z
--- Description: Adiciona coluna para armazenar informações do contrato
+-- Description: Adiciona coluna para armazenar informacoes do contrato
+-- Rollback: ALTER TABLE `purchase_requests` DROP COLUMN `contract`;
 
--- ==========================================
--- UP Migration
--- ==========================================
-ALTER TABLE `purchase_requests` 
-ADD COLUMN IF NOT EXISTS `contract` TEXT AFTER `notes`;
+ALTER TABLE `purchase_requests`
+  ADD COLUMN `contract` TEXT AFTER `notes`;
