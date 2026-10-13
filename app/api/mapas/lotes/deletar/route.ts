@@ -44,22 +44,27 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    const [history] = await connection.execute<RowDataPacket[]>(
-      'SELECT 1 FROM purchase_request_lots WHERE lot_id = ? LIMIT 1',
+    // Reservas encerradas (cancelled, rejected) não impedem a exclusão; as ativas, sim
+    const [active] = await connection.execute<RowDataPacket[]>(
+      `SELECT COUNT(*) AS count FROM purchase_request_lots prl
+       INNER JOIN purchase_requests pr ON pr.id = prl.purchase_request_id
+       WHERE prl.lot_id = ? AND COALESCE(pr.status, 'pending') NOT IN ('cancelled', 'rejected')`,
       [lotId]
     );
 
-    if (history.length > 0) {
+    if (active[0].count > 0) {
       await connection.rollback();
       return NextResponse.json(
         {
           error: 'Não é possível excluir este lote',
-          message: 'Este lote tem reservas registradas (mesmo canceladas) e não pode ser excluído.',
+          message: `Este lote tem ${active[0].count} reserva(s) ativa(s) (pendente, aprovada ou concluída). Cancele todas as reservas dele na página de Reservas para poder excluí-lo.`,
         },
         { status: 409 }
       );
     }
 
+    // A reserva cancelada continua como histórico, só sem este lote
+    await connection.execute('DELETE FROM purchase_request_lots WHERE lot_id = ?', [lotId]);
     await connection.execute('DELETE FROM lots WHERE id = ?', [lotId]);
     await connection.commit();
 
@@ -71,7 +76,8 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json(
         {
           error: 'Não é possível excluir este lote',
-          message: 'Este lote tem reservas registradas e não pode ser excluído.',
+          message:
+            'Uma reserva foi criada para este lote durante a exclusão. Tente novamente após cancelá-la.',
         },
         { status: 409 }
       );

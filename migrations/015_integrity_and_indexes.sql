@@ -1,7 +1,11 @@
 -- Migration: 015_integrity_and_indexes
 -- Description: Integridade e indices (MySQL 8.0.16+, que aplica CHECK).
 --   * purchase_request_lots.lot_id passa a ON DELETE RESTRICT: lote com historico de reserva nao
---     e apagado (nem em cascata, ao excluir quadra ou mapa).
+--     e apagado (nem em cascata, ao excluir quadra ou mapa) enquanto existir a linha da reserva.
+--     As rotas de exclusao removem essas linhas (so quando todas as reservas do lote estao
+--     encerradas: cancelled ou rejected) na mesma transacao; a reserva em purchase_requests fica.
+--   * purchase_requests.lot_id e map_id (legados, nunca preenchidos, FK CASCADE) sao removidos:
+--     com CASCADE, excluir lote ou mapa apagaria a reserva inteira.
 --   * lots.block_key (coluna gerada VIRTUAL, 0 quando o lote nao tem quadra) + UNIQUE
 --     (map_id, block_key, lot_number): o UNIQUE antigo nao barrava duplicatas de lote sem quadra,
 --     porque NULL nunca e igual a NULL. A coluna e VIRTUAL porque block_id tem FK com CASCADE e o
@@ -11,6 +15,11 @@
 -- Rollback (executar na ordem inversa; os CHECKs e a FK nova saem junto):
 --   ALTER TABLE `purchase_requests` ADD KEY `idx_status` (`status`), ADD KEY `idx_pr_user_id` (`user_id`),
 --     DROP KEY `idx_pr_status_created`, DROP KEY `idx_pr_user_created`;
+--   ALTER TABLE `purchase_requests` ADD COLUMN `lot_id` BIGINT UNSIGNED NULL DEFAULT NULL AFTER `id`,
+--     ADD COLUMN `map_id` BIGINT UNSIGNED NULL DEFAULT NULL AFTER `lot_id`, ADD KEY `idx_lot_id` (`lot_id`),
+--     ADD KEY `idx_map_id` (`map_id`),
+--     ADD CONSTRAINT `purchase_requests_ibfk_1` FOREIGN KEY (`lot_id`) REFERENCES `lots` (`id`) ON DELETE CASCADE,
+--     ADD CONSTRAINT `purchase_requests_ibfk_2` FOREIGN KEY (`map_id`) REFERENCES `maps` (`id`) ON DELETE CASCADE;
 --   ALTER TABLE `purchase_request_lots` DROP CHECK `prl_chk_agreed_price`, DROP CHECK `prl_chk_first_payment`,
 --     DROP CHECK `prl_chk_installments`, MODIFY COLUMN `first_payment` DECIMAL(10,2) DEFAULT NULL,
 --     DROP FOREIGN KEY `purchase_request_lots_lot_fk`,
@@ -31,6 +40,16 @@
 ALTER TABLE `purchase_request_lots`
   DROP FOREIGN KEY `purchase_request_lots_ibfk_2`,
   ADD CONSTRAINT `purchase_request_lots_lot_fk` FOREIGN KEY (`lot_id`) REFERENCES `lots` (`id`) ON DELETE RESTRICT;
+
+-- ==========================================
+-- Colunas legadas purchase_requests.lot_id / map_id (FK CASCADE): nenhum codigo as le ou grava.
+-- Os indices idx_lot_id e idx_map_id (so dessas colunas) saem junto com elas.
+-- ==========================================
+ALTER TABLE `purchase_requests`
+  DROP FOREIGN KEY `purchase_requests_ibfk_1`,
+  DROP FOREIGN KEY `purchase_requests_ibfk_2`,
+  DROP COLUMN `lot_id`,
+  DROP COLUMN `map_id`;
 
 -- ==========================================
 -- Unicidade de lote com ou sem quadra, precos e CHECKs

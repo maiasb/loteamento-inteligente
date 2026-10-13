@@ -1185,6 +1185,19 @@ export default function ReservationsPage() {
                               </div>
                             </div>
                           )}
+                          {(!reservation.lots || reservation.lots.length === 0) && (
+                            <div className="sm:col-span-2">
+                              <p className="text-[var(--foreground)] opacity-50 text-xs font-medium mb-2">
+                                Lotes Reservados
+                              </p>
+                              <p
+                                role="status"
+                                className="text-[var(--foreground)] opacity-70 text-sm bg-[var(--background)] p-3 rounded-lg border border-[var(--border)]"
+                              >
+                                Este lote não existe mais.
+                              </p>
+                            </div>
+                          )}
                           {reservation.contract && (
                             <div className="sm:col-span-2">
                               <p className="text-[var(--foreground)] opacity-50 text-xs font-medium mb-1">
@@ -1638,6 +1651,16 @@ export default function ReservationsPage() {
                   </svg>
                   Informações da Venda
                 </h3>
+
+                {/* Reserva sem lotes (lote excluído após o cancelamento) */}
+                {(!editingReservation.lots || editingReservation.lots.length === 0) && (
+                  <p
+                    role="status"
+                    className="mb-6 p-4 text-sm text-[var(--foreground)] opacity-70 bg-[var(--surface)] rounded-lg border border-[var(--border)]"
+                  >
+                    Este lote não existe mais.
+                  </p>
+                )}
 
                 {/* Lotes e Preços */}
                 {editingReservation.lots && editingReservation.lots.length > 0 && (

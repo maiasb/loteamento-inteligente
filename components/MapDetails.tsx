@@ -1111,6 +1111,7 @@ export default function MapDetails() {
           `Não é possível excluir este lote\n\n` +
             `O lote está ${lot.status === LotStatus.RESERVED ? 'reservado' : 'vendido'}.\n\n` +
             `📋 O que fazer:\n` +
+            `Só reservas e vendas ativas impedem a exclusão. Reservas canceladas não impedem.\n\n` +
             `1. Acesse a página de Reservas\n` +
             `2. Cancele a ${lot.status === LotStatus.RESERVED ? 'reserva' : 'venda'}\n` +
             `3. Tente excluir o lote novamente`

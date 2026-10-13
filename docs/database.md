@@ -29,7 +29,7 @@ excluía lotes sem quadra.
 | `maps`                  | Loteamentos (`id BIGINT`, gerado pela aplicação com `Date.now()`) | 1:N `blocks`, 1:N `lots`                                  |
 | `blocks`                | Quadras                                                           | N:1 `maps` (`mapId`, CASCADE)                             |
 | `lots`                  | Lotes                                                             | N:1 `maps` (`map_id`) e `blocks` (`block_id`), CASCADE    |
-| `purchase_requests`     | Reserva/solicitação de compra                                     | N:N com `lots` via `purchase_request_lots`                |
+| `purchase_requests`     | Reserva/solicitação de compra (permanece como histórico)          | N:N com `lots` via `purchase_request_lots`                |
 | `purchase_request_lots` | Lotes de cada reserva, com valores por lote                       | `purchase_request_id` (CASCADE), `lot_id` (**RESTRICT**)  |
 | `migrations`            | Controle do runner `lib/migrations.ts` (criada por ele)           | —                                                         |
 
@@ -52,13 +52,13 @@ excluía lotes sem quadra.
 - **purchase_requests:** `id`, `user_id`, `customer_name`, `customer_email`, `customer_phone`,
   `customer_cpf`, `message`, `payment_method` (texto, formas separadas por vírgula), `seller_name`, `seller_email`, `seller_phone`,
   `seller_cpf`, `contract`, `status` (`pending|approved|rejected|completed|cancelled`),
-  timestamps. `lot_id` e `map_id` existem mas são opcionais e o código não os preenche (a ligação
-  com lotes é feita por `purchase_request_lots`).
+  timestamps. A ligação com lotes é feita só por `purchase_request_lots` (as colunas legadas
+  `lot_id` e `map_id`, com FK CASCADE, foram removidas na 015: apagariam a reserva ao excluir o lote).
 - **purchase_request_lots:** `purchase_request_id`, `lot_id`, `agreed_price`, `first_payment`
   (ambos `DECIMAL(15,2)`), `installments`, `payment_method` (texto, formas separadas por vírgula).
-  CHECKs: preços `>= 0`, `installments > 0`. `lot_id` é `ON DELETE RESTRICT`: um lote que já
-  teve reserva (mesmo cancelada) não pode ser excluído, nem em cascata pela exclusão de quadra ou
-  mapa.
+  CHECKs: preços `>= 0`, `installments > 0`. `lot_id` é `ON DELETE RESTRICT`: enquanto houver
+  linha aqui, o lote não é excluído (nem em cascata). As rotas de exclusão apagam essas linhas
+  quando todas as reservas do lote estão encerradas (ver "Política de histórico").
 
 ## Convenções
 
@@ -77,7 +77,7 @@ excluía lotes sem quadra.
 | `lots.status` aceita `unavailable` (001) e `blocked` (013); o código usa `blocked` | Unificar em `blocked` numa spec, ajustando dados e ENUM      |
 | `blocks` em camelCase                                                              | Manter em código existente; em tabelas novas usar snake_case |
 | Numeração 001–007 e depois 012 a 015 (008–011 nunca existiram)                     | Próxima migration: 016                                       |
-| `purchase_requests.lot_id`/`map_id` (FKs CASCADE) e `users.username` sem uso       | Remover numa spec futura, após confirmar                     |
+| `users.username` sem uso                                                           | Remover numa spec futura, após confirmar                     |
 | Rotas antigas ainda usam `mysql.createConnection(dbConfig)`                        | Padrão: `executeQuery`/`getPool` de `lib/db.ts`              |
 | Hash de senha MD5 (login) e SHA-256 (`password/reset`)                             | Spec própria de autenticação                                 |
 | `POST /api/usuarios/criar` aceita `role` e `status` do corpo                       | Spec própria de autenticação                                 |
@@ -141,8 +141,19 @@ UPDATE users SET status = 'approved', role = 'dev' WHERE cpf = '<cpf só com dí
 - Sempre SQL parametrizado (`?`). Usar transação (`beginTransaction`) quando alterar mais de uma
   tabela, como em `lotes/reservar`.
 - Excluir mapa ou quadra apaga em cascata os lotes. As rotas de exclusão de mapa, quadra e lote
-  rodam em transação, travam os lotes com `FOR UPDATE` e recusam (409) quando há lotes `reserved` ou
-  `sold` ou qualquer linha em `purchase_request_lots`; a FK `RESTRICT` (erro 1451) é a rede de
-  segurança contra reservas criadas durante a exclusão.
+  rodam em transação, travam os lotes com `FOR UPDATE` e seguem a política de histórico abaixo; a
+  FK `RESTRICT` (erro 1451 → 409) é a rede de segurança contra reservas criadas durante a exclusão.
+
+### Política de histórico de reservas
+
+- Um lote (e, por consequência, a quadra e o mapa que o contêm) só pode ser excluído se **todas**
+  as reservas ligadas a ele estiverem encerradas: `cancelled` ou `rejected` (reprovada, nunca
+  chegou a ocupar o lote, então não é compromisso vigente). Qualquer reserva `pending`, `approved`
+  ou `completed`, ou lote `reserved`/`sold`, mantém o 409 com a condição na mensagem.
+- Ao excluir, as linhas de `purchase_request_lots` desses lotes são apagadas na mesma transação.
+  A reserva em `purchase_requests` permanece (cliente, vendedor, status), só sem aquele lote: a
+  listagem de `/api/reservas` devolve `lots` vazio ou menor, e a tela deve tratar a falta como
+  "lote não existe mais". Valores acordados (`agreed_price`, entrada, parcelas) do lote excluído
+  se perdem junto com a linha.
 - Dados de clientes (CPF, e-mail, telefone) são pessoais; não registrar em logs.
 - Sem rotina de backup versionada: definir uma antes de usar em produção.

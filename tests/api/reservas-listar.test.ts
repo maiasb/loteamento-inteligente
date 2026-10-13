@@ -59,6 +59,22 @@ describe('GET /api/reservas', () => {
     expect(json.reservations[1].lots).toHaveLength(1);
   });
 
+  it('reserva sem nenhum lote (lote excluído) continua na listagem com lots vazio', async () => {
+    mockFull([{ id: 1, status: 'cancelled', created_at: '2025-01-01 10:00:00' }], []);
+    const json = await (await listar()).json();
+    expect(json.reservations).toHaveLength(1);
+    expect(json.reservations[0].lots).toEqual([]);
+  });
+
+  it('modo minimal mantém reserva sem lotes quando não há filtro de mapa', async () => {
+    query
+      .mockResolvedValueOnce([{ id: 1, status: 'cancelled', created_at: '2025-01-01 10:00:00' }])
+      .mockResolvedValueOnce([]);
+    const json = await (await listar('?minimal=true')).json();
+    expect(json).toHaveLength(1);
+    expect(json[0].lots).toEqual([]);
+  });
+
   it('modo minimal também usa uma única query de lotes', async () => {
     query
       .mockResolvedValueOnce([{ id: 1, created_at: '2025-01-01 10:00:00' }])

@@ -160,7 +160,8 @@ Para reverter uma migration:
 **Data**: 2026-10-13
 **Descrição**: Integridade e índices (requer MySQL 8.0.16+ para os CHECKs).
 
-- `purchase_request_lots.lot_id`: FK `ON DELETE RESTRICT` (lote com histórico de reserva não é excluído, nem em cascata)
+- `purchase_request_lots.lot_id`: FK `ON DELETE RESTRICT` (lote com linha de reserva não é excluído, nem em cascata; as rotas de exclusão removem as linhas de reservas `cancelled`/`rejected` na mesma transação)
+- `purchase_requests.lot_id` e `map_id` (legados, nunca preenchidos, FK CASCADE) removidos, para que excluir lote ou mapa não apague a reserva
 - `lots.block_key` (coluna gerada VIRTUAL, `IFNULL(block_id, 0)`) e `UNIQUE (map_id, block_key, lot_number)`: o UNIQUE anterior não barrava duplicata de lote sem quadra (NULL ≠ NULL). VIRTUAL porque `block_id` tem FK com CASCADE
 - `lots.price` e `purchase_request_lots.first_payment` em `DECIMAL(15,2)`; CHECKs `price >= 0`, `agreed_price >= 0`, `first_payment >= 0`, `installments > 0`
 - Índices `purchase_requests (status, created_at, id)` e `(user_id, created_at, id)` para a paginação (`ORDER BY created_at DESC, id DESC`, sem filesort)

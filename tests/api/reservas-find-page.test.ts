@@ -26,6 +26,12 @@ describe('GET /api/reservas/find-page', () => {
     expect(sql).toContain('pr.created_at = ref.created_at AND pr.id >= ref.id');
   });
 
+  it('não depende de lotes: reserva sem lotes (lote excluído) continua com posição', async () => {
+    query.mockResolvedValueOnce([{ position: 1 }]);
+    await buscar('?reservationId=40');
+    expect(sqlOf(query.mock.calls[0])).not.toContain('purchase_request_lots');
+  });
+
   it('aplica os mesmos filtros da listagem', async () => {
     query.mockResolvedValueOnce([{ position: 1 }]);
     await buscar('?reservationId=40&status=pending&userId=7');

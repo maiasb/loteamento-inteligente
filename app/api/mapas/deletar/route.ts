@@ -38,24 +38,33 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    const [history] = await connection.execute<RowDataPacket[]>(
-      `SELECT COUNT(*) AS count FROM purchase_request_lots prl
+    // Reservas encerradas (cancelled, rejected) não impedem a exclusão; as ativas, sim
+    const [active] = await connection.execute<RowDataPacket[]>(
+      `SELECT COUNT(DISTINCT pr.id) AS count FROM purchase_request_lots prl
        INNER JOIN lots l ON l.id = prl.lot_id
-       WHERE l.map_id = ?`,
+       INNER JOIN purchase_requests pr ON pr.id = prl.purchase_request_id
+       WHERE l.map_id = ? AND COALESCE(pr.status, 'pending') NOT IN ('cancelled', 'rejected')`,
       [mapId]
     );
 
-    if (history[0].count > 0) {
+    if (active[0].count > 0) {
       await connection.rollback();
       return NextResponse.json(
         {
-          error:
-            'Não é possível excluir este mapa. Existem lotes com reservas registradas (mesmo canceladas).',
+          error: `Não é possível excluir este mapa. Existem ${active[0].count} reserva(s) ativa(s) (pendente, aprovada ou concluída) em lotes dele. Cancele essas reservas na página de Reservas para poder excluir.`,
+          count: active[0].count,
         },
         { status: 409 }
       );
     }
 
+    // As reservas canceladas continuam como histórico, só sem os lotes excluídos
+    await connection.execute(
+      `DELETE prl FROM purchase_request_lots prl
+       INNER JOIN lots l ON l.id = prl.lot_id
+       WHERE l.map_id = ?`,
+      [mapId]
+    );
     await connection.execute('DELETE FROM maps WHERE id = ?', [mapId]);
     await connection.commit();
 
@@ -65,7 +74,10 @@ export async function DELETE(request: NextRequest) {
 
     if ((error as { errno?: number }).errno === ER_ROW_IS_REFERENCED) {
       return NextResponse.json(
-        { error: 'Não é possível excluir este mapa. Existem lotes com reservas registradas.' },
+        {
+          error:
+            'Não é possível excluir este mapa. Uma reserva foi criada durante a exclusão. Tente novamente.',
+        },
         { status: 409 }
       );
     }

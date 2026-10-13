@@ -55,6 +55,12 @@ describe('PUT /api/reservas/atualizar', () => {
     expect(conn.commit).toHaveBeenCalledTimes(2);
   });
 
+  it('edita reserva cancelada que ficou sem lotes (lote excluído)', async () => {
+    statusNoBanco('cancelled');
+    expect((await atualizar({ ...base, userRole: 'admin', lots: [] })).status).toBe(200);
+    expect(conn.commit).toHaveBeenCalledTimes(1);
+  });
+
   it('grava telefone e CPF só com dígitos', async () => {
     statusNoBanco('pending');
     await atualizar({
