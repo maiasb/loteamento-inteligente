@@ -52,8 +52,13 @@ descartável). Restam:
       dashboard): vendedor vê só as próprias reservas; editar, confirmar e cancelar reserva só
       admin e dev; `userId` e `userRole` deixam de vir do corpo.
 - [ ] Mapa público com dados mínimos: `mapas/lotes` (usada por `/maps/[id]`) ainda devolve preço.
-- [ ] Migrar as cerca de 35 rotas que ainda usam `mysql.createConnection(dbConfig)` para o pool
-      (na Vercel, conexões avulsas esgotam o limite do banco).
+- [ ] Migrar as 17 rotas que ainda usam `mysql.createConnection(dbConfig)` para o pool (na Vercel,
+      conexões avulsas esgotam o limite do banco; tarefa 1.9 da spec). Transacionais:
+      `lotes/reservar`, `reserva/confirmacao` e `mapas/importar`. Simples: `lotes/atualizar`,
+      `lotes/stats`, `lotes/valido`, `reservas/stats` e, em `mapas/`, `atualizar`,
+      `atualizar-imagem`, `configurar-overlay`, `criar`, `editar`, `estatisticas`, `imagem`,
+      `quadras`, `verificar-lotes-reservados` e `migrar-overlay-cloudinary`. Um commit por rota,
+      com o teste ajustado para `useFakePool()` (`tests/helpers/db.ts`).
 - [ ] `GET /api/reservas` usa `SELECT *` e devolve CPF, e-mail e telefone de clientes: trocar por
       colunas explícitas junto com a autorização (avaliar com o lgpd-specialist).
 - [ ] Aviso desatualizado nas specs 003/010 (risco R14): as colunas `purchase_requests.lot_id` e
@@ -102,6 +107,33 @@ descartável). Restam:
       existe desde a migration 013).
 - [ ] Runner de migrations divide por `;`: não usar `;` dentro de literais de string em
       migrations. `process.loadEnvFile` exige Node 20.12 ou superior.
+
+- [ ] `lib/db.ts`: criar `withTransaction(fn)` (conexão do pool, `beginTransaction`,
+      `commit`/`rollback` e `release` sempre) para tirar o boilerplate de transação repetido nas
+      rotas, e remover o export `createConnection()`, que na verdade é `pool.getConnection()` e
+      confunde com o do mysql2. O dev-database revisa begin, rollback e release. Usar primeiro nas
+      3 rotas transacionais acima.
+- [ ] `reserva/confirmacao`: o `UPDATE lots ... AND status = 'reserved'` não confere
+      `affectedRows`; a reserva pode virar `completed` com o lote sem mudar. Muda comportamento:
+      abrir spec antes (arquiteto-specs), com teste que falha primeiro. Avaliar também travar os
+      lotes na mesma ordem de `lotes/reservar` (dev-database).
+- [ ] `lotes/atualizar`: conferir (dev-database) se consegue mudar o status de um lote reservado
+      ou vendido fora do fluxo de reserva; se puder, validar a transição.
+- [ ] Regra de reservas dentro dos `route.ts`: extrair `reservarLotes`, `finalizarReserva` e
+      `importarMapa` para funções em `lib/` que recebem a conexão e deixam a rota só com entrada,
+      saída e erro HTTP, com a tabela de transições de status de reserva e lote em um só lugar.
+      Fazer depois da autorização por rota (item acima), para a checagem de papel morar na função
+      de caso de uso. Sem repository, interfaces nem classes (dev-arquitetura).
+- [ ] As 8 consultas de estatística de lotes e reservas (`dashboard/stats`, `mapas/estatisticas`,
+      `lotes/stats`, `reservas`, `reservas/stats`, `reservas/find-page` e outras) podem definir
+      "vendido" e "reservado" de formas diferentes. O dev-database confere antes de qualquer
+      módulo comum.
+- [ ] ADR 004 (acesso ao banco): conexões só por `lib/db.ts` com `withTransaction`, e casos de uso
+      como funções em `lib/`. Escrever depois do `withTransaction` provado (dev-arquitetura).
+- [ ] Docs com contagem e termos desatualizados: `CLAUDE.md` ("40 rotas antigas" e a linha
+      "Banco: MariaDB" contra "MySQL 8" na stack), `docs/database.md` ("rotas antigas ainda
+      usam `createConnection`") e `docs/architecture.md` (seção "Pontos de atenção" e conexões
+      curtas). Atualizar quando a migração de conexão terminar.
 
 ## Testes
 
