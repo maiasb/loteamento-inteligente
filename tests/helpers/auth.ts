@@ -4,12 +4,12 @@ import { executeQuery, getPool } from '@/lib/db';
 import { hashSessionToken } from '@/lib/auth/session';
 
 /** Resposta falsa para consultas cujo SQL casa com `match` (a primeira regra que casar vence). */
-export interface SqlRule {
+export type SqlRule = {
   match: RegExp;
   result: unknown | ((params: unknown[], sql: string) => unknown);
-}
+};
 
-export interface FakeDb {
+export type FakeDb = {
   /** Todas as consultas executadas (executeQuery e conexões de transação), em ordem. */
   calls: Array<{ sql: string; params: unknown[] }>;
   connection: {
@@ -20,7 +20,7 @@ export interface FakeDb {
   };
   /** Consultas cujo SQL casa com o padrão. */
   where: (pattern: RegExp) => Array<{ sql: string; params: unknown[] }>;
-}
+};
 
 export const OK_WRITE = { affectedRows: 1, insertId: 1 };
 
@@ -93,13 +93,13 @@ export function sessionRule(overrides: Record<string, unknown> = {}): SqlRule {
   };
 }
 
-interface RequestOptions {
+type RequestOptions = {
   body?: unknown;
   cookie?: string | null;
   headers?: Record<string, string>;
   /** false = sem Origin (para testar CSRF). */
   origin?: string | false;
-}
+};
 
 /** Requisição same-origin (Origin http://localhost) com cookie de sessão opcional. */
 export function apiRequest(url: string, method: string, options: RequestOptions = {}) {

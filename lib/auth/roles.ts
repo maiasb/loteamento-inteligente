@@ -10,10 +10,10 @@ export function isUserRole(value: unknown): value is UserRole {
   return value === UserRole.DEV || value === UserRole.ADMIN || value === UserRole.VENDEDOR;
 }
 
-interface Account {
+type Account = {
   id: number;
   role: UserRole;
-}
+};
 
 /**
  * Hierarquia de contas (RN-14). Só admin/dev gerenciam contas; admin não mexe em contas dev.

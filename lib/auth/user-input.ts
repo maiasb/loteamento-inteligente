@@ -1,12 +1,12 @@
 import { validateCPF } from '@/utils/formatters';
 
-export interface UserFields {
+export type UserFields = {
   name: string;
   email: string;
   cpf: string;
   phone: string;
   creci: string | null;
-}
+};
 
 type ParseResult<T> = { ok: true; data: T } | { ok: false; error: string };
 

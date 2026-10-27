@@ -6,13 +6,13 @@ import { errorResponse } from './request';
 import { canManageAccount, countOtherActiveDevs } from './roles';
 import type { SessionUser } from './session';
 
-export interface TargetAccount {
+export type TargetAccount = {
   id: number;
   name: string;
   role: UserRole;
   status: string;
   active: boolean;
-}
+};
 
 /** Converte id vindo do corpo/URL (número ou texto) em inteiro positivo, ou null. */
 export function parseUserId(value: unknown): number | null {

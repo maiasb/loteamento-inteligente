@@ -5,11 +5,11 @@ import { useIsMounted } from '@/hooks/useIsMounted';
 
 type Theme = 'light' | 'dark';
 
-interface ThemeContextType {
+type ThemeContextType = {
   theme: Theme;
   toggleTheme: () => Theme;
   setTheme: (theme: Theme) => void;
-}
+};
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 

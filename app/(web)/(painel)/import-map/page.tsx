@@ -10,7 +10,7 @@ const API_URL = '/api';
 
 type SheetRow = Record<string, string | number | undefined>;
 
-interface ImportReservationData {
+type ImportReservationData = {
   customer_name: string | number;
   customer_email: string | number;
   customer_phone: string | number;
@@ -19,9 +19,9 @@ interface ImportReservationData {
   payment_method: string;
   status: string;
   notes: string | number;
-}
+};
 
-interface ImportLotData {
+type ImportLotData = {
   lotNumber: string;
   status: string;
   price: number;
@@ -29,25 +29,25 @@ interface ImportLotData {
   description: string | number;
   features: string[];
   reservation?: ImportReservationData;
-}
+};
 
-interface ImportBlockData {
+type ImportBlockData = {
   name: string;
   description: string;
   lots: ImportLotData[];
-}
+};
 
-interface ImportData {
+type ImportData = {
   name: string;
   blocks: ImportBlockData[];
-}
+};
 
-interface ImportResult {
+type ImportResult = {
   mapId: string;
   mapName: string;
   totalBlocks: number;
   totalLots: number;
-}
+};
 
 export default function ImportMapPage() {
   const router = useRouter();

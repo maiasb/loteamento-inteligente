@@ -4,9 +4,9 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import axios from 'axios';
 
-interface ThemeToggleProps {
+type ThemeToggleProps = {
   variant?: 'floating' | 'inline';
-}
+};
 
 export default function ThemeToggle({ variant = 'floating' }: ThemeToggleProps) {
   const { theme, toggleTheme } = useTheme();

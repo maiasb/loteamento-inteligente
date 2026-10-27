@@ -5,7 +5,7 @@ import { compressImage, getBase64Size } from '@/lib/imageUtils';
 
 const API_URL = '/api';
 
-interface MapApiResponse {
+type MapApiResponse = {
   mapId?: string;
   id?: string;
   name?: string;
@@ -16,7 +16,7 @@ interface MapApiResponse {
   createdAt?: string;
   updatedAt?: string;
   lots?: unknown[];
-}
+};
 
 export function useMapOperations() {
   const [maps, setMaps] = useState<Map[]>([]);

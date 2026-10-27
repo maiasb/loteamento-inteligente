@@ -8,7 +8,7 @@ import { useAuth } from '@/contexts/AuthContext';
 
 const API_URL = '/api';
 
-interface DashboardStats {
+type DashboardStats = {
   summary: {
     totalMaps: number;
     totalLots: number;
@@ -35,7 +35,7 @@ interface DashboardStats {
     soldLots: number;
     blockedLots: number;
   }>;
-}
+};
 
 export default function DashboardPage() {
   const router = useRouter();

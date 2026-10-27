@@ -1,7 +1,7 @@
 import { useRef, useState, useEffect, useCallback } from 'react';
 import { Lot, LotArea } from '@/types';
 
-interface UseInteractiveMapProps {
+type UseInteractiveMapProps = {
   imageUrl: string;
   lots: Lot[];
   onLotClick?: (lot: Lot) => void;
@@ -11,7 +11,7 @@ interface UseInteractiveMapProps {
   selectedLotIds?: string[]; // Novo: suporte para múltiplos lotes selecionados
   drawingMode?: 'polygon' | 'rectangle';
   previewArea?: LotArea | null;
-}
+};
 
 export function useInteractiveMap({
   imageUrl,

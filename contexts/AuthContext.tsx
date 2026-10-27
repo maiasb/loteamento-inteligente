@@ -20,7 +20,7 @@ const AUTH_ENDPOINTS = ['/usuarios/login', '/usuarios/me', '/usuarios/logout'];
 
 export type LoginResult = { ok: true; user: User } | { ok: false; message: string };
 
-interface AuthContextType {
+type AuthContextType = {
   user: User | null;
   /** true enquanto o servidor ainda não respondeu se existe sessão válida (/me). */
   isLoading: boolean;
@@ -31,7 +31,7 @@ interface AuthContextType {
   hasRole: (role: UserRole) => boolean;
   canAccessUsers: boolean;
   updateUserTheme: (theme: 'light' | 'dark') => void;
-}
+};
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 

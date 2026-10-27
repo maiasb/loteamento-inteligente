@@ -6,18 +6,18 @@ import { uploadToCloudinary } from '@/lib/cloudinary';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 120;
 
-interface MigrationResult {
+type MigrationResult = {
   mapId: number;
   status: 'skip' | 'migrated' | 'error';
   reason?: string;
   url?: string;
   error?: string;
-}
+};
 
-interface OverlayConfig {
+type OverlayConfig = {
   imageUrl?: string;
   [key: string]: unknown;
-}
+};
 
 /**
  * Migra overlay_config com base64 inline para URLs do Cloudinary.

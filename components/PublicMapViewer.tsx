@@ -5,7 +5,7 @@ import { GoogleMap, useLoadScript } from '@react-google-maps/api';
 import { Lot, Block, LotStatus, OverlayConfig } from '@/types';
 import { GOOGLE_MAPS_API_KEY, GOOGLE_MAPS_LIBRARIES } from '@/lib/googleMapsConfig';
 
-interface PublicMapViewerProps {
+type PublicMapViewerProps = {
   address?: string;
   blocks?: Block[];
   lots?: Lot[];
@@ -17,7 +17,7 @@ interface PublicMapViewerProps {
   placingLotLabel?: string; // Label do lote sendo posicionado (ex: "Lote 5 (3/10)")
   showOverlay?: boolean; // Controla visibilidade do overlay SVG
   showMarkers?: boolean; // Controla visibilidade das marcações dos lotes
-}
+};
 
 const mapContainerStyle = {
   width: '100%',

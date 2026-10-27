@@ -5,7 +5,7 @@ import { executeQuery, type QueryParam } from '@/lib/db';
 // Forçar rota dinâmica
 export const dynamic = 'force-dynamic';
 
-interface MapResponse {
+type MapResponse = {
   mapId: string;
   name: string;
   description: string;
@@ -16,7 +16,7 @@ interface MapResponse {
   createdAt: string | null;
   updatedAt: string | null;
   imageUrl?: string;
-}
+};
 
 export async function GET(request: NextRequest) {
   try {

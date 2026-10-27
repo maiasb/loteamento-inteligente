@@ -9,19 +9,19 @@ import { Block, Lot, OverlayConfig } from '@/types';
 export const dynamic = 'force-dynamic';
 export const fetchCache = 'force-no-store';
 
-interface MapData {
+type MapData = {
   id: string;
   name: string;
   description: string | null;
   address: string | null;
   overlayConfig?: OverlayConfig | null;
-}
+};
 
-interface ViewData {
+type ViewData = {
   map: MapData;
   blocks: Block[];
   lots: Lot[];
-}
+};
 
 export default function ViewMapPage() {
   const params = useParams();

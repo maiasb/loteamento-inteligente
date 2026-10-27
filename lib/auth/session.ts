@@ -11,7 +11,7 @@ export const SESSION_ABSOLUTE_SECONDS = 7 * 24 * 60 * 60;
 const LAST_SEEN_REFRESH_SECONDS = 5 * 60;
 
 /** Usuário da sessão, sempre lido do banco a cada requisição (papel, status e ativo atuais). */
-export interface SessionUser {
+export type SessionUser = {
   id: number;
   name: string;
   email: string;
@@ -24,12 +24,12 @@ export interface SessionUser {
   /** true = senha provisória: só `me`, `senha` e `logout` são permitidos. */
   firstLogin: boolean;
   themePreference: 'light' | 'dark';
-}
+};
 
-export interface ActiveSession {
+export type ActiveSession = {
   sessionId: number;
   user: SessionUser;
-}
+};
 
 /** Formato enviado ao navegador (sem senha, hash nem token). */
 export function toPublicUser(user: SessionUser) {

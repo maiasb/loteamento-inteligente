@@ -4,16 +4,16 @@ import { dbConfig } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
-interface ImportLotReservation {
+type ImportLotReservation = {
   customer_name: string;
   customer_email: string;
   customer_phone: string;
   customer_cpf?: string;
   payment_method?: 'cash' | 'financing' | 'installments';
   status?: string; // Aceita qualquer string para mapear depois
-}
+};
 
-interface ImportLot {
+type ImportLot = {
   lotNumber: string;
   status?: string;
   price: number;
@@ -21,22 +21,22 @@ interface ImportLot {
   description?: string;
   features?: string[];
   reservation?: ImportLotReservation;
-}
+};
 
-interface ImportBlock {
+type ImportBlock = {
   name: string;
   description?: string;
   lots: ImportLot[];
-}
+};
 
-interface ImportMap {
+type ImportMap = {
   name: string;
   imageUrl?: string;
   imageType?: string;
   width?: number;
   height?: number;
   blocks: ImportBlock[];
-}
+};
 
 const LOT_STATUSES = ['available', 'reserved', 'sold', 'unavailable', 'blocked'];
 

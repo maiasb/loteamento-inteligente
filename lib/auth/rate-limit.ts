@@ -3,11 +3,11 @@ import type { RowDataPacket } from 'mysql2/promise';
 import { executeQuery } from '@/lib/db';
 import { errorResponse, sha256Hex } from './request';
 
-export interface RateLimitRule {
+export type RateLimitRule = {
   kind: string;
   max: number;
   windowSeconds: number;
-}
+};
 
 const FIFTEEN_MINUTES = 15 * 60;
 const ONE_HOUR = 60 * 60;
@@ -25,11 +25,11 @@ export const RATE_LIMITS = {
   resetCodeIp: { kind: 'reset_code_ip', max: 20, windowSeconds: FIFTEEN_MINUTES },
 } satisfies Record<string, RateLimitRule>;
 
-export interface RateLimitStatus {
+export type RateLimitStatus = {
   allowed: boolean;
   /** Segundos até a tentativa mais antiga sair da janela (0 se permitido). */
   retryAfter: number;
-}
+};
 
 function subjectHash(rule: RateLimitRule, subject: string): string {
   return sha256Hex(`${rule.kind}:${subject}`);

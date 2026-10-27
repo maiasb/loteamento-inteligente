@@ -5,7 +5,7 @@ import { validateCPF, parseCurrency } from '@/utils/formatters';
 
 const API_URL = '/api';
 
-interface FormData {
+type FormData = {
   customerName: string;
   customerEmail: string;
   customerPhone: string;
@@ -22,9 +22,9 @@ interface FormData {
   installments: number;
   reservationDate: string;
   lotPaymentMethods: Record<string, string[]>;
-}
+};
 
-interface ReservationLotDetail {
+type ReservationLotDetail = {
   lotId: string;
   mapId: string;
   blockId: string | null;
@@ -32,9 +32,9 @@ interface ReservationLotDetail {
   firstPayment: number | null;
   installments: number | null;
   paymentMethod: string | null;
-}
+};
 
-interface ReservationRequest {
+type ReservationRequest = {
   lotIds: string[];
   lotDetails: ReservationLotDetail[];
   customerName: string;
@@ -50,7 +50,7 @@ interface ReservationRequest {
   reservationDate?: string;
   userId?: string;
   paymentMethod?: string;
-}
+};
 
 export function usePurchaseForm(
   lots: Lot[],

@@ -6,12 +6,12 @@ import { usePurchaseForm } from '@/hooks/usePurchaseForm';
 import { useAuth } from '@/contexts/AuthContext';
 import { showAlert, showConfirm } from '@/hooks/useCustomAlert';
 
-interface PurchaseModalProps {
+type PurchaseModalProps = {
   lots: Lot[]; // Mudado de lot: Lot para lots: Lot[]
   onClose: () => void;
   onSuccess: (reservationId?: string) => void;
   onToggleLotStatus?: (lotId: string, currentStatus: LotStatus) => Promise<void>;
-}
+};
 
 export default function PurchaseModal({
   lots,

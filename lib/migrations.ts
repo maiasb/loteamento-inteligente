@@ -3,11 +3,11 @@ import fs from 'fs';
 import path from 'path';
 import type { RowDataPacket } from 'mysql2/promise';
 
-export interface Migration {
+export type Migration = {
   id: number;
   name: string;
   executed_at: Date;
-}
+};
 
 /**
  * Cria a tabela de controle de migrations se não existir
@@ -119,12 +119,12 @@ export async function runPendingMigrations(): Promise<void> {
   }
 }
 
-export interface MigrationStatus {
+export type MigrationStatus = {
   name: string;
   executed: boolean;
   /** Registrada como executada, mas o arquivo não existe mais em migrations/ */
   fileMissing: boolean;
-}
+};
 
 /**
  * Lista o status de cada migration: arquivos em migrations/ (executados ou pendentes) e

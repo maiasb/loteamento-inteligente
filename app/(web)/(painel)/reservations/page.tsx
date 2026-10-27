@@ -12,7 +12,7 @@ export const dynamic = 'force-dynamic';
 
 const API_URL = '/api';
 
-interface ReservationLot {
+type ReservationLot = {
   id: number;
   lot_number?: string;
   map_name?: string;
@@ -22,11 +22,11 @@ interface ReservationLot {
   first_payment?: number | null;
   installments?: number | null;
   payment_method?: string | null;
-}
+};
 
 type RequestParams = Record<string, string | number | undefined>;
 
-interface Reservation {
+type Reservation = {
   id: number;
   lot_id: number;
   seller_id: number | null;
@@ -49,7 +49,7 @@ interface Reservation {
   created_at: string;
   updated_at?: string;
   lots?: ReservationLot[];
-}
+};
 
 // Funções auxiliares para formatação de moeda
 const formatCurrency = (value: number | string): string => {

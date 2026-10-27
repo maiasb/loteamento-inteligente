@@ -3669,13 +3669,13 @@ export default function MapDetails() {
 }
 
 // Componente de formulário de lote
-interface LotFormProps {
+type LotFormProps = {
   blockId: string;
   blockName: string;
   onSave: (lot: Lot) => void;
   onCancel: () => void;
   onSubmitChange?: (canSubmit: boolean, submit: () => void) => void;
-}
+};
 
 function LotForm({ blockId, blockName, onSave, onSubmitChange }: LotFormProps) {
   const [lotNumber, setLotNumber] = useState('');
@@ -3831,7 +3831,7 @@ function LotForm({ blockId, blockName, onSave, onSubmitChange }: LotFormProps) {
 }
 
 // Componente de Card de Quadra com carregamento dinâmico de lotes
-interface BlockCardProps {
+type BlockCardProps = {
   block: Block;
   mapId: string;
   blockLots: Lot[];
@@ -3855,7 +3855,7 @@ interface BlockCardProps {
   onStartSequentialPlacing?: (blockId: string, lots?: Lot[]) => void;
   isSequentialPlacing?: boolean;
   multiSelectAction?: 'delete' | 'block' | 'unblock' | null;
-}
+};
 
 function BlockCard({
   blockLots,

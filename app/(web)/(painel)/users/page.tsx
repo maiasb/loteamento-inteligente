@@ -11,7 +11,7 @@ export const dynamic = 'force-dynamic';
 
 const API_URL = '/api';
 
-interface ResetRequest {
+type ResetRequest = {
   id: number;
   status: 'open' | 'issued';
   created_at: string;
@@ -19,14 +19,14 @@ interface ResetRequest {
   name: string;
   email: string;
   phone: string | null;
-}
+};
 
-interface SecretNotice {
+type SecretNotice = {
   title: string;
   description: string;
   label: string;
   value: string;
-}
+};
 
 export default function UsersPage() {
   const { user: currentUser, canAccessUsers } = useAuth();

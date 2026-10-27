@@ -2,14 +2,14 @@
 
 import { useId, useState } from 'react';
 
-interface PasswordFieldProps {
+type PasswordFieldProps = {
   label: string;
   value: string;
   onChange: (value: string) => void;
   autoComplete: 'current-password' | 'new-password';
   placeholder?: string;
   hint?: string;
-}
+};
 
 export default function PasswordField({
   label,

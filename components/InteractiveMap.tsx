@@ -5,7 +5,7 @@ import { Lot, LotArea, LotStatus } from '@/types';
 import { useInteractiveMap } from '@/hooks/useInteractiveMap';
 import { loadPdfJs } from '@/lib/pdfjs-wrapper';
 
-interface InteractiveMapProps {
+type InteractiveMapProps = {
   imageUrl: string;
   lots: Lot[];
   onLotClick?: (lot: Lot) => void;
@@ -15,7 +15,7 @@ interface InteractiveMapProps {
   selectedLotIds?: string[]; // Novo: suporte para múltiplos lotes selecionados
   drawingMode?: 'polygon' | 'rectangle';
   previewArea?: LotArea | null;
-}
+};
 
 export default function InteractiveMap({
   imageUrl,
@@ -46,7 +46,7 @@ export default function InteractiveMap({
     if (imageUrl.startsWith('data:application/pdf')) {
       setIsPDF(true);
       setIsConverting(true);
-      
+
       const loadPDF = async () => {
         try {
           const pdfjsLib = await loadPdfJs();
@@ -55,18 +55,18 @@ export default function InteractiveMap({
           const page = await pdf.getPage(1);
           const scale = 4;
           const viewport = page.getViewport({ scale });
-          
+
           const canvas = document.createElement('canvas');
           const context = canvas.getContext('2d');
           canvas.height = viewport.height;
           canvas.width = viewport.width;
-          
+
           if (context) {
             await page.render({
               canvasContext: context,
-              viewport: viewport
+              viewport: viewport,
             }).promise;
-            
+
             const imageData = canvas.toDataURL('image/png', 1.0);
             setPdfImageUrl(imageData);
           }
@@ -136,32 +136,42 @@ export default function InteractiveMap({
   }, [handleZoomIn, handleZoomOut, containerRef]);
 
   return (
-    <div 
-      ref={containerRef} 
-      className="relative"
-      style={{ touchAction: 'none' }}
-    >
+    <div ref={containerRef} className="relative" style={{ touchAction: 'none' }}>
       {/* Loading durante conversão de PDF */}
       {isConverting ? (
         <div className="border-2 border-[var(--border)] rounded-lg bg-[var(--surface)] min-h-[500px] relative overflow-hidden">
           {/* Skeleton animado de fundo */}
           <div className="absolute inset-0 bg-gradient-to-r from-[var(--surface)] via-[var(--border)] to-[var(--surface)] animate-pulse"></div>
-          
+
           {/* Padrão de grade simulando um mapa */}
           <div className="absolute inset-0 opacity-20">
             <div className="grid grid-cols-8 grid-rows-6 h-full gap-4 p-8">
               {Array.from({ length: 48 }).map((_, i) => (
-                <div key={i} className="bg-[var(--border)] rounded animate-pulse" style={{ animationDelay: `${i * 0.05}s` }}></div>
+                <div
+                  key={i}
+                  className="bg-[var(--border)] rounded animate-pulse"
+                  style={{ animationDelay: `${i * 0.05}s` }}
+                ></div>
               ))}
             </div>
           </div>
-          
+
           {/* Indicador de loading centralizado */}
           <div className="absolute inset-0 flex items-center justify-center bg-[var(--background)]/60 backdrop-blur-sm">
             <div className="text-center">
               <div className="inline-flex items-center justify-center w-16 h-16 bg-[var(--accent)]/20 rounded-full mb-4">
-                <svg className="w-8 h-8 text-[var(--accent)] animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                <svg
+                  className="w-8 h-8 text-[var(--accent)] animate-spin"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2.5}
+                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                  />
                 </svg>
               </div>
               <p className="text-[var(--foreground)] font-semibold mb-1">Convertendo PDF...</p>
@@ -172,11 +182,23 @@ export default function InteractiveMap({
       ) : !effectiveImageUrl || effectiveImageUrl.trim() === '' ? (
         /* Sem imagem cadastrada */
         <div className="border-2 border-dashed border-gray-300 rounded-lg p-12 text-center bg-gray-50">
-          <svg className="w-24 h-24 mx-auto mb-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+          <svg
+            className="w-24 h-24 mx-auto mb-4 text-gray-400"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+            />
           </svg>
           <p className="text-gray-600 font-medium mb-2">Nenhuma imagem do mapa carregada</p>
-          <p className="text-gray-500 text-sm">Adicione uma imagem ao mapa para começar a desenhar os lotes</p>
+          <p className="text-gray-500 text-sm">
+            Adicione uma imagem ao mapa para começar a desenhar os lotes
+          </p>
         </div>
       ) : (
         /* Mapa pronto */
@@ -195,11 +217,11 @@ export default function InteractiveMap({
             onTouchMove={handleTouchMove}
             onTouchEnd={handleTouchEnd}
             className="border border-gray-300 rounded-lg shadow-lg cursor-crosshair max-w-full touch-none select-none"
-            style={{ 
+            style={{
               touchAction: 'none',
               WebkitUserSelect: 'none',
               WebkitTouchCallout: 'none',
-              userSelect: 'none'
+              userSelect: 'none',
             }}
           />
         </>
@@ -238,26 +260,54 @@ export default function InteractiveMap({
           {/* Dica de navegação - visível em telas maiores */}
           <div className="hidden md:block absolute bottom-4 right-4 bg-white/95 backdrop-blur-sm px-3 py-2 rounded-lg shadow-lg border border-gray-200 text-xs text-gray-600 max-w-xs">
             <div className="flex items-center gap-2 mb-1">
-              <svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              <svg
+                className="w-4 h-4 text-blue-500"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                />
               </svg>
               <span className="font-semibold text-gray-700">Navegação:</span>
             </div>
             <ul className="space-y-0.5 ml-6">
-              <li>🖱️ <strong>Botão direito:</strong> Arrastar mapa</li>
-              <li>🔍 <strong>Scroll:</strong> Zoom</li>
+              <li>
+                🖱️ <strong>Botão direito:</strong> Arrastar mapa
+              </li>
+              <li>
+                🔍 <strong>Scroll:</strong> Zoom
+              </li>
             </ul>
           </div>
 
           {/* Dica mobile - visível apenas em telas pequenas */}
           <div className="md:hidden absolute bottom-4 right-4 bg-white/95 backdrop-blur-sm px-3 py-2 rounded-lg shadow-lg border border-gray-200 text-xs text-gray-600">
             <div className="flex items-center gap-1.5">
-              <svg className="w-3.5 h-3.5 text-blue-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              <svg
+                className="w-3.5 h-3.5 text-blue-500 flex-shrink-0"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                />
               </svg>
-              <span>👆 <strong>1 dedo:</strong> Arrastar</span>
+              <span>
+                👆 <strong>1 dedo:</strong> Arrastar
+              </span>
               <span className="mx-1">•</span>
-              <span>🤏 <strong>2 dedos:</strong> Zoom</span>
+              <span>
+                🤏 <strong>2 dedos:</strong> Zoom
+              </span>
             </div>
           </div>
         </>
@@ -300,22 +350,22 @@ export default function InteractiveMap({
             <span className="font-medium">Status:</span>{' '}
             <span
               className={
-              hoveredLot.status === LotStatus.AVAILABLE
-                ? 'font-semibold text-green-700'
-                : hoveredLot.status === LotStatus.RESERVED
-                ? 'font-semibold text-amber-700'
-                : hoveredLot.status === LotStatus.BLOCKED
-                ? 'font-semibold text-gray-500'
-                : 'font-semibold text-red-700'
+                hoveredLot.status === LotStatus.AVAILABLE
+                  ? 'font-semibold text-green-700'
+                  : hoveredLot.status === LotStatus.RESERVED
+                    ? 'font-semibold text-amber-700'
+                    : hoveredLot.status === LotStatus.BLOCKED
+                      ? 'font-semibold text-gray-500'
+                      : 'font-semibold text-red-700'
               }
             >
               {hoveredLot.status === LotStatus.AVAILABLE
-              ? 'Disponível'
-              : hoveredLot.status === LotStatus.RESERVED
-              ? 'Reservado'
-              : hoveredLot.status === LotStatus.BLOCKED
-              ? 'Bloqueado'
-              : 'Vendido'}
+                ? 'Disponível'
+                : hoveredLot.status === LotStatus.RESERVED
+                  ? 'Reservado'
+                  : hoveredLot.status === LotStatus.BLOCKED
+                    ? 'Bloqueado'
+                    : 'Vendido'}
             </span>
           </p>
           <p className="text-sm text-gray-700 mb-1">

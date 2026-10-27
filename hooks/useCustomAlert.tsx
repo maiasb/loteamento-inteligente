@@ -4,18 +4,18 @@ import { useCallback } from 'react';
 import { createRoot } from 'react-dom/client';
 import CustomAlert from '@/components/CustomAlert';
 
-interface AlertOptions {
+type AlertOptions = {
   title?: string;
   message: string;
   type?: 'success' | 'error' | 'warning' | 'info';
-}
+};
 
-interface ConfirmOptions {
+type ConfirmOptions = {
   title?: string;
   message: string;
   confirmText?: string;
   cancelText?: string;
-}
+};
 
 // Função helper para criar e mostrar alert
 export const showAlert = ({ title, message, type = 'info' }: AlertOptions) => {

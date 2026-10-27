@@ -6,7 +6,7 @@ import { GoogleMap, useLoadScript, OverlayView } from '@react-google-maps/api';
 import { useCustomAlert } from '@/hooks/useCustomAlert';
 import { GOOGLE_MAPS_API_KEY, GOOGLE_MAPS_LIBRARIES } from '@/lib/googleMapsConfig';
 
-export interface OverlayConfig {
+export type OverlayConfig = {
   imageUrl: string;
   bounds: {
     north: number;
@@ -16,14 +16,14 @@ export interface OverlayConfig {
   };
   opacity: number;
   rotation: number;
-}
+};
 
-interface SVGOverlayEditorProps {
+type SVGOverlayEditorProps = {
   initialCenter?: { lat: number; lng: number };
   initialOverlay?: OverlayConfig | null;
   onSave: (overlay: OverlayConfig | null) => void;
   onCancel: () => void;
-}
+};
 
 const mapContainerStyle = {
   width: '100%',

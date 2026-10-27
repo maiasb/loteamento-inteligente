@@ -4,18 +4,18 @@ import React, { useState } from 'react';
 import PublicMapViewer from './PublicMapViewer';
 import { Lot, Block, OverlayConfig } from '@/types';
 
-interface ViewOnlyLotMapProps {
+type ViewOnlyLotMapProps = {
   mapName: string;
   address?: string;
   overlayConfig?: OverlayConfig | null;
   blocks: Block[];
   lots: Lot[];
-}
+};
 
-interface LotModalProps {
+type LotModalProps = {
   lot: Lot | null;
   onClose: () => void;
-}
+};
 
 function LotInfoModal({ lot, onClose }: LotModalProps) {
   if (!lot) return null;

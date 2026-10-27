@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Lot, LotStatus, Block, ReservationSummary, ReservationLotSummary } from '@/types';
 
-interface LotSelectorProps {
+type LotSelectorProps = {
   lots: Lot[];
   blocks?: Block[];
   onLotSelect?: (lot: Lot) => void;
@@ -25,7 +25,7 @@ interface LotSelectorProps {
   externalViewingLot?: Lot | null; // Lote para visualizar vindo de fora (ex: clique no mapa)
   onCloseExternalViewing?: () => void; // Callback para fechar visualização externa
   multiSelectAction?: 'delete' | 'block' | 'unblock' | null; // Tipo de ação em lote ativa
-}
+};
 
 export default function LotSelector({
   lots,

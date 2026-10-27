@@ -8,15 +8,15 @@ import {
   type SessionUser,
 } from './session';
 
-export interface AuthSession {
+export type AuthSession = {
   user: SessionUser;
   sessionId: number;
-}
+};
 
-export interface GuardOptions {
+export type GuardOptions = {
   /** Só `me`, `senha` e `logout` ligam isto: permite a sessão com senha provisória (first_login). */
   allowPasswordChange?: boolean;
-}
+};
 
 /**
  * Exige sessão válida. Devolve a sessão ou uma NextResponse pronta (401, 403 ou 500) que a rota

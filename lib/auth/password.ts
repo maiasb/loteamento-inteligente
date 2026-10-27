@@ -33,11 +33,11 @@ const COMMON_PASSWORDS = new Set([
   'valedoscarajas',
 ]);
 
-interface ScryptParams {
+type ScryptParams = {
   N: number;
   r: number;
   p: number;
-}
+};
 
 function scryptAsync(
   password: string,
