@@ -41,7 +41,7 @@ docker compose up --build     # banco + app em container (http://localhost:3000)
 | `contexts/`                         | Providers globais (Auth, Theme)                                |
 | `lib/`                              | Infra: banco (`db.ts`), Cloudinary, migrations, config de libs |
 | `utils/`                            | Funções puras (formatação, validação)                          |
-| `types/index.ts`                    | Tipos de domínio                                               |
+| `types/<Tipo>.ts`                   | Um tipo de domínio por arquivo; `index.ts` só reexporta        |
 | `migrations/`                       | SQL numerado (MySQL 8), executado em ordem; próxima: 016       |
 | `docs/`                             | Arquitetura, banco, design system, specs, ADRs                 |
 

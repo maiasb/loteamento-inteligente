@@ -19,7 +19,7 @@ Serviços externos: Cloudinary (imagens/SVG), Google Maps (overlay de lotes)
 ```
 
 Não há camada de serviço ou repositório: validação, regras de negócio e SQL ficam juntos em cada
-`route.ts`. Os tipos de domínio estão em `types/index.ts`.
+`route.ts`. Os tipos de domínio estão em `types/` (um arquivo por tipo, reexportados por `types/index.ts`).
 
 ## Fluxo de uma requisição
 
