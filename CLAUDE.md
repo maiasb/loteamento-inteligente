@@ -42,7 +42,7 @@ docker compose up --build     # banco + app em container (http://localhost:3000)
 | `lib/`                              | Infra: banco (`db.ts`), Cloudinary, migrations, config de libs |
 | `utils/`                            | Funções puras (formatação, validação)                          |
 | `types/<Tipo>.ts`                   | Um tipo de domínio por arquivo; importar de `@/types/<Tipo>`   |
-| `migrations/`                       | SQL numerado (MySQL 8), executado em ordem; próxima: 016       |
+| `migrations/`                       | SQL numerado (MySQL 8), executado em ordem; próxima: 017       |
 | `docs/`                             | Arquitetura, banco, design system, specs, ADRs                 |
 
 ## Convenções (padrões dominantes do código)
@@ -54,7 +54,7 @@ docker compose up --build     # banco + app em container (http://localhost:3000)
 - Rotas de API: `export const dynamic = 'force-dynamic'`, validar entrada, responder
   `NextResponse.json({ error }, { status })`, `try/catch` com `console.error('[API /rota] …')`.
 - Acesso ao banco: **use `executeQuery`/`getPool` de `lib/db.ts`**. Não abrir
-  `mysql.createConnection(dbConfig)` em rotas novas (17 rotas antigas ainda fazem isso). Sempre
+  `mysql.createConnection(dbConfig)` em rotas novas (19 arquivos antigos ainda fazem isso). Sempre
   SQL parametrizado (`?`).
 - Chamadas do cliente à API: axios com base `/api`.
 - Estilo: classes Tailwind usando tokens CSS (`var(--primary)`, `var(--border)`…). Ver

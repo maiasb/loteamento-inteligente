@@ -10,7 +10,7 @@ Navegador (React 19, client components)
         │
         ▼
 Servidor Next.js 16 (App Router)
-  proxy.ts            CORS das rotas /api
+  proxy.ts            CORS das rotas /api (lista fechada de origens)
   app/api/**/route.ts regras de negócio + SQL
         │
         ▼
@@ -27,7 +27,7 @@ Exemplo: reservar lotes (`LotSelector` / `PurchaseModal`).
 
 1. A tela coleta os dados com `usePurchaseForm` (máscaras e validação de CPF em `utils/formatters.ts`).
 2. axios chama `POST /api/mapas/lotes/reservar`.
-3. `proxy.ts` adiciona os headers CORS.
+3. `proxy.ts` adiciona os headers CORS só para origens da lista (`ALLOWED_ORIGINS`, `NEXT_PUBLIC_SITE_URL`; localhost só em dev).
 4. A rota valida o corpo, abre transação, confere se todos os lotes estão `available`, grava
    `purchase_requests` e `purchase_request_lots` e muda o status dos lotes para `reserved`.
 5. Respostas de erro: `{ error: string }` com 400, 404, 409 ou 500.
@@ -35,14 +35,24 @@ Exemplo: reservar lotes (`LotSelector` / `PurchaseModal`).
 
 ## Autenticação e autorização
 
-- Login: `GET /api/usuarios/login?cpf=…&password=…`. A senha é comparada como **hash MD5** no SQL.
-  A resposta é o objeto do usuário.
-- Sessão: `AuthContext` guarda o usuário em `localStorage['currentUser']`. Não há cookie, token
-  nem verificação no servidor.
-- Papéis (`UserRole`): `dev` (acesso total), `admin`, `vendedor`. Status do usuário: `pending`,
-  `approved`, `rejected`. Só `approved` e `active` entram.
-- Controle de acesso: **apenas no cliente** (`SharedLayout` redireciona para `/login`;
-  `canAccessUsers` = dev ou admin). As rotas `/api` não checam papel.
+Implementado pelas fases 1 a 3 da [spec 010](specs/010-autenticacao-autorizacao-servidor.md) (código em `lib/auth/`).
+
+- Login: `POST /api/usuarios/login` com `{ cpf, password }` (nada na URL), com rate limit e mensagem
+  genérica de erro. Senha com **scrypt** (`lib/auth/password.ts`), política de senha na criação e na troca.
+- Sessão **no servidor**: tabela criada pela migration 016, token em cookie (`__Host-session` com `Secure`
+  em produção), expiração por ociosidade (8 h) e absoluta (7 dias). O usuário é relido do banco a cada
+  requisição (papel, status e ativo atuais). `GET /api/usuarios/me` e `POST .../logout`.
+- Papéis (`UserRole`): `dev` (acesso total), `admin`, `vendedor`. Status: `pending`, `approved`,
+  `rejected`. Só `approved` e ativo entram. Cadastro público cria sempre `vendedor` `pending` (papel e
+  status do corpo são ignorados). Senha provisória (`first_login`) só acessa `me`, `senha` e `logout`.
+- Guarda nas rotas: `requireUser` e `requireRole` (`lib/auth/guard.ts`), que também fazem a checagem CSRF
+  (`Origin` / `Sec-Fetch-Site`) em POST, PUT, PATCH e DELETE. Em 27/10/2026, **12 das 49 rotas de
+  `app/api` usam o guard** (as de `usuarios/*`); as de reservas, mapas, quadras, lotes e dashboard ainda não
+  o chamam (fases 4 a 6 da spec). A leitura `mapas/visualizacao`, que alimenta a página pública
+  `/view/[mapId]`, é pública de propósito; a resposta ainda inclui descrições, e a spec 010 (decisão Q1,
+  tarefa 5.2) pede um DTO público sem valores nem descrição de venda.
+- O controle de acesso das telas continua também no cliente (`SharedLayout` redireciona para `/login`;
+  `canAccessUsers` = dev ou admin), mas isso não substitui o guard no servidor.
 
 ## Telas e módulos
 
@@ -112,9 +122,9 @@ SSH e PM2.
 
 ## Pontos de atenção (dívida técnica conhecida)
 
-1. Senha em query string (GET) e MD5. Sessão só no `localStorage`; rotas de API sem checagem de papel.
-2. CORS aberto: `next.config.ts` envia `*` e `proxy.ts` aceita qualquer origem.
-3. Hash de senha divergente: login, criação e troca usam MD5; `api/password/reset` usa SHA-256.
+1. ~~Senha em query string e MD5; sessão no `localStorage`~~ **Resolvido nas rotas de `usuarios/*`** (fases 1 a 3 da spec 010). **Segue aberto:** as rotas de reservas, mapas, quadras, lotes e dashboard ainda não checam sessão nem papel (fases 4 a 6).
+2. ~~CORS aberto~~ `proxy.ts` agora usa lista fechada de origens e `next.config.ts` não envia `*`. Conferir a fase 6 da spec (CSRF e fechamento).
+3. ~~Hash de senha divergente (MD5 e SHA-256)~~ Resolvido: scrypt em todo o fluxo; a rota `api/password/reset` foi removida.
 4. `validateCPF` aceita o CPF de desenvolvimento `99999999998`.
 5. Chaves do Cloudinary também em variáveis `NEXT_PUBLIC_*` (expostas ao navegador).
 6. Acesso ao banco inconsistente: ver [database.md](database.md).

@@ -76,11 +76,11 @@ excluía lotes sem quadra.
 | ---------------------------------------------------------------------------------- | ------------------------------------------------------------ |
 | `lots.status` aceita `unavailable` (001) e `blocked` (013); o código usa `blocked` | Unificar em `blocked` numa spec, ajustando dados e ENUM      |
 | `blocks` em camelCase                                                              | Manter em código existente; em tabelas novas usar snake_case |
-| Numeração 001–007 e depois 012 a 015 (008–011 nunca existiram)                     | Próxima migration: 016                                       |
+| Numeração 001–007 e depois 012 a 016 (008–011 nunca existiram)                     | Próxima migration: 017                                       |
 | `users.username` sem uso                                                           | Remover numa spec futura, após confirmar                     |
 | Rotas antigas ainda usam `mysql.createConnection(dbConfig)`                        | Padrão: `executeQuery`/`getPool` de `lib/db.ts`              |
-| Hash de senha MD5 (login) e SHA-256 (`password/reset`)                             | Spec própria de autenticação                                 |
-| `POST /api/usuarios/criar` aceita `role` e `status` do corpo                       | Spec própria de autenticação                                 |
+| ~~Hash de senha MD5 (login) e SHA-256 (`password/reset`)~~                         | Resolvido: scrypt (spec 010, fases 1 a 3)                    |
+| ~~`POST /api/usuarios/criar` aceita `role` e `status` do corpo~~                   | Resolvido: sempre `vendedor` e `pending`                     |
 
 ## Subir um banco novo
 
