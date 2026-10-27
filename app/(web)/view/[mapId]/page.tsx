@@ -45,7 +45,7 @@ export default function ViewMapPage() {
         setError(null);
 
         const response = await fetch(`/api/mapas/visualizacao?mapId=${mapId}`);
-        
+
         if (!response.ok) {
           if (response.status === 404) {
             setError('Mapa não encontrado');
@@ -117,9 +117,7 @@ export default function ViewMapPage() {
               d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
             />
           </svg>
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
-            {error}
-          </h2>
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">{error}</h2>
           <p className="text-gray-600 dark:text-gray-400 mb-6">
             O mapa solicitado não está disponível ou não foi encontrado.
           </p>
@@ -138,9 +136,7 @@ export default function ViewMapPage() {
     return (
       <div className="flex items-center justify-center min-h-screen bg-gray-50 dark:bg-gray-900">
         <div className="text-center">
-          <p className="text-xl text-gray-700 dark:text-gray-300">
-            Nenhum dado disponível
-          </p>
+          <p className="text-xl text-gray-700 dark:text-gray-300">Nenhum dado disponível</p>
         </div>
       </div>
     );
