@@ -3,7 +3,13 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import axios from 'axios';
-import { Map, Block, Lot, LotStatus, OverlayConfig, MapApiItem, ReservationSummary } from '@/types';
+import { Map } from '@/types/Map';
+import { Block } from '@/types/Block';
+import { Lot } from '@/types/Lot';
+import { LotStatus } from '@/types/LotStatus';
+import { OverlayConfig } from '@/types/OverlayConfig';
+import { MapApiItem } from '@/types/MapApiItem';
+import { ReservationSummary } from '@/types/ReservationSummary';
 import { useBlockOperations } from '@/hooks/useBlockOperations';
 import LotSelector from '@/components/LotSelector';
 import PublicMapViewer from '@/components/PublicMapViewer';

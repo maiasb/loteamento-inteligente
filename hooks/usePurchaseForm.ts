@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import axios from 'axios';
-import { Lot } from '@/types';
+import { Lot } from '@/types/Lot';
 import { validateCPF, parseCurrency } from '@/utils/formatters';
 
 const API_URL = '/api';

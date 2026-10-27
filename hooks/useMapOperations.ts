@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
-import { Map } from '@/types';
+import { Map } from '@/types/Map';
 import { compressImage, getBase64Size } from '@/lib/imageUtils';
 
 const API_URL = '/api';

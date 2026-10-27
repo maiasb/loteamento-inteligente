@@ -2,7 +2,9 @@
 
 import React, { useState } from 'react';
 import PublicMapViewer from './PublicMapViewer';
-import { Lot, Block, OverlayConfig } from '@/types';
+import { Lot } from '@/types/Lot';
+import { Block } from '@/types/Block';
+import { OverlayConfig } from '@/types/OverlayConfig';
 
 type ViewOnlyLotMapProps = {
   mapName: string;

@@ -1,5 +1,6 @@
 import { useRef, useState, useEffect, useCallback } from 'react';
-import { Lot, LotArea } from '@/types';
+import { Lot } from '@/types/Lot';
+import { LotArea } from '@/types/LotArea';
 
 type UseInteractiveMapProps = {
   imageUrl: string;

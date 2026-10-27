@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import mysql, { type RowDataPacket } from 'mysql2/promise';
 import { dbConfig } from '@/lib/db';
-import { LotStatus } from '@/types';
+import { LotStatus } from '@/types/LotStatus';
 
 // Forçar rota dinâmica
 export const dynamic = 'force-dynamic';

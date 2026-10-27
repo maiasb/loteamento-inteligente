@@ -3,7 +3,12 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import axios from 'axios';
-import { Map, Lot, Block, MapApiItem, BlockApiItem, LotApiItem } from '@/types';
+import { Map } from '@/types/Map';
+import { Lot } from '@/types/Lot';
+import { Block } from '@/types/Block';
+import { MapApiItem } from '@/types/MapApiItem';
+import { BlockApiItem } from '@/types/BlockApiItem';
+import { LotApiItem } from '@/types/LotApiItem';
 import LotSelector from '@/components/LotSelector';
 import PublicMapViewer from '@/components/PublicMapViewer';
 import PurchaseModal from '@/components/PurchaseModal';

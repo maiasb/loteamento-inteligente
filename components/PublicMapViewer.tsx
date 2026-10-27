@@ -2,7 +2,10 @@
 
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { GoogleMap, useLoadScript } from '@react-google-maps/api';
-import { Lot, Block, LotStatus, OverlayConfig } from '@/types';
+import { Lot } from '@/types/Lot';
+import { Block } from '@/types/Block';
+import { LotStatus } from '@/types/LotStatus';
+import { OverlayConfig } from '@/types/OverlayConfig';
 import { GOOGLE_MAPS_API_KEY, GOOGLE_MAPS_LIBRARIES } from '@/lib/googleMapsConfig';
 
 type PublicMapViewerProps = {

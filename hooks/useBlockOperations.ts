@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import axios from 'axios';
-import { Block, BlockApiItem } from '@/types';
+import { Block } from '@/types/Block';
+import { BlockApiItem } from '@/types/BlockApiItem';
 
 const API_URL = '/api';
 

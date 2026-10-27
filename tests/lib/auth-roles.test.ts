@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { UserRole } from '@/types';
+import { UserRole } from '@/types/UserRole';
 import { canAssignRole, canManageAccount } from '@/lib/auth/roles';
 
 const dev = { id: 1, role: UserRole.DEV };

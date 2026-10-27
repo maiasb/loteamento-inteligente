@@ -3,7 +3,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import axios from 'axios';
-import { Map, Lot, LotStatus } from '@/types';
+import { Map } from '@/types/Map';
+import { Lot } from '@/types/Lot';
+import { LotStatus } from '@/types/LotStatus';
 import InteractiveMap from '@/components/InteractiveMap';
 import LotSelector from '@/components/LotSelector';
 import { useRealtimeUpdates } from '@/hooks/useRealtimeUpdates';

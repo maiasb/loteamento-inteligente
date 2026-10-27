@@ -2,7 +2,9 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { User, UserRole, UserStatus } from '@/types';
+import { User } from '@/types/User';
+import { UserRole } from '@/types/UserRole';
+import { UserStatus } from '@/types/UserStatus';
 import { useRouter } from 'next/navigation';
 import axios from 'axios';
 

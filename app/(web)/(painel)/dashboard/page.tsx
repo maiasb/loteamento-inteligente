@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import axios from 'axios';
-import { UserRole } from '@/types';
+import { UserRole } from '@/types/UserRole';
 import { useAuth } from '@/contexts/AuthContext';
 
 const API_URL = '/api';

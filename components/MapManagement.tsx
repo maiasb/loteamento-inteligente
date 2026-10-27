@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Map } from '@/types';
+import { Map } from '@/types/Map';
 import { useMapOperations } from '@/hooks/useMapOperations';
 import { useRealtimeUpdates } from '@/hooks/useRealtimeUpdates';
 import InteractiveMap from '@/components/InteractiveMap';

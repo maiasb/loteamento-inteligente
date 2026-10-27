@@ -2,7 +2,11 @@
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Lot, LotStatus, Block, ReservationSummary, ReservationLotSummary } from '@/types';
+import { Lot } from '@/types/Lot';
+import { LotStatus } from '@/types/LotStatus';
+import { Block } from '@/types/Block';
+import { ReservationSummary } from '@/types/ReservationSummary';
+import { ReservationLotSummary } from '@/types/ReservationLotSummary';
 
 type LotSelectorProps = {
   lots: Lot[];

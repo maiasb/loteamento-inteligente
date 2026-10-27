@@ -1,6 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import axios from 'axios';
-import { Map, Lot, LotStatus, Block, BlockApiItem, LotApiItem } from '@/types';
+import { Map } from '@/types/Map';
+import { Lot } from '@/types/Lot';
+import { LotStatus } from '@/types/LotStatus';
+import { Block } from '@/types/Block';
+import { BlockApiItem } from '@/types/BlockApiItem';
+import { LotApiItem } from '@/types/LotApiItem';
 
 const API_URL = '/api';
 

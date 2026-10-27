@@ -1,7 +1,8 @@
 'use client';
 
 import React from 'react';
-import { Lot, LotStatus } from '@/types';
+import { Lot } from '@/types/Lot';
+import { LotStatus } from '@/types/LotStatus';
 import { usePurchaseForm } from '@/hooks/usePurchaseForm';
 import { useAuth } from '@/contexts/AuthContext';
 import { showAlert, showConfirm } from '@/hooks/useCustomAlert';

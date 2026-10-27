@@ -1,7 +1,9 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Lot, LotArea, LotStatus } from '@/types';
+import { Lot } from '@/types/Lot';
+import { LotArea } from '@/types/LotArea';
+import { LotStatus } from '@/types/LotStatus';
 import { useInteractiveMap } from '@/hooks/useInteractiveMap';
 import { loadPdfJs } from '@/lib/pdfjs-wrapper';
 

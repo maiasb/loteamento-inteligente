@@ -1,5 +1,5 @@
 import type { PoolConnection, RowDataPacket } from 'mysql2/promise';
-import { UserRole } from '@/types';
+import { UserRole } from '@/types/UserRole';
 
 /** admin e dev. */
 export const ADMIN_ROLES: readonly UserRole[] = [UserRole.ADMIN, UserRole.DEV];

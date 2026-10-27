@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireRole } from '@/lib/auth/guard';
 import { errorResponse, readJsonBody } from '@/lib/auth/request';
 import { ADMIN_ROLES, canAssignRole, isUserRole } from '@/lib/auth/roles';
-import { UserRole } from '@/types';
+import { UserRole } from '@/types/UserRole';
 import {
   guardLastActiveDev,
   lockManageableTarget,

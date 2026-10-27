@@ -11,7 +11,8 @@ import {
 } from 'react';
 import { useRouter } from 'next/navigation';
 import axios from 'axios';
-import { User, UserRole } from '@/types';
+import { User } from '@/types/User';
+import { UserRole } from '@/types/UserRole';
 
 const API_URL = '/api';
 

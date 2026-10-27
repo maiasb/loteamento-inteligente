@@ -1,7 +1,7 @@
 import type { NextResponse } from 'next/server';
 import type { PoolConnection, RowDataPacket } from 'mysql2/promise';
 import { getPool } from '@/lib/db';
-import { UserRole } from '@/types';
+import { UserRole } from '@/types/UserRole';
 import { errorResponse } from './request';
 import { canManageAccount, countOtherActiveDevs } from './roles';
 import type { SessionUser } from './session';

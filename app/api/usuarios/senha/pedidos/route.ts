@@ -4,7 +4,7 @@ import { executeQuery } from '@/lib/db';
 import { requireRole } from '@/lib/auth/guard';
 import { errorResponse } from '@/lib/auth/request';
 import { ADMIN_ROLES } from '@/lib/auth/roles';
-import { UserRole } from '@/types';
+import { UserRole } from '@/types/UserRole';
 
 export const dynamic = 'force-dynamic';
 

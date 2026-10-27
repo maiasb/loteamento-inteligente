@@ -5,7 +5,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { UserRole } from '@/types';
+import { UserRole } from '@/types/UserRole';
 import ThemeToggle from '@/components/ThemeToggle';
 import { useIsMounted } from '@/hooks/useIsMounted';
 import { useTheme } from '@/contexts/ThemeContext';

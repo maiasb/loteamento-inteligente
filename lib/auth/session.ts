@@ -2,7 +2,8 @@ import { randomBytes } from 'crypto';
 import type { NextRequest, NextResponse } from 'next/server';
 import type { PoolConnection, ResultSetHeader, RowDataPacket } from 'mysql2/promise';
 import { executeQuery, type QueryParam } from '@/lib/db';
-import { UserRole, UserStatus } from '@/types';
+import { UserRole } from '@/types/UserRole';
+import { UserStatus } from '@/types/UserStatus';
 import { sha256Hex } from './request';
 
 export const SESSION_IDLE_SECONDS = 8 * 60 * 60;

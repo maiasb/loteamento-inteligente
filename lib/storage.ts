@@ -1,4 +1,7 @@
-import { Map, Lot, PurchaseRequest, LotStatus } from '@/types';
+import { Map } from '@/types/Map';
+import { Lot } from '@/types/Lot';
+import { PurchaseRequest } from '@/types/PurchaseRequest';
+import { LotStatus } from '@/types/LotStatus';
 
 const STORAGE_KEYS = {
   MAPS: 'lot_platform_maps',
@@ -19,7 +22,8 @@ const initializeSampleData = (): void => {
     id: '1762192028364',
     name: 'Mapa de Exemplo - Imobiliária Vale dos Carajás',
     description: 'Mapa de exemplo para testes. Substitua pela imagem real.',
-    imageUrl: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iODAwIiBoZWlnaHQ9IjYwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iODAwIiBoZWlnaHQ9IjYwMCIgZmlsbD0iI2Y1ZjVmNSIvPjx0ZXh0IHg9IjQwMCIgeT0iMzAwIiBmb250LXNpemU9IjI0IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmaWxsPSIjOTk5Ij5NYXBhIGRlIEV4ZW1wbG88L3RleHQ+PC9zdmc+',
+    imageUrl:
+      'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iODAwIiBoZWlnaHQ9IjYwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iODAwIiBoZWlnaHQ9IjYwMCIgZmlsbD0iI2Y1ZjVmNSIvPjx0ZXh0IHg9IjQwMCIgeT0iMzAwIiBmb250LXNpemU9IjI0IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmaWxsPSIjOTk5Ij5NYXBhIGRlIEV4ZW1wbG88L3RleHQ+PC9zdmc+',
     imageType: 'image',
     width: 800,
     height: 600,
@@ -117,7 +121,9 @@ export const saveMap = (map: Map): void => {
   } catch (error) {
     console.error('Erro ao salvar mapa:', error);
     if (error instanceof DOMException && error.name === 'QuotaExceededError') {
-      throw new Error('Arquivo muito grande para o localStorage. Use uma imagem menor ou de menor qualidade.');
+      throw new Error(
+        'Arquivo muito grande para o localStorage. Use uma imagem menor ou de menor qualidade.'
+      );
     }
     throw error;
   }

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import type { UserRole } from '@/types';
+import type { UserRole } from '@/types/UserRole';
 import { assertSameOrigin, errorResponse } from './request';
 import {
   clearSessionCookie,

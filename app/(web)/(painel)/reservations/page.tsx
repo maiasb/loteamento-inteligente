@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import axios from 'axios';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
-import { UserRole } from '@/types';
+import { UserRole } from '@/types/UserRole';
 import { useCustomAlert } from '@/hooks/useCustomAlert';
 
 // Forçar essa página a ser apenas client-side (sem SSG/SSR)

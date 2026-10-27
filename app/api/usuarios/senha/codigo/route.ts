@@ -11,7 +11,7 @@ import {
 } from '@/lib/auth/reset-code';
 import { parseUserId } from '@/lib/auth/accounts';
 import { executeQuery } from '@/lib/db';
-import { UserRole } from '@/types';
+import { UserRole } from '@/types/UserRole';
 
 export const dynamic = 'force-dynamic';
 

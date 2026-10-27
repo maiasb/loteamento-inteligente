@@ -3,7 +3,9 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import ViewOnlyLotMap from '@/components/ViewOnlyLotMap';
-import { Block, Lot, OverlayConfig } from '@/types';
+import { Block } from '@/types/Block';
+import { Lot } from '@/types/Lot';
+import { OverlayConfig } from '@/types/OverlayConfig';
 
 // Forçar essa página a ser apenas client-side (sem SSG/SSR)
 export const dynamic = 'force-dynamic';

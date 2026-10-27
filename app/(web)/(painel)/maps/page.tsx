@@ -8,7 +8,9 @@ import PublicMapViewer from '@/components/PublicMapViewer';
 import LotSelector from '@/components/LotSelector';
 import PurchaseModal from '@/components/PurchaseModal';
 import { useMapSelection } from '@/hooks/useMapSelection';
-import { Lot, LotStatus, ReservationSummary } from '@/types';
+import { Lot } from '@/types/Lot';
+import { LotStatus } from '@/types/LotStatus';
+import { ReservationSummary } from '@/types/ReservationSummary';
 import { useAuth } from '@/contexts/AuthContext';
 import { showAlert } from '@/hooks/useCustomAlert';
 
