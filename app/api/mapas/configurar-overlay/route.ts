@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import mysql, { type RowDataPacket } from 'mysql2/promise';
+import mysql from 'mysql2/promise';
 import { dbConfig } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
@@ -22,24 +22,6 @@ export async function POST(request: NextRequest) {
 
     if (!Array.isArray(maps) || maps.length === 0) {
       return NextResponse.json({ error: 'Mapa não encontrado' }, { status: 404 });
-    }
-
-    // Verificar se a coluna overlay_config existe
-    const [columns] = await connection.execute<RowDataPacket[]>(
-      `SELECT COLUMN_NAME 
-       FROM INFORMATION_SCHEMA.COLUMNS 
-       WHERE TABLE_SCHEMA = DATABASE() 
-       AND TABLE_NAME = 'maps' 
-       AND COLUMN_NAME = 'overlay_config'`
-    );
-
-    const hasOverlayConfig = Array.isArray(columns) && columns.length > 0;
-
-    if (!hasOverlayConfig) {
-      await connection.execute(
-        `ALTER TABLE maps 
-         ADD COLUMN overlay_config JSON DEFAULT NULL AFTER address`
-      );
     }
 
     // Validar overlayConfig se fornecido

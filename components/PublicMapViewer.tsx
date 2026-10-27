@@ -208,6 +208,9 @@ export default function PublicMapViewer({
   const lotsWithPosition = lots.filter(
     (lot) => lot.lat !== undefined && lot.lat !== null && lot.lng !== undefined && lot.lng !== null
   );
+  const lotsKey = lotsWithPosition
+    .map((l) => `${l.id}-${l.lat}-${l.lng}-${l.status}-${l.lotNumber}`)
+    .join(',');
 
   // Gerenciar círculos dos lotes nativamente via google.maps.OverlayView
   useEffect(() => {
@@ -342,11 +345,7 @@ export default function PublicMapViewer({
       lotOverlaysRef.current = [];
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    mapLoaded,
-    lotsWithPosition.map((l) => `${l.id}-${l.lat}-${l.lng}-${l.status}-${l.lotNumber}`).join(','),
-    onLotClick,
-  ]);
+  }, [mapLoaded, lotsKey, onLotClick]);
 
   // Alternar visibilidade das marcações dos lotes
   useEffect(() => {
