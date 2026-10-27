@@ -32,18 +32,18 @@ docker compose up --build     # banco + app em container (http://localhost:3000)
 
 ## Estrutura e onde colocar cada coisa
 
-| Pasta                               | Conteúdo                                                           |
-| ----------------------------------- | ------------------------------------------------------------------ |
-| `app/<rota>/page.tsx`               | Páginas (App Router). Páginas em inglês: `/maps`, `/reservations`… |
-| `app/api/<recurso>/<ação>/route.ts` | Back-end. Recursos e ações em português: `mapas/lotes/criar`       |
-| `components/`                       | Componentes de tela, PascalCase                                    |
-| `hooks/`                            | Hooks `useX` com lógica de tela reutilizável                       |
-| `contexts/`                         | Providers globais (Auth, Theme)                                    |
-| `lib/`                              | Infra: banco (`db.ts`), Cloudinary, migrations, config de libs     |
-| `utils/`                            | Funções puras (formatação, validação)                              |
-| `types/index.ts`                    | Tipos de domínio                                                   |
-| `migrations/`                       | SQL numerado (MySQL 8), executado em ordem; próxima: 016           |
-| `docs/`                             | Arquitetura, banco, design system, specs, ADRs                     |
+| Pasta                               | Conteúdo                                                       |
+| ----------------------------------- | -------------------------------------------------------------- |
+| `app/(web)/(grupo)/<rota>/page.tsx` | Páginas; `(painel)`, `(auth)`, `(publico)` não entram na URL   |
+| `app/api/<recurso>/<ação>/route.ts` | Back-end. Recursos e ações em português: `mapas/lotes/criar`   |
+| `components/`                       | Componentes de tela, PascalCase                                |
+| `hooks/`                            | Hooks `useX` com lógica de tela reutilizável                   |
+| `contexts/`                         | Providers globais (Auth, Theme)                                |
+| `lib/`                              | Infra: banco (`db.ts`), Cloudinary, migrations, config de libs |
+| `utils/`                            | Funções puras (formatação, validação)                          |
+| `types/index.ts`                    | Tipos de domínio                                               |
+| `migrations/`                       | SQL numerado (MySQL 8), executado em ordem; próxima: 016       |
+| `docs/`                             | Arquitetura, banco, design system, specs, ADRs                 |
 
 ## Convenções (padrões dominantes do código)
 
@@ -54,7 +54,7 @@ docker compose up --build     # banco + app em container (http://localhost:3000)
 - Rotas de API: `export const dynamic = 'force-dynamic'`, validar entrada, responder
   `NextResponse.json({ error }, { status })`, `try/catch` com `console.error('[API /rota] …')`.
 - Acesso ao banco: **use `executeQuery`/`getPool` de `lib/db.ts`**. Não abrir
-  `mysql.createConnection(dbConfig)` em rotas novas (40 rotas antigas ainda fazem isso). Sempre
+  `mysql.createConnection(dbConfig)` em rotas novas (17 rotas antigas ainda fazem isso). Sempre
   SQL parametrizado (`?`).
 - Chamadas do cliente à API: axios com base `/api`.
 - Estilo: classes Tailwind usando tokens CSS (`var(--primary)`, `var(--border)`…). Ver

@@ -81,7 +81,7 @@ Ver [decisions/003-hospedagem-vercel.md](decisions/003-hospedagem-vercel.md) e a
   precisam migrar para o pool antes do deploy.
 - IP do cliente vem de `x-forwarded-for`/`x-real-ip`. Cookie de sessão com `Secure` em produção.
 - Migrations rodadas de fora do deploy (`yarn migrate` contra o banco remoto), nunca no build.
-  Hoje o `package.json` não tem esse script.
+  O script é `yarn migrate`.
 - Variáveis de ambiente configuradas na Vercel por ambiente (inclui `ALLOWED_ORIGINS` e
   `NEXT_PUBLIC_SITE_URL`).
 - Limites de função (tempo, memória, corpo) afetam `mapas/upload-svg` e `mapas/importar`; o
